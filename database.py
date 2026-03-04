@@ -695,6 +695,84 @@ def update_advertiser_plan(adv_id: int, plan: str, plan_expires_at: float,
         conn.close()
 
 
+def get_hashtags():
+    if _USE_SUPABASE:
+        return _sb_get(T_HASH, {"order": "created_at.desc"}) or []
+    return _sq_all(f"SELECT * FROM {T_HASH} ORDER BY created_at DESC")
+
+def get_collect_jobs(limit=30):
+    if _USE_SUPABASE:
+        return _sb_get(T_CJOB, {"order": "started_at.desc", "limit": str(limit)}) or []
+    return _sq_all(f"SELECT * FROM {T_CJOB} ORDER BY started_at DESC LIMIT {limit}")
+
+def add_hashtag(name: str, requested_count: int = 500, auto_collect: int = 1):
+    now = time.time()
+    if _USE_SUPABASE:
+        return _sb_post(T_HASH, {
+            "name": name, "status": "idle",
+            "auto_collect": auto_collect,
+            "total_collected": 0, "created_at": now,
+        })
+    conn = get_conn()
+    try:
+        conn.execute(f"INSERT OR IGNORE INTO {T_HASH} (name, status, auto_collect, total_collected, created_at) VALUES (?,?,?,?,?)",
+                     (name, "idle", auto_collect, 0, now))
+        conn.commit()
+    finally:
+        conn.close()
+
+def delete_hashtag(hashtag_id: int):
+    if _USE_SUPABASE:
+        import requests as _r
+        _r.delete(_sb_url(T_HASH, f"?id=eq.{hashtag_id}"), headers=_sb_headers())
+        return
+    conn = get_conn()
+    try:
+        conn.execute(f"DELETE FROM {T_HASH} WHERE id=?", (hashtag_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+def update_hashtag_status(name: str, status: str):
+    if _USE_SUPABASE:
+        return _sb_patch(T_HASH, f"?name=eq.{name}", {"status": status, "last_run_at": time.time()})
+    conn = get_conn()
+    try:
+        conn.execute(f"UPDATE {T_HASH} SET status=?, last_run_at=? WHERE name=?", (status, time.time(), name))
+        conn.commit()
+    finally:
+        conn.close()
+
+def add_collect_job(hashtag: str, status: str, requested_count: int):
+    now = time.time()
+    if _USE_SUPABASE:
+        rows = _sb_post(T_CJOB, {
+            "hashtag": hashtag, "status": status,
+            "requested_count": requested_count, "collected_posts": 0,
+            "new_users": 0, "updated_users": 0, "started_at": now,
+        })
+        return rows[0].get("id") if rows and isinstance(rows, list) else None
+    conn = get_conn()
+    try:
+        cur = conn.execute(f"INSERT INTO {T_CJOB} (hashtag, status, requested_count, started_at) VALUES (?,?,?,?)",
+                           (hashtag, status, requested_count, now))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+def update_collect_job(job_id, **kwargs):
+    if _USE_SUPABASE:
+        return _sb_patch(T_CJOB, f"?id=eq.{job_id}", kwargs)
+    conn = get_conn()
+    try:
+        sets = ", ".join(f"{k}=?" for k in kwargs)
+        conn.execute(f"UPDATE {T_CJOB} SET {sets} WHERE id=?", (*kwargs.values(), job_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_refresh_status():
     if _USE_SUPABASE:
         r = _sb_get(T_RJOB, {"order": "started_at.desc", "limit": "1"})

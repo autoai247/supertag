@@ -16,7 +16,10 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       get_manual, save_manual, get_advertisers, get_refresh_status,
                       update_influencer_stats, get_advertiser_by_username,
                       add_advertiser as db_add_advertiser, delete_advertiser as db_delete_advertiser,
-                      update_advertiser_plan)
+                      update_advertiser_plan,
+                      get_hashtags, get_collect_jobs, add_hashtag as db_add_hashtag,
+                      delete_hashtag as db_delete_hashtag, update_hashtag_status,
+                      add_collect_job, update_collect_job)
 
 app = FastAPI()
 
@@ -616,39 +619,41 @@ def refresh_status(session_id: Optional[str] = Cookie(default=None)):
 def hashtags_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
-    conn = get_conn()
-    rows = conn.execute("SELECT * FROM hashtags ORDER BY created_at DESC").fetchall()
-    jobs = conn.execute("SELECT * FROM collect_jobs ORDER BY started_at DESC LIMIT 30").fetchall()
-    conn.close()
+    rows = get_hashtags()
+    jobs = get_collect_jobs(30)
     return templates.TemplateResponse("hashtags.html", {
         "request": request, "user": user,
-        "hashtags": [dict(r) for r in rows],
-        "jobs": [dict(r) for r in jobs],
+        "hashtags": [dict(r) if not isinstance(r, dict) else r for r in rows],
+        "jobs": [dict(r) if not isinstance(r, dict) else r for r in jobs],
     })
 
 @app.post("/hashtags/add")
-def add_hashtag(name: str = Form(...), requested_count: int = Form(default=500),
+def add_hashtag_route(name: str = Form(...), requested_count: int = Form(default=500),
                 auto_collect: int = Form(default=1),
                 session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
     name = name.strip().lstrip("#")
-    conn = get_conn()
     try:
-        conn.execute("INSERT INTO hashtags (name, auto_collect, created_at) VALUES (?,?,?)",
-                     (name, auto_collect, time.time()))
-        conn.commit()
-    except: pass
-    conn.close()
+        db_add_hashtag(name, requested_count, auto_collect)
+    except Exception as e:
+        log.error(f"해시태그 추가 실패: {e}")
     return RedirectResponse("/hashtags", 302)
 
 @app.post("/hashtags/delete")
-def delete_hashtag(name: str = Form(...), session_id: Optional[str] = Cookie(default=None)):
+def delete_hashtag_route(name: str = Form(default=""), hashtag_id: int = Form(default=0),
+                         session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
-    conn = get_conn()
-    conn.execute("DELETE FROM hashtags WHERE name=?", (name,))
-    conn.commit(); conn.close()
+    if hashtag_id:
+        db_delete_hashtag(hashtag_id)
+    elif name:
+        # SQLite fallback: find by name
+        from database import _USE_SUPABASE
+        if not _USE_SUPABASE:
+            conn = get_conn()
+            conn.execute("DELETE FROM insta_hashtags WHERE name=?", (name,))
+            conn.commit(); conn.close()
     return RedirectResponse("/hashtags", 302)
 
 
@@ -660,12 +665,10 @@ def delete_hashtag(name: str = Form(...), session_id: Optional[str] = Cookie(def
 def collect_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
-    conn = get_conn()
-    htags = conn.execute("SELECT name FROM hashtags ORDER BY name").fetchall()
-    conn.close()
+    htags = get_hashtags()
     return templates.TemplateResponse("collect.html", {
         "request": request, "user": user,
-        "hashtags": [r["name"] for r in htags],
+        "hashtags": [r.get("name","") if isinstance(r, dict) else r["name"] for r in htags],
     })
 
 @app.post("/collect/start")
@@ -676,13 +679,11 @@ def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=
     if not user: return HTMLResponse("인증 필요", 403)
     hashtag = hashtag.strip().lstrip("#")
     job_id = str(uuid.uuid4())
-    conn = get_conn()
     try:
-        conn.execute("INSERT INTO hashtags (name, status, created_at) VALUES (?,?,?)",
-                     (hashtag, "running", time.time()))
-    except:
-        conn.execute("UPDATE hashtags SET status='running' WHERE name=?", (hashtag,))
-    conn.commit(); conn.close()
+        update_hashtag_status(hashtag, "running")
+    except Exception:
+        try: db_add_hashtag(hashtag)
+        except: pass
     from crawler import crawl_hashtag
     background_tasks.add_task(crawl_hashtag, hashtag, requested_count,
                                INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"], job_id,
