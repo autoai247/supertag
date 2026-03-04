@@ -50,13 +50,32 @@ def _safe_cd(fname: str) -> str:
     encoded = quote(fname, safe="")
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
 
-# ── 인증 (관리자) ─────────────────────────────────────────
+# ── 인증 (관리자) - JWT 기반 (Vercel 서버리스 호환) ──────────
+from jose import jwt as _jwt
+JWT_SECRET = os.getenv("SECRET_KEY", "instafinder-secret-key-2026-supers")
+JWT_ALG = "HS256"
+JWT_EXP_HOURS = 24 * 7  # 7일
+
 ADMIN_PW_HASH = bcrypt.hashpw(
     os.getenv("ADMIN_PASSWORD", "admin1234").encode(), bcrypt.gensalt()
 )
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
+
+def _make_jwt(payload: dict, hours: int = JWT_EXP_HOURS) -> str:
+    import datetime
+    data = dict(payload)
+    data["exp"] = datetime.datetime.utcnow() + datetime.timedelta(hours=hours)
+    return _jwt.encode(data, JWT_SECRET, algorithm=JWT_ALG)
+
+def _decode_jwt(token: str) -> dict | None:
+    try:
+        return _jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+    except Exception:
+        return None
+
+# Fallback in-memory sessions for local dev (not used in prod)
 sessions: dict = {}
-adv_sessions: dict = {}  # 광고주 세션
+adv_sessions: dict = {}
 
 INSTA_CFG = {
     "username": os.getenv("INSTA_USERNAME", "jannat160304"),
@@ -78,10 +97,33 @@ PLANS = {
 
 
 def get_user(session_id: Optional[str] = None):
-    return sessions.get(session_id) if session_id else None
+    """session_id는 실제로 JWT token (cookie name 유지)"""
+    if not session_id:
+        return None
+    payload = _decode_jwt(session_id)
+    if payload and payload.get("role") == "admin":
+        return {"username": payload.get("username", "admin")}
+    # Fallback: in-memory (local dev)
+    return sessions.get(session_id)
 
 def get_adv_user(session_id: Optional[str] = None):
-    return adv_sessions.get(session_id) if session_id else None
+    """adv_session_id는 JWT token"""
+    if not session_id:
+        return None
+    payload = _decode_jwt(session_id)
+    if payload and payload.get("role") == "advertiser":
+        adv_id = payload.get("adv_id")
+        if adv_id:
+            # Supabase에서 최신 정보 가져오기
+            from database import _USE_SUPABASE
+            if _USE_SUPABASE:
+                rows = __import__("database")._sb_get(
+                    "insta_advertiser_accounts",
+                    {"id": f"eq.{adv_id}", "limit": "1"}
+                )
+                return rows[0] if rows else None
+        return payload
+    return adv_sessions.get(session_id)
 
 def require_admin(session_id: Optional[str]):
     user = get_user(session_id)
@@ -128,10 +170,9 @@ def login_page(request: Request):
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
     if username == ADMIN_USER and bcrypt.checkpw(password.encode(), ADMIN_PW_HASH):
-        sid = str(uuid.uuid4())
-        sessions[sid] = {"username": username}
+        token = _make_jwt({"role": "admin", "username": username})
         res = RedirectResponse("/influencers", status_code=302)
-        res.set_cookie("session_id", sid, httponly=True)
+        res.set_cookie("session_id", token, httponly=True, max_age=604800)
         return res
     return templates.TemplateResponse("login.html", {
         "request": request, "error": "아이디 또는 비밀번호가 올바르지 않습니다."
@@ -739,10 +780,9 @@ def adv_login_page(request: Request):
 def adv_login(request: Request, username: str = Form(...), password: str = Form(...)):
     row = get_advertiser_by_username(username.strip())
     if row and bcrypt.checkpw(password.encode(), (row.get("password_hash") or "").encode()):
-        sid = str(uuid.uuid4())
-        adv_sessions[sid] = dict(row)
+        token = _make_jwt({"role": "advertiser", "username": username, "adv_id": row.get("id")})
         res = RedirectResponse("/advertiser", status_code=302)
-        res.set_cookie("adv_session_id", sid, httponly=True)
+        res.set_cookie("adv_session_id", token, httponly=True, max_age=604800)
         return res
     return templates.TemplateResponse("advertiser_login.html", {
         "request": request, "error": "아이디 또는 비밀번호가 올바르지 않습니다."
@@ -750,7 +790,7 @@ def adv_login(request: Request, username: str = Form(...), password: str = Form(
 
 @app.get("/advertiser/logout")
 def adv_logout(adv_session_id: Optional[str] = Cookie(default=None)):
-    if adv_session_id in adv_sessions: del adv_sessions[adv_session_id]
+    adv_sessions.pop(adv_session_id, None)
     res = RedirectResponse("/advertiser/login", 302)
     res.delete_cookie("adv_session_id")
     return res
