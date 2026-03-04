@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Form, Cookie, Query, BackgroundTasks, HTTPException
+from fastapi import FastAPI, Request, Form, Cookie, Query, BackgroundTasks, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -19,7 +19,9 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       update_advertiser_plan,
                       get_hashtags, get_collect_jobs, add_hashtag as db_add_hashtag,
                       delete_hashtag as db_delete_hashtag, update_hashtag_status,
-                      add_collect_job, update_collect_job)
+                      add_collect_job, update_collect_job,
+                      get_accounts, upsert_account, delete_account, update_account_status,
+                      reset_account_errors)
 
 app = FastAPI()
 
@@ -60,7 +62,7 @@ JWT_ALG = "HS256"
 JWT_EXP_HOURS = 24 * 7  # 7일
 
 ADMIN_PW_HASH = bcrypt.hashpw(
-    os.getenv("ADMIN_PASSWORD", "admin1234").encode(), bcrypt.gensalt()
+    os.getenv("ADMIN_PASSWORD", "admin").encode(), bcrypt.gensalt()
 )
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
 
@@ -877,6 +879,181 @@ def adv_influencer_detail(pk: str, request: Request,
         "inf": inf, "manual": manual_safe, "posts": posts,
         "is_advertiser_view": True,
     })
+
+
+# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+# 인스타그램 계정 관리
+# ═══════════════════════════════════════════════════════
+
+@app.get("/accounts", response_class=HTMLResponse)
+def accounts_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    accs = get_accounts()
+    return templates.TemplateResponse("accounts.html", {
+        "request": request, "user": user,
+        "accounts": [dict(a) if not isinstance(a, dict) else a for a in accs],
+    })
+
+@app.post("/accounts/add")
+def account_add(
+    username: str = Form(...), password: str = Form(...),
+    totp_secret: str = Form(default=""),
+    proxy_host: str = Form(default=""), proxy_port: str = Form(default=""),
+    proxy_user: str = Form(default=""), proxy_pass: str = Form(default=""),
+    session_id: Optional[str] = Cookie(default=None)
+):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    try:
+        upsert_account(username.strip(), password, totp_secret.strip(),
+                       proxy_host, proxy_port, proxy_user, proxy_pass)
+    except Exception as e:
+        log.error(f"계정 추가 실패: {e}")
+    return RedirectResponse("/accounts?added=1", 302)
+
+@app.post("/accounts/upload")
+async def account_upload(
+    file: UploadFile = File(default=None),
+    session_id: Optional[str] = Cookie(default=None)
+):
+    """TXT/CSV/XLSX 파일로 다중 계정 업로드"""
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+
+    if not file:
+        return JSONResponse({"error": "파일 없음"}, 400)
+
+    content = await file.read()
+    filename = file.filename.lower()
+    accounts_parsed = []
+
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            # Excel 파싱
+            import openpyxl, io
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            # 첫 행이 헤더인지 확인
+            header = [str(c).lower().strip() if c else "" for c in rows[0]] if rows else []
+            col_map = {}
+            for i, h in enumerate(header):
+                for field in ["username","id","아이디"]:
+                    if field in h: col_map["username"] = i
+                for field in ["password","pw","비밀번호"]:
+                    if field in h: col_map["password"] = i
+                for field in ["totp","2fa","otp","secret"]:
+                    if field in h: col_map["totp_secret"] = i
+                for field in ["proxy_host","proxy","프록시"]:
+                    if field in h: col_map["proxy_host"] = i
+                for field in ["proxy_port","port","포트"]:
+                    if field in h: col_map["proxy_port"] = i
+                for field in ["proxy_user","proxy_id"]:
+                    if field in h: col_map["proxy_user"] = i
+                for field in ["proxy_pass","proxy_pw","proxy_password"]:
+                    if field in h: col_map["proxy_pass"] = i
+
+            start_row = 1 if col_map else 0
+            for row in rows[start_row:]:
+                if not row or not row[col_map.get("username", 0)]:
+                    continue
+                def _get(field, default=""):
+                    idx = col_map.get(field)
+                    if idx is None: return default
+                    return str(row[idx]).strip() if idx < len(row) and row[idx] else default
+                accounts_parsed.append({
+                    "username": _get("username"),
+                    "password": _get("password"),
+                    "totp_secret": _get("totp_secret"),
+                    "proxy_host": _get("proxy_host"),
+                    "proxy_port": _get("proxy_port"),
+                    "proxy_user": _get("proxy_user"),
+                    "proxy_pass": _get("proxy_pass"),
+                })
+
+        else:
+            # TXT/CSV 파싱
+            # 지원 형식:
+            # username:password
+            # username:password:totp_secret
+            # username:password:totp_secret:proxy_host:proxy_port
+            # username:password:totp_secret:proxy_host:proxy_port:proxy_user:proxy_pass
+            # 탭 또는 콤마 구분도 지원
+            text = content.decode("utf-8-sig", errors="replace")
+            for line in text.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # 구분자 감지
+                if "\t" in line:
+                    parts = line.split("\t")
+                elif "," in line:
+                    parts = line.split(",")
+                else:
+                    parts = line.split(":")
+                parts = [p.strip() for p in parts]
+                if len(parts) < 2:
+                    continue
+                accounts_parsed.append({
+                    "username": parts[0],
+                    "password": parts[1],
+                    "totp_secret": parts[2] if len(parts) > 2 else "",
+                    "proxy_host": parts[3] if len(parts) > 3 else "",
+                    "proxy_port": parts[4] if len(parts) > 4 else "",
+                    "proxy_user": parts[5] if len(parts) > 5 else "",
+                    "proxy_pass": parts[6] if len(parts) > 6 else "",
+                })
+
+    except Exception as e:
+        return JSONResponse({"error": f"파일 파싱 오류: {e}"}, 400)
+
+    if not accounts_parsed:
+        return JSONResponse({"error": "유효한 계정 데이터 없음"}, 400)
+
+    added = 0
+    errors = []
+    for acc in accounts_parsed:
+        if not acc["username"] or not acc["password"]:
+            continue
+        try:
+            upsert_account(
+                acc["username"], acc["password"], acc.get("totp_secret",""),
+                acc.get("proxy_host",""), acc.get("proxy_port",""),
+                acc.get("proxy_user",""), acc.get("proxy_pass","")
+            )
+            added += 1
+        except Exception as e:
+            errors.append(f"{acc['username']}: {e}")
+
+    return JSONResponse({
+        "ok": True, "added": added,
+        "total": len(accounts_parsed),
+        "errors": errors[:5]
+    })
+
+@app.post("/accounts/{account_id}/delete")
+def account_delete(account_id: int, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    delete_account(account_id)
+    return RedirectResponse("/accounts", 302)
+
+@app.post("/accounts/{account_id}/test")
+async def account_test(account_id: int, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from crawler import login_test_account
+    result = login_test_account(account_id)
+    return JSONResponse(result)
+
+@app.post("/accounts/reset-errors")
+def account_reset_errors(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    reset_account_errors()
+    return RedirectResponse("/accounts?reset=1", 302)
 
 
 # ═══════════════════════════════════════════════════════

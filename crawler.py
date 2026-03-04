@@ -2,7 +2,8 @@ import time, logging, pyotp, os, json, re
 from collections import Counter
 from datetime import datetime
 import requests as req_lib
-from database import upsert_influencer, update_influencer_stats, upsert_post
+from database import (upsert_influencer, update_influencer_stats, upsert_post,
+                      update_hashtag_status, update_collect_job)
 
 log = logging.getLogger(__name__)
 
@@ -12,33 +13,50 @@ refresh_progress: dict = {}  # single key "current" → {done, total, current_us
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 PROFILE_PIC_DIR = os.path.join(DATA_DIR, "profile_pics")
 POSTS_DIR = os.path.join(DATA_DIR, "posts")
-os.makedirs(PROFILE_PIC_DIR, exist_ok=True)
-os.makedirs(POSTS_DIR, exist_ok=True)
+try:
+    os.makedirs(PROFILE_PIC_DIR, exist_ok=True)
+    os.makedirs(POSTS_DIR, exist_ok=True)
+except OSError:
+    DATA_DIR = "/tmp/data"
+    PROFILE_PIC_DIR = "/tmp/data/profile_pics"
+    POSTS_DIR = "/tmp/data/posts"
+    os.makedirs(PROFILE_PIC_DIR, exist_ok=True)
+    os.makedirs(POSTS_DIR, exist_ok=True)
 
 SPONSOR_KEYWORDS = re.compile(
     r'#(ad|advertisement|sponsored|협찬|광고|제공|유료광고|ppㅣ|ppl|협찬제품|제품협찬|협업|파트너십|홍보)',
     re.IGNORECASE
 )
 
-_cl = None
+# ─── 계정 풀 (다중 계정 관리) ────────────────────────────────
+# account_id → instagrapi Client 인스턴스 캐시
+_client_pool: dict = {}
+_current_account_id: int = None
 
 
-def get_client(username, password, totp_secret, proxy_host="", proxy_port="",
-               proxy_user="", proxy_pass=""):
-    global _cl
-    if _cl is not None:
-        try:
-            _cl.get_timeline_feed()
-            return _cl
-        except:
-            _cl = None
-
+def _make_client(acc: dict):
+    """계정 딕셔너리로 instagrapi Client 생성 및 로그인"""
     from instagrapi import Client
     cl = Client()
     cl.delay_range = [1, 3]
 
+    # 저장된 세션 복원 시도
+    session_data = acc.get("session_data", "")
+    if session_data:
+        try:
+            cl.set_settings(json.loads(session_data))
+            cl.get_timeline_feed()
+            log.info(f"세션 복원 성공: {acc['username']}")
+            return cl
+        except Exception:
+            log.info(f"세션 만료, 재로그인: {acc['username']}")
+
     # 프록시 설정
+    proxy_host = acc.get("proxy_host", "")
+    proxy_port = acc.get("proxy_port", "")
     if proxy_host and proxy_port:
+        proxy_user = acc.get("proxy_user", "")
+        proxy_pass = acc.get("proxy_pass", "")
         if proxy_user and proxy_pass:
             proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
         else:
@@ -46,15 +64,97 @@ def get_client(username, password, totp_secret, proxy_host="", proxy_port="",
         cl.set_proxy(proxy_url)
         log.info(f"프록시 설정: {proxy_host}:{proxy_port}")
 
-    try:
+    # 2FA TOTP 자동 생성
+    totp_secret = acc.get("totp_secret", "")
+    totp_code = pyotp.TOTP(totp_secret).now() if totp_secret else None
+
+    cl.login(acc["username"], acc["password"], verification_code=totp_code)
+    log.info(f"로그인 성공: {acc['username']}" + (" (2FA)" if totp_code else ""))
+    return cl
+
+
+def get_client_from_pool():
+    """
+    계정 풀에서 다음 사용 가능한 계정으로 Client 반환.
+    라운드로빈 방식, 실패 시 다음 계정으로 자동 전환.
+    """
+    from database import get_active_accounts, update_account_status
+
+    accounts = get_active_accounts()
+    if not accounts:
+        raise RuntimeError("사용 가능한 인스타그램 계정이 없습니다. 설정 > 계정 관리에서 계정을 추가하세요.")
+
+    # 이미 로그인된 클라이언트 우선 사용 (가장 오래된 것)
+    for acc in accounts:
+        acc_id = acc.get("id") or acc.get("pk")
+        if acc_id in _client_pool:
+            try:
+                _client_pool[acc_id].get_timeline_feed()
+                update_account_status(acc_id, "active")
+                log.info(f"계정 재사용: {acc['username']}")
+                return _client_pool[acc_id], acc_id
+            except Exception:
+                del _client_pool[acc_id]
+
+    # 새로 로그인
+    last_error = None
+    for acc in accounts:
+        acc_id = acc.get("id") or acc.get("pk")
+        try:
+            cl = _make_client(acc)
+            _client_pool[acc_id] = cl
+            # 세션 저장
+            try:
+                session_json = json.dumps(cl.get_settings())
+                update_account_status(acc_id, "active", session_data=session_json)
+            except Exception:
+                update_account_status(acc_id, "active")
+            return cl, acc_id
+        except Exception as e:
+            last_error = str(e)
+            err_msg = str(e)[:200]
+            # 밴/차단 감지
+            if any(w in err_msg.lower() for w in ["challenge", "banned", "blocked", "checkpoint"]):
+                update_account_status(acc_id, "banned", last_error=err_msg)
+                log.warning(f"계정 차단됨: {acc['username']} - {err_msg[:80]}")
+            else:
+                update_account_status(acc_id, "error", last_error=err_msg)
+                log.error(f"로그인 실패: {acc['username']} - {err_msg[:80]}")
+
+    raise RuntimeError(f"모든 계정 로그인 실패. 마지막 오류: {last_error}")
+
+
+def get_client(username=None, password=None, totp_secret=None,
+               proxy_host="", proxy_port="", proxy_user="", proxy_pass=""):
+    """
+    하위 호환 래퍼. username 없으면 계정 풀 사용.
+    """
+    if username:
+        # 단일 계정 레거시 모드
+        global _client_pool
+        cache_key = f"legacy_{username}"
+        if cache_key in _client_pool:
+            try:
+                _client_pool[cache_key].get_timeline_feed()
+                return _client_pool[cache_key]
+            except Exception:
+                del _client_pool[cache_key]
+
+        from instagrapi import Client
+        cl = Client()
+        cl.delay_range = [1, 3]
+        if proxy_host and proxy_port:
+            auth = f"{proxy_user}:{proxy_pass}@" if proxy_user else ""
+            cl.set_proxy(f"http://{auth}{proxy_host}:{proxy_port}")
         code = pyotp.TOTP(totp_secret).now() if totp_secret else None
         cl.login(username, password, verification_code=code)
-        log.info(f"인스타 로그인 성공: {username}")
-        _cl = cl
+        _client_pool[cache_key] = cl
+        log.info(f"레거시 로그인 성공: {username}")
         return cl
-    except Exception as e:
-        log.error(f"로그인 실패: {e}")
-        raise
+
+    # 계정 풀 모드
+    cl, acc_id = get_client_from_pool()
+    return cl
 
 
 def download_image(url: str, save_path: str) -> bool:
@@ -299,13 +399,17 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
 
 
 def crawl_hashtag(hashtag: str, requested_count: int,
-                  username: str, password: str, totp_secret: str,
-                  job_id: str,
+                  username: str = None, password: str = None, totp_secret: str = None,
+                  job_id: str = None,
                   proxy_host: str = "", proxy_port: str = "",
                   proxy_user: str = "", proxy_pass: str = ""):
-    """해시태그 크롤링"""
-    from database import get_conn, DB_PATH
+    """해시태그 크롤링 - 계정 풀 자동 사용"""
     import time as _time
+    from database import add_collect_job, update_collect_job
+
+    if not job_id:
+        import uuid
+        job_id = str(uuid.uuid4())
 
     progress[job_id] = {
         "status": "로그인 중", "hashtag": hashtag,
@@ -313,16 +417,18 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         "requested": requested_count, "done": False, "error": None
     }
 
-    conn = get_conn()
-    job_db_id = conn.execute(
-        "INSERT INTO collect_jobs (hashtag, status, requested_count, started_at) VALUES (?,?,?,?)",
-        (hashtag, "running", requested_count, _time.time())
-    ).lastrowid
-    conn.commit()
-    conn.close()
+    try:
+        job_db_id = add_collect_job(hashtag, "running", requested_count)
+    except Exception:
+        job_db_id = None
 
     try:
-        cl = get_client(username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass)
+        # 계정 풀 우선, 레거시 단일 계정 폴백
+        if username:
+            cl = get_client(username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass)
+            used_acc_id = None
+        else:
+            cl, used_acc_id = get_client_from_pool()
         progress[job_id]["status"] = "게시물 수집 중"
 
         all_pks = set()
@@ -405,99 +511,126 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                 log.warning(f"유저 {pk} 조회 실패: {e}")
                 time.sleep(1)
 
-        conn = get_conn()
-        conn.execute("""
-            UPDATE collect_jobs SET status='done', collected_posts=?, new_users=?, updated_users=?, finished_at=?
-            WHERE id=?
-        """, (collected_posts, new_cnt, updated_cnt, _time.time(), job_db_id))
-        conn.execute("""
-            UPDATE hashtags SET status='idle', total_collected=total_collected+?, last_run_at=?
-            WHERE name=?
-        """, (new_cnt + updated_cnt, _time.time(), hashtag))
-        conn.commit()
-        conn.close()
+        try:
+            update_collect_job(job_db_id,
+                status="done", collected_posts=collected_posts,
+                new_users=new_cnt, updated_users=updated_cnt, finished_at=_time.time())
+            update_hashtag_status(hashtag, "idle")
+        except Exception:
+            pass
 
         progress[job_id].update({"status": "완료", "done": True, "new": new_cnt, "updated": updated_cnt})
         log.info(f"[{hashtag}] 완료: 게시물 {collected_posts}, 신규 {new_cnt}, 업데이트 {updated_cnt}")
 
     except Exception as e:
         log.error(f"[{hashtag}] 크롤링 에러: {e}")
-        conn = get_conn()
-        conn.execute("UPDATE collect_jobs SET status='error', error_msg=?, finished_at=? WHERE id=?",
-                     (str(e), _time.time(), job_db_id))
-        conn.execute("UPDATE hashtags SET status='error' WHERE name=?", (hashtag,))
-        conn.commit()
-        conn.close()
+        try:
+            if job_db_id:
+                update_collect_job(job_db_id, status="error", error_msg=str(e)[:200], finished_at=_time.time())
+            update_hashtag_status(hashtag, "error")
+        except Exception:
+            pass
         progress[job_id].update({"status": "에러", "error": str(e), "done": True})
 
 
-def refresh_all(username: str, password: str, totp_secret: str,
+def refresh_all(username: str = None, password: str = None, totp_secret: str = None,
                 proxy_host: str = "", proxy_port: str = "",
-                proxy_user: str = "", proxy_pass: str = ""):
-    """전체 인플루언서 상세 갱신 (24시간 이상 경과된 계정 우선)"""
-    from database import get_conn
+                proxy_user: str = "", proxy_pass: str = "",
+                requests_per_account: int = 10):
+    """
+    전체 인플루언서 상세 갱신.
+    - 계정 풀 자동 사용 (라운드로빈, N건마다 계정 교체)
+    - requests_per_account: 계정당 처리 건수 (기본 10)
+    """
+    from database import get_influencers, update_collect_job
 
-    refresh_progress["current"] = {"done": 0, "total": 0, "current_user": "", "running": True, "error": None}
-
-    conn = get_conn()
-    job_id = conn.execute(
-        "INSERT INTO refresh_jobs (status, started_at) VALUES (?,?)",
-        ("running", time.time())
-    ).lastrowid
-    conn.commit()
-    conn.close()
+    refresh_progress["current"] = {"done": 0, "total": 0, "current_user": "", "running": True,
+                                   "error": None, "current_account": ""}
 
     try:
-        cl = get_client(username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass)
-
-        conn = get_conn()
-        # 24시간 이상 지난 계정 or 한번도 수집 안한 계정
+        # 24시간 이상 지난 계정 우선
         cutoff = time.time() - 86400
-        rows = conn.execute(
-            "SELECT pk, username, follower_count FROM influencers "
-            "WHERE stats_updated_at < ? OR stats_updated_at IS NULL "
-            "ORDER BY stats_updated_at ASC",
-            (cutoff,)
-        ).fetchall()
-        conn.close()
+        all_infs = get_influencers(per_page=99999, page=1)
+        rows = [r for r in all_infs.get("items", [])
+                if not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff]
 
         total = len(rows)
         refresh_progress["current"]["total"] = total
 
-        conn2 = get_conn()
-        conn2.execute("UPDATE refresh_jobs SET total=? WHERE id=?", (total, job_id))
-        conn2.commit()
-        conn2.close()
+        request_count = 0
+        cl = None
+        used_acc_id = None
 
         for i, row in enumerate(rows):
-            pk, uname, followers = row["pk"], row["username"], row["follower_count"]
+            pk = row.get("pk") or row.get("id")
+            uname = row.get("username", "")
+            followers = row.get("follower_count", 0)
             refresh_progress["current"]["current_user"] = uname
-            log.info(f"갱신 중 [{i+1}/{total}]: @{uname}")
 
-            crawl_user_detail(cl, pk, uname, followers or 0)
+            # 계정 교체 타이밍
+            if cl is None or request_count >= requests_per_account:
+                try:
+                    if username:
+                        cl = get_client(username, password, totp_secret,
+                                        proxy_host, proxy_port, proxy_user, proxy_pass)
+                        used_acc_id = None
+                    else:
+                        cl, used_acc_id = get_client_from_pool()
+                    request_count = 0
+                    acc_name = username or (cl.account_info().username if cl else "?")
+                    refresh_progress["current"]["current_account"] = acc_name
+                    log.info(f"계정 전환: {acc_name}")
+                except Exception as e:
+                    log.error(f"계정 로그인 실패: {e}")
+                    refresh_progress["current"]["error"] = str(e)
+                    break
+
+            log.info(f"갱신 중 [{i+1}/{total}]: @{uname}")
+            try:
+                crawl_user_detail(cl, str(pk), uname, followers or 0)
+                request_count += 1
+            except Exception as e:
+                log.warning(f"갱신 실패 {uname}: {e}")
+                # rate limit 감지 → 즉시 계정 교체
+                if "rate" in str(e).lower() or "wait" in str(e).lower():
+                    cl = None
 
             refresh_progress["current"]["done"] = i + 1
-            conn3 = get_conn()
-            conn3.execute("UPDATE refresh_jobs SET done=?, current_user=? WHERE id=?", (i + 1, uname, job_id))
-            conn3.commit()
-            conn3.close()
             time.sleep(2)
-
-        conn4 = get_conn()
-        conn4.execute("UPDATE refresh_jobs SET status='done', finished_at=? WHERE id=?",
-                      (time.time(), job_id))
-        conn4.commit()
-        conn4.close()
 
         refresh_progress["current"]["running"] = False
         log.info(f"전체 갱신 완료: {total}개")
 
     except Exception as e:
         log.error(f"전체 갱신 에러: {e}")
-        conn5 = get_conn()
-        conn5.execute("UPDATE refresh_jobs SET status='error', error_msg=?, finished_at=? WHERE id=?",
-                      (str(e), time.time(), job_id))
-        conn5.commit()
-        conn5.close()
         refresh_progress["current"]["running"] = False
         refresh_progress["current"]["error"] = str(e)
+
+
+def login_test_account(account_id: int):
+    """특정 계정 로그인 테스트"""
+    from database import get_accounts, update_account_status
+    accounts = get_accounts()
+    acc = next((a for a in accounts if (a.get("id") or a.get("pk")) == account_id), None)
+    if not acc:
+        return {"ok": False, "error": "계정을 찾을 수 없음"}
+    try:
+        acc_id = acc.get("id") or acc.get("pk")
+        # 캐시 제거 후 재로그인
+        _client_pool.pop(acc_id, None)
+        cl = _make_client(acc)
+        _client_pool[acc_id] = cl
+        # 세션 저장
+        try:
+            session_json = json.dumps(cl.get_settings())
+            update_account_status(acc_id, "active", session_data=session_json)
+        except Exception:
+            update_account_status(acc_id, "active")
+        totp_code = ""
+        if acc.get("totp_secret"):
+            totp_code = pyotp.TOTP(acc["totp_secret"]).now()
+        return {"ok": True, "username": acc["username"], "totp_code": totp_code}
+    except Exception as e:
+        acc_id = acc.get("id") or acc.get("pk")
+        update_account_status(acc_id, "error", last_error=str(e)[:200])
+        return {"ok": False, "error": str(e)[:200]}

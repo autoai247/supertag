@@ -22,6 +22,7 @@ T_HASH = "insta_hashtags"
 T_CJOB = "insta_collect_jobs"
 T_ADV  = "insta_advertiser_accounts"
 T_RJOB = "insta_refresh_jobs"
+T_ACC  = "insta_accounts"  # 수집용 인스타그램 계정 풀
 
 
 # ─── Supabase REST 헬퍼 ────────────────────────────────────────────
@@ -139,6 +140,19 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, status TEXT DEFAULT 'running',
         total_count INTEGER DEFAULT 0, done INTEGER DEFAULT 0,
         current_user_pk TEXT DEFAULT '', started_at REAL, finished_at REAL, error_msg TEXT
+    )""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS {T_ACC} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        totp_secret TEXT DEFAULT '',
+        proxy_host TEXT DEFAULT '', proxy_port TEXT DEFAULT '',
+        proxy_user TEXT DEFAULT '', proxy_pass TEXT DEFAULT '',
+        status TEXT DEFAULT 'idle',
+        last_used_at REAL DEFAULT 0,
+        last_error TEXT DEFAULT '',
+        session_data TEXT DEFAULT '',
+        created_at REAL
     )""")
 
     _migrate(conn)
@@ -768,6 +782,100 @@ def update_collect_job(job_id, **kwargs):
     try:
         sets = ", ".join(f"{k}=?" for k in kwargs)
         conn.execute(f"UPDATE {T_CJOB} SET {sets} WHERE id=?", (*kwargs.values(), job_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── 인스타그램 계정 풀 ─────────────────────────────────────────
+
+def get_accounts():
+    """모든 수집용 계정 목록"""
+    if _USE_SUPABASE:
+        return _sb_get(T_ACC, {"order": "created_at.asc"}) or []
+    return _sq_all(f"SELECT * FROM {T_ACC} ORDER BY created_at ASC")
+
+def get_active_accounts():
+    """사용 가능한 계정 (idle/active, banned 제외)"""
+    if _USE_SUPABASE:
+        return _sb_get(T_ACC, {"status": "neq.banned", "order": "last_used_at.asc"}) or []
+    return _sq_all(f"SELECT * FROM {T_ACC} WHERE status != 'banned' ORDER BY last_used_at ASC")
+
+def get_next_account():
+    """가장 오래 전에 사용한 정상 계정 반환 (라운드로빈)"""
+    rows = get_active_accounts()
+    return rows[0] if rows else None
+
+def upsert_account(username, password, totp_secret="", proxy_host="", proxy_port="",
+                   proxy_user="", proxy_pass=""):
+    now = time.time()
+    data = {
+        "username": username, "password": password,
+        "totp_secret": totp_secret,
+        "proxy_host": proxy_host, "proxy_port": proxy_port,
+        "proxy_user": proxy_user, "proxy_pass": proxy_pass,
+        "status": "idle", "last_error": "", "created_at": now,
+    }
+    if _USE_SUPABASE:
+        # upsert via onConflict
+        import requests as _r
+        h = dict(_sb_headers())
+        h["Prefer"] = "resolution=merge-duplicates,return=representation"
+        r = _r.post(_sb_url(T_ACC), headers=h, json=data)
+        return r.json()
+    conn = get_conn()
+    try:
+        conn.execute(f"""INSERT INTO {T_ACC}
+            (username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass,
+             status, last_error, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(username) DO UPDATE SET
+                password=excluded.password,
+                totp_secret=excluded.totp_secret,
+                proxy_host=excluded.proxy_host, proxy_port=excluded.proxy_port,
+                proxy_user=excluded.proxy_user, proxy_pass=excluded.proxy_pass""",
+            (username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass,
+             "idle", "", now))
+        conn.commit()
+    finally:
+        conn.close()
+
+def delete_account(account_id: int):
+    if _USE_SUPABASE:
+        import requests as _r
+        _r.delete(_sb_url(T_ACC, f"?id=eq.{account_id}"), headers=_sb_headers())
+        return
+    conn = get_conn()
+    try:
+        conn.execute(f"DELETE FROM {T_ACC} WHERE id=?", (account_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+def update_account_status(account_id: int, status: str, last_error: str = "",
+                          session_data: str = ""):
+    data = {"status": status, "last_used_at": time.time()}
+    if last_error is not None:
+        data["last_error"] = last_error
+    if session_data:
+        data["session_data"] = session_data
+    if _USE_SUPABASE:
+        return _sb_patch(T_ACC, f"?id=eq.{account_id}", data)
+    conn = get_conn()
+    try:
+        sets = ", ".join(f"{k}=?" for k in data)
+        conn.execute(f"UPDATE {T_ACC} SET {sets} WHERE id=?", (*data.values(), account_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+def reset_account_errors():
+    """error 상태 계정을 idle로 리셋"""
+    if _USE_SUPABASE:
+        return _sb_patch(T_ACC, "?status=eq.error", {"status": "idle", "last_error": ""})
+    conn = get_conn()
+    try:
+        conn.execute(f"UPDATE {T_ACC} SET status='idle', last_error='' WHERE status='error'")
         conn.commit()
     finally:
         conn.close()
