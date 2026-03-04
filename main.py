@@ -18,11 +18,14 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
 
 app = FastAPI()
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+# Vercel 환경에서는 /tmp 사용 (읽기전용 FS)
+_IS_VERCEL = bool(os.environ.get("VERCEL"))
+DATA_DIR = "/tmp/data" if _IS_VERCEL else os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(os.path.join(DATA_DIR, "profile_pics"), exist_ok=True)
 os.makedirs(os.path.join(DATA_DIR, "posts"), exist_ok=True)
 
-app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
+if not _IS_VERCEL:
+    app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
