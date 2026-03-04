@@ -4,32 +4,164 @@
 {% block content %}
 <div class="mb-5">
   <h1 class="text-xl font-bold text-gray-900">설정</h1>
-  <p class="text-sm text-gray-500 mt-0.5">인스타그램 수집 계정을 설정합니다.</p>
+  <p class="text-sm text-gray-500 mt-0.5">인스타그램 수집 계정 및 시스템 설정을 관리합니다.</p>
 </div>
 
-<div class="max-w-lg card p-6">
-  <h2 class="font-semibold text-gray-800 mb-4">인스타그램 크롤링 계정</h2>
-  <form action="/settings/save" method="post" class="space-y-4">
-    <div>
-      <label class="text-xs font-medium text-gray-500 block mb-1">인스타그램 아이디</label>
-      <input type="text" name="insta_username" value="{{ insta_username }}" required
-        class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
-    </div>
-    <div>
-      <label class="text-xs font-medium text-gray-500 block mb-1">비밀번호</label>
-      <input type="password" name="insta_password" placeholder="변경 시에만 입력" required
-        class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
-    </div>
-    <div>
-      <label class="text-xs font-medium text-gray-500 block mb-1">2FA TOTP 시크릿 키 (있는 경우)</label>
-      <input type="text" name="insta_totp" placeholder="예: YQ754N2HTC7IDAT5..."
-        class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 font-mono">
-      <p class="text-xs text-gray-400 mt-1">2fa.live 에서 변환 가능한 시크릿 키</p>
-    </div>
-    <button type="submit" class="btn btn-primary w-full justify-center py-2.5">저장</button>
-  </form>
-  {% if request.query_params.get('saved') %}
-  <div class="mt-4 px-3 py-2 rounded-lg text-sm text-emerald-700" style="background:rgba(16,185,129,.1);">✅ 저장되었습니다</div>
-  {% endif %}
+{% if request.query_params.get('saved') %}
+<div class="mb-4 px-4 py-2.5 rounded-lg text-sm text-emerald-700 flex items-center gap-2" style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2)">
+  ✅ 설정이 저장되었습니다
 </div>
+{% endif %}
+
+<form action="/settings/save" method="post" class="space-y-5 max-w-2xl">
+
+  <!-- 인스타그램 계정 -->
+  <div class="card p-5">
+    <h2 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+      <span class="text-lg">📱</span> 인스타그램 수집 계정
+    </h2>
+    <div class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-medium text-gray-500 block mb-1">아이디</label>
+          <input type="text" name="insta_username" value="{{ insta_username }}" required
+            class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500 block mb-1">비밀번호</label>
+          <input type="password" name="insta_password" placeholder="변경 시에만 입력"
+            class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <p class="text-xs text-gray-400 mt-1">빈칸이면 기존 비밀번호 유지</p>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-500 block mb-1">2FA TOTP 시크릿 키</label>
+        <div class="flex gap-2">
+          <input type="text" name="insta_totp" id="totp_input" placeholder="예: YQ754N2HTC7IDAT5BQIPNA5RHQA75JFY"
+            class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <button type="button" onclick="testTotp()"
+            class="px-3 py-2 text-sm rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 whitespace-nowrap">
+            🔑 TOTP 확인
+          </button>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">
+          Google Authenticator 또는 Authy의 시크릿 키 (32자 Base32 문자열).
+          없으면 비워두세요.
+        </p>
+        <div id="totp_result" class="hidden mt-2 px-3 py-2 rounded-lg text-sm"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 프록시 설정 -->
+  <div class="card p-5">
+    <h2 class="font-semibold text-gray-800 mb-1 flex items-center gap-2">
+      <span class="text-lg">🌐</span> 프록시 설정
+    </h2>
+    <p class="text-xs text-gray-400 mb-4">인스타그램 수집 시 사용할 HTTP/SOCKS5 프록시. 없으면 비워두세요.</p>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="text-xs font-medium text-gray-500 block mb-1">프록시 호스트</label>
+        <input type="text" name="proxy_host" value="{{ proxy_host }}"
+          placeholder="예: 123.45.67.89 또는 proxy.example.com"
+          class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300">
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-500 block mb-1">포트</label>
+        <input type="text" name="proxy_port" value="{{ proxy_port }}"
+          placeholder="예: 8080 또는 1080"
+          class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300">
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-500 block mb-1">프록시 아이디 (선택)</label>
+        <input type="text" name="proxy_user" value="{{ proxy_user }}" placeholder="인증이 필요한 경우"
+          class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-500 block mb-1">프록시 비밀번호 (선택)</label>
+        <input type="password" name="proxy_pass" placeholder="인증이 필요한 경우"
+          class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+      </div>
+    </div>
+    <div class="mt-3 p-3 rounded-lg text-xs text-gray-500" style="background:#f8fafc">
+      <strong>프록시 형식 안내:</strong> HTTP/HTTPS 프록시는 host:port 형식. SOCKS5는 instagrapi 설정에서
+      <code class="font-mono bg-gray-100 px-1 rounded">socks5://user:pass@host:port</code> 형식으로 적용됩니다.
+    </div>
+  </div>
+
+  <!-- 관리자 비밀번호 -->
+  <div class="card p-5">
+    <h2 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+      <span class="text-lg">🔒</span> 관리자 비밀번호 변경
+    </h2>
+    <div>
+      <label class="text-xs font-medium text-gray-500 block mb-1">새 비밀번호 (변경 시에만 입력)</label>
+      <input type="password" name="admin_password" placeholder="새 관리자 비밀번호"
+        class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary w-full max-w-2xl justify-center py-2.5">
+    💾 설정 저장
+  </button>
+</form>
+
+<!-- 구독 플랜 안내 -->
+<div class="mt-8 max-w-2xl">
+  <h2 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+    <span class="text-lg">📋</span> 광고주 구독 플랜 안내
+  </h2>
+  <div class="grid grid-cols-2 gap-3">
+    {% for plan_key, plan in plans.items() %}
+    <div class="card p-4 {% if plan_key == 'pro' %}border-indigo-300{% endif %}">
+      <div class="flex items-center justify-between mb-2">
+        <span class="font-semibold text-gray-800">{{ plan.name }}
+          {% if plan_key == 'pro' %}<span class="ml-1 text-xs text-indigo-600 font-bold">추천</span>{% endif %}
+        </span>
+        <span class="text-sm font-bold text-indigo-600">
+          {% if plan.price_1m == 0 %}무료{% else %}{{ "{:,}".format(plan.price_1m) }}원/월{% endif %}
+        </span>
+      </div>
+      <ul class="text-xs text-gray-500 space-y-1">
+        <li>• 해시태그당 <strong>{{ "{:,}".format(plan.per_hashtag) }}건</strong> 수집</li>
+        <li>• 일일 최대 <strong>{{ "{:,}".format(plan.daily_limit) }}건</strong></li>
+        <li>• 최대 <strong>{{ plan.max_hashtags }}개</strong> 해시태그</li>
+        {% if plan.price_1m > 0 %}
+        <li>• 3개월: <strong>{{ "{:,}".format(plan.price_3m) }}원</strong> (10% 할인)</li>
+        {% endif %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="text-xs text-gray-400 mt-3">
+    💳 크레딧 충전은 관리자에게 문의하세요. 광고주 계정은 <a href="/advertisers" class="text-indigo-500">광고주 관리</a>에서 설정합니다.
+  </p>
+</div>
+
+<script>
+async function testTotp() {
+  const btn = document.querySelector('[onclick="testTotp()"]');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  try {
+    const r = await fetch('/settings/test-account', {method:'POST'});
+    const d = await r.json();
+    const el = document.getElementById('totp_result');
+    el.classList.remove('hidden');
+    if (d.ok) {
+      el.className = 'mt-2 px-3 py-2 rounded-lg text-sm text-emerald-700';
+      el.style.background = 'rgba(16,185,129,.1)';
+      el.textContent = d.totp_code
+        ? `✅ TOTP 연결 정상. 현재 코드: ${d.totp_code} (30초마다 갱신)`
+        : `✅ 계정 확인됨 (2FA 없음): ${d.username}`;
+    } else {
+      el.className = 'mt-2 px-3 py-2 rounded-lg text-sm text-red-700';
+      el.style.background = 'rgba(239,68,68,.08)';
+      el.textContent = `❌ 오류: ${d.error}`;
+    }
+  } catch(e) {
+    alert('테스트 중 오류가 발생했습니다.');
+  }
+  btn.disabled = false; btn.textContent = '🔑 TOTP 확인';
+}
+</script>
 {% endblock %}

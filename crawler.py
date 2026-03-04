@@ -23,7 +23,8 @@ SPONSOR_KEYWORDS = re.compile(
 _cl = None
 
 
-def get_client(username, password, totp_secret):
+def get_client(username, password, totp_secret, proxy_host="", proxy_port="",
+               proxy_user="", proxy_pass=""):
     global _cl
     if _cl is not None:
         try:
@@ -35,6 +36,16 @@ def get_client(username, password, totp_secret):
     from instagrapi import Client
     cl = Client()
     cl.delay_range = [1, 3]
+
+    # 프록시 설정
+    if proxy_host and proxy_port:
+        if proxy_user and proxy_pass:
+            proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
+        else:
+            proxy_url = f"http://{proxy_host}:{proxy_port}"
+        cl.set_proxy(proxy_url)
+        log.info(f"프록시 설정: {proxy_host}:{proxy_port}")
+
     try:
         code = pyotp.TOTP(totp_secret).now() if totp_secret else None
         cl.login(username, password, verification_code=code)
@@ -289,7 +300,9 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
 
 def crawl_hashtag(hashtag: str, requested_count: int,
                   username: str, password: str, totp_secret: str,
-                  job_id: str):
+                  job_id: str,
+                  proxy_host: str = "", proxy_port: str = "",
+                  proxy_user: str = "", proxy_pass: str = ""):
     """해시태그 크롤링"""
     from database import get_conn, DB_PATH
     import time as _time
@@ -309,7 +322,7 @@ def crawl_hashtag(hashtag: str, requested_count: int,
     conn.close()
 
     try:
-        cl = get_client(username, password, totp_secret)
+        cl = get_client(username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass)
         progress[job_id]["status"] = "게시물 수집 중"
 
         all_pks = set()
@@ -418,7 +431,9 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         progress[job_id].update({"status": "에러", "error": str(e), "done": True})
 
 
-def refresh_all(username: str, password: str, totp_secret: str):
+def refresh_all(username: str, password: str, totp_secret: str,
+                proxy_host: str = "", proxy_port: str = "",
+                proxy_user: str = "", proxy_pass: str = ""):
     """전체 인플루언서 상세 갱신 (24시간 이상 경과된 계정 우선)"""
     from database import get_conn
 
@@ -433,7 +448,7 @@ def refresh_all(username: str, password: str, totp_secret: str):
     conn.close()
 
     try:
-        cl = get_client(username, password, totp_secret)
+        cl = get_client(username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass)
 
         conn = get_conn()
         # 24시간 이상 지난 계정 or 한번도 수집 안한 계정

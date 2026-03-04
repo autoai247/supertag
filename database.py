@@ -620,6 +620,81 @@ def get_advertisers():
     return _sq_all(f"SELECT * FROM {T_ADV} ORDER BY created_at DESC")
 
 
+def get_advertiser_by_username(username: str):
+    if _USE_SUPABASE:
+        rows = _sb_get(T_ADV, {"username": f"eq.{username}", "limit": "1"}) or []
+        return rows[0] if rows else None
+    return _sq_one(f"SELECT * FROM {T_ADV} WHERE username=?", (username,))
+
+
+def add_advertiser(username, pw_hash, company_name, hashtag_access, min_followers, only_approved):
+    now = time.time()
+    data = {
+        "username": username, "password_hash": pw_hash,
+        "company_name": company_name, "hashtag_access": hashtag_access,
+        "min_followers": min_followers, "only_approved": only_approved,
+        "plan": "free", "plan_expires_at": 0,
+        "monthly_collect_limit": 100, "monthly_collected": 0,
+        "collect_reset_at": now, "created_at": now,
+    }
+    if _USE_SUPABASE:
+        return _sb_post(T_ADV, data)
+    conn = get_conn()
+    try:
+        conn.execute(f"""INSERT INTO {T_ADV}
+            (username, password_hash, company_name, hashtag_access, min_followers, only_approved,
+             plan, plan_expires_at, monthly_collect_limit, monthly_collected, collect_reset_at, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (username, pw_hash, company_name, hashtag_access, min_followers, only_approved,
+             "free", 0, 100, 0, now, now))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_advertiser(adv_id: int):
+    if _USE_SUPABASE:
+        import requests as _r
+        _r.delete(
+            _sb_url(T_ADV, f"?id=eq.{adv_id}"),
+            headers=_sb_headers()
+        )
+        return
+    conn = get_conn()
+    try:
+        conn.execute(f"DELETE FROM {T_ADV} WHERE id=?", (adv_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_advertiser_plan(adv_id: int, plan: str, plan_expires_at: float,
+                           monthly_collect_limit: int, hashtag_access: str = None,
+                           min_followers: int = None, only_approved: int = None):
+    """광고주 플랜/설정 업데이트 (관리자용)"""
+    data = {
+        "plan": plan,
+        "plan_expires_at": plan_expires_at,
+        "monthly_collect_limit": monthly_collect_limit,
+    }
+    if hashtag_access is not None:
+        data["hashtag_access"] = hashtag_access
+    if min_followers is not None:
+        data["min_followers"] = min_followers
+    if only_approved is not None:
+        data["only_approved"] = only_approved
+
+    if _USE_SUPABASE:
+        return _sb_patch(T_ADV, f"?id=eq.{adv_id}", data)
+    conn = get_conn()
+    try:
+        sets = ", ".join(f"{k}=?" for k in data)
+        conn.execute(f"UPDATE {T_ADV} SET {sets} WHERE id=?", (*data.values(), adv_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_refresh_status():
     if _USE_SUPABASE:
         r = _sb_get(T_RJOB, {"order": "started_at.desc", "limit": "1"})

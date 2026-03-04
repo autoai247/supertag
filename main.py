@@ -14,7 +14,9 @@ log = logging.getLogger(__name__)
 from database import (init_db, get_conn, get_influencers, get_influencer, get_influencer_posts,
                       get_stats, get_public_stats, get_public_influencers,
                       get_manual, save_manual, get_advertisers, get_refresh_status,
-                      update_influencer_stats)
+                      update_influencer_stats, get_advertiser_by_username,
+                      add_advertiser as db_add_advertiser, delete_advertiser as db_delete_advertiser,
+                      update_advertiser_plan)
 
 app = FastAPI()
 
@@ -60,6 +62,18 @@ INSTA_CFG = {
     "username": os.getenv("INSTA_USERNAME", "jannat160304"),
     "password": os.getenv("INSTA_PASSWORD", "jug@575"),
     "totp":     os.getenv("INSTA_TOTP", "YQ754N2HTC7IDAT5BQIPNA5RHQA75JFY"),
+    "proxy_host": os.getenv("INSTA_PROXY_HOST", ""),
+    "proxy_port": os.getenv("INSTA_PROXY_PORT", ""),
+    "proxy_user": os.getenv("INSTA_PROXY_USER", ""),
+    "proxy_pass": os.getenv("INSTA_PROXY_PASS", ""),
+}
+
+# 구독 플랜 정의
+PLANS = {
+    "free":       {"name": "무료",       "per_hashtag": 100,   "daily_limit": 500,  "max_hashtags": 5,  "price_1m": 0,    "price_3m": 0},
+    "starter":    {"name": "스타터",     "per_hashtag": 1000,  "daily_limit": 5000, "max_hashtags": 10, "price_1m": 10000, "price_3m": 27000},
+    "pro":        {"name": "프로",       "per_hashtag": 5000,  "daily_limit": 20000,"max_hashtags": 30, "price_1m": 30000, "price_3m": 81000},
+    "enterprise": {"name": "엔터프라이즈","per_hashtag": 10000, "daily_limit": 50000,"max_hashtags": 100,"price_1m": 50000, "price_3m": 135000},
 }
 
 
@@ -348,7 +362,7 @@ def refresh_one(pk: str, background_tasks: BackgroundTasks,
     def do_refresh():
         from crawler import get_client, crawl_user_detail
         try:
-            cl = get_client(INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"])
+            cl = get_client(INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"], INSTA_CFG.get("proxy_host",""), INSTA_CFG.get("proxy_port",""), INSTA_CFG.get("proxy_user",""), INSTA_CFG.get("proxy_pass",""))
             crawl_user_detail(cl, pk, inf["username"], inf.get("follower_count", 0))
         except Exception as e:
             log.error(f"단일 갱신 실패: {e}")
@@ -540,7 +554,9 @@ def refresh_start(background_tasks: BackgroundTasks,
     if refresh_progress.get("current", {}).get("running"):
         return JSONResponse({"error": "이미 실행 중"}, 400)
     background_tasks.add_task(refresh_all,
-                              INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"])
+                              INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"],
+                              INSTA_CFG.get("proxy_host",""), INSTA_CFG.get("proxy_port",""),
+                              INSTA_CFG.get("proxy_user",""), INSTA_CFG.get("proxy_pass",""))
     return JSONResponse({"ok": True})
 
 @app.get("/refresh/status")
@@ -628,7 +644,9 @@ def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=
     conn.commit(); conn.close()
     from crawler import crawl_hashtag
     background_tasks.add_task(crawl_hashtag, hashtag, requested_count,
-                               INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"], job_id)
+                               INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"], job_id,
+                               INSTA_CFG.get("proxy_host",""), INSTA_CFG.get("proxy_port",""),
+                               INSTA_CFG.get("proxy_user",""), INSTA_CFG.get("proxy_pass",""))
     return HTMLResponse(job_id)
 
 @app.get("/collect/progress/{job_id}")
@@ -657,10 +675,11 @@ def advertisers_page(request: Request, session_id: Optional[str] = Cookie(defaul
     advs = get_advertisers()
     return templates.TemplateResponse("advertiser_list.html", {
         "request": request, "user": user, "advertisers": advs,
+        "plans": PLANS, "now": time.time(),
     })
 
 @app.post("/advertisers/add")
-def add_advertiser(
+def add_advertiser_route(
     username: str = Form(...), password: str = Form(...),
     company_name: str = Form(default=""),
     hashtag_access: str = Form(default=""),
@@ -671,27 +690,41 @@ def add_advertiser(
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
     pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    conn = get_conn()
     try:
-        conn.execute("""
-            INSERT INTO advertiser_accounts
-                (username, password_hash, company_name, hashtag_access, min_followers, only_approved, created_at)
-            VALUES (?,?,?,?,?,?,?)
-        """, (username.strip(), pw_hash, company_name, hashtag_access, min_followers, only_approved, time.time()))
-        conn.commit()
+        db_add_advertiser(username.strip(), pw_hash, company_name, hashtag_access, min_followers, only_approved)
     except Exception as e:
         log.error(f"광고주 추가 실패: {e}")
-    conn.close()
     return RedirectResponse("/advertisers?added=1", 302)
 
 @app.post("/advertisers/delete")
-def delete_advertiser(adv_id: int = Form(...), session_id: Optional[str] = Cookie(default=None)):
+def delete_advertiser_route(adv_id: int = Form(...), session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
-    conn = get_conn()
-    conn.execute("DELETE FROM advertiser_accounts WHERE id=?", (adv_id,))
-    conn.commit(); conn.close()
+    db_delete_advertiser(adv_id)
     return RedirectResponse("/advertisers", 302)
+
+@app.post("/advertisers/{adv_id}/plan")
+def set_advertiser_plan(
+    adv_id: int,
+    plan: str = Form(...),
+    months: int = Form(default=1),
+    hashtag_access: str = Form(default=""),
+    min_followers: int = Form(default=0),
+    only_approved: int = Form(default=1),
+    session_id: Optional[str] = Cookie(default=None)
+):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    plan_info = PLANS.get(plan, PLANS["free"])
+    expires = time.time() + months * 30 * 86400
+    update_advertiser_plan(
+        adv_id, plan, expires,
+        plan_info["per_hashtag"],
+        hashtag_access or None,
+        min_followers or None,
+        only_approved
+    )
+    return RedirectResponse("/advertisers?updated=1", 302)
 
 
 # ═══════════════════════════════════════════════════════
@@ -704,10 +737,8 @@ def adv_login_page(request: Request):
 
 @app.post("/advertiser/login")
 def adv_login(request: Request, username: str = Form(...), password: str = Form(...)):
-    conn = get_conn()
-    row = conn.execute("SELECT * FROM advertiser_accounts WHERE username=?", (username.strip(),)).fetchone()
-    conn.close()
-    if row and bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
+    row = get_advertiser_by_username(username.strip())
+    if row and bcrypt.checkpw(password.encode(), (row.get("password_hash") or "").encode()):
         sid = str(uuid.uuid4())
         adv_sessions[sid] = dict(row)
         res = RedirectResponse("/advertiser", status_code=302)
@@ -818,6 +849,10 @@ def settings_page(request: Request, session_id: Optional[str] = Cookie(default=N
     return templates.TemplateResponse("settings.html", {
         "request": request, "user": user,
         "insta_username": INSTA_CFG["username"],
+        "proxy_host": INSTA_CFG.get("proxy_host",""),
+        "proxy_port": INSTA_CFG.get("proxy_port",""),
+        "proxy_user": INSTA_CFG.get("proxy_user",""),
+        "plans": PLANS,
     })
 
 @app.post("/settings/save")
@@ -825,6 +860,10 @@ def settings_save(
     insta_username: str = Form(...),
     insta_password: str = Form(...),
     insta_totp: str = Form(default=""),
+    proxy_host: str = Form(default=""),
+    proxy_port: str = Form(default=""),
+    proxy_user: str = Form(default=""),
+    proxy_pass: str = Form(default=""),
     admin_password: str = Form(default=""),
     session_id: Optional[str] = Cookie(default=None)
 ):
@@ -834,20 +873,45 @@ def settings_save(
     INSTA_CFG["username"] = insta_username
     INSTA_CFG["password"] = insta_password
     INSTA_CFG["totp"] = insta_totp
+    INSTA_CFG["proxy_host"] = proxy_host
+    INSTA_CFG["proxy_port"] = proxy_port
+    INSTA_CFG["proxy_user"] = proxy_user
+    INSTA_CFG["proxy_pass"] = proxy_pass
     if admin_password:
         ADMIN_PW_HASH = bcrypt.hashpw(admin_password.encode(), bcrypt.gensalt())
 
     env_path = os.path.join(os.path.dirname(__file__), ".env")
     lines = open(env_path).readlines() if os.path.exists(env_path) else []
-    keys = {"INSTA_USERNAME": insta_username, "INSTA_PASSWORD": insta_password, "INSTA_TOTP": insta_totp}
+    keys = {
+        "INSTA_USERNAME": insta_username, "INSTA_PASSWORD": insta_password,
+        "INSTA_TOTP": insta_totp,
+        "INSTA_PROXY_HOST": proxy_host, "INSTA_PROXY_PORT": proxy_port,
+        "INSTA_PROXY_USER": proxy_user, "INSTA_PROXY_PASS": proxy_pass,
+    }
     if admin_password:
         keys["ADMIN_PASSWORD"] = admin_password
     existing = {l.split("=")[0]: i for i, l in enumerate(lines) if "=" in l}
     for k, v in keys.items():
         if k in existing: lines[existing[k]] = f"{k}={v}\n"
         else: lines.append(f"{k}={v}\n")
-    open(env_path, "w").writelines(lines)
+    try:
+        open(env_path, "w").writelines(lines)
+    except OSError:
+        pass  # Vercel 환경에서는 .env 쓰기 불가
     return RedirectResponse("/settings?saved=1", 302)
+
+@app.post("/settings/test-account")
+async def test_insta_account(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: raise HTTPException(403)
+    try:
+        import pyotp
+        totp_code = ""
+        if INSTA_CFG.get("totp"):
+            totp_code = pyotp.TOTP(INSTA_CFG["totp"]).now()
+        return JSONResponse({"ok": True, "totp_code": totp_code, "username": INSTA_CFG["username"]})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
 
 
 if __name__ == "__main__":

@@ -14,16 +14,33 @@
 {% if request.query_params.get('added') %}
 <div class="mb-4 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm">✓ 광고주 계정이 추가되었습니다.</div>
 {% endif %}
+{% if request.query_params.get('updated') %}
+<div class="mb-4 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-sm">✓ 플랜이 업데이트되었습니다.</div>
+{% endif %}
+
+<!-- 플랜 요약 카드 -->
+<div class="grid grid-cols-4 gap-3 mb-5">
+  {% set plan_colors = {"free": "#6b7280", "starter": "#0891b2", "pro": "#7c3aed", "enterprise": "#d97706"} %}
+  {% for pk, pi in plans.items() %}
+  <div class="card p-3 text-center">
+    <div class="text-xs font-bold mb-1" style="color:{{ plan_colors.get(pk,'#6366f1') }}">{{ pi.name }}</div>
+    <div class="text-xs text-gray-500">해시태그당 {{ "{:,}".format(pi.per_hashtag) }}건</div>
+    <div class="text-xs font-semibold text-gray-700 mt-0.5">
+      {% if pi.price_1m == 0 %}무료{% else %}{{ "{:,}".format(pi.price_1m) }}원/월{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
 
 <div class="card overflow-hidden">
   <table class="w-full text-sm">
     <thead style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
       <tr>
-        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">로그인 ID</th>
-        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">회사명</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">로그인 ID / 회사</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">플랜</th>
         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">접근 해시태그</th>
-        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">최소 팔로워</th>
-        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">승인만</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">수집 한도</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">만료일</th>
         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">생성일</th>
         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">액션</th>
       </tr>
@@ -31,9 +48,22 @@
     <tbody>
       {% if advertisers %}
       {% for a in advertisers %}
+      {% set plan_key = a.plan or 'free' %}
+      {% set plan_info = plans.get(plan_key, plans.free) %}
       <tr class="border-b border-gray-50 hover:bg-gray-50">
-        <td class="px-4 py-3 font-medium text-gray-900">{{ a.username }}</td>
-        <td class="px-4 py-3 text-gray-600">{{ a.company_name or '-' }}</td>
+        <td class="px-4 py-3">
+          <div class="font-medium text-gray-900">{{ a.username }}</div>
+          <div class="text-xs text-gray-400">{{ a.company_name or '-' }}</div>
+        </td>
+        <td class="px-4 py-3">
+          <span class="badge font-semibold" style="
+            {% if plan_key == 'free' %}background:rgba(107,114,128,.1);color:#374151
+            {% elif plan_key == 'starter' %}background:rgba(8,145,178,.1);color:#0891b2
+            {% elif plan_key == 'pro' %}background:rgba(124,58,237,.1);color:#7c3aed
+            {% else %}background:rgba(217,119,6,.1);color:#d97706{% endif %}">
+            {{ plan_info.name if plan_info else plan_key }}
+          </span>
+        </td>
         <td class="px-4 py-3">
           {% if a.hashtag_access %}
           <div class="flex flex-wrap gap-1">
@@ -45,17 +75,30 @@
           <span class="text-gray-400 text-xs">전체 접근</span>
           {% endif %}
         </td>
-        <td class="px-4 py-3 text-gray-500">{{ (a.min_followers or 0) | comma }}+</td>
-        <td class="px-4 py-3">
-          {% if a.only_approved %}<span class="badge text-green-700" style="background:rgba(16,185,129,.1);">승인만</span>
-          {% else %}<span class="text-gray-400 text-xs">전체</span>{% endif %}
+        <td class="px-4 py-3 text-sm">
+          <span class="font-mono">{{ "{:,}".format(a.monthly_collect_limit or 100) }}</span>
+          <span class="text-gray-400 text-xs">/해시태그</span>
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-500">
+          {% if a.plan_expires_at and a.plan_expires_at > 0 %}
+            {{ a.plan_expires_at | dt }}
+            {% if a.plan_expires_at < now %}
+            <span class="badge text-red-500 ml-1" style="background:rgba(239,68,68,.08);">만료</span>
+            {% endif %}
+          {% else %}
+          <span class="text-gray-300">-</span>
+          {% endif %}
         </td>
         <td class="px-4 py-3 text-gray-400 text-xs">{{ a.created_at | dt }}</td>
         <td class="px-4 py-3">
-          <form action="/advertisers/delete" method="post" onsubmit="return confirm('삭제하시겠습니까?')">
-            <input type="hidden" name="adv_id" value="{{ a.id }}">
-            <button type="submit" class="text-red-400 hover:text-red-600 text-xs">삭제</button>
-          </form>
+          <div class="flex gap-2">
+            <button onclick="openPlanModal({{ a.id }}, '{{ a.username }}', '{{ plan_key }}', '{{ a.hashtag_access or '' }}', {{ a.min_followers or 0 }}, {{ a.only_approved or 1 }})"
+              class="text-indigo-500 hover:text-indigo-700 text-xs font-medium">플랜변경</button>
+            <form action="/advertisers/delete" method="post" onsubmit="return confirm('삭제하시겠습니까?')" class="inline">
+              <input type="hidden" name="adv_id" value="{{ a.id }}">
+              <button type="submit" class="text-red-400 hover:text-red-600 text-xs">삭제</button>
+            </form>
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -70,28 +113,30 @@
 </div>
 
 <div class="mt-4 p-4 rounded-xl bg-blue-50 border border-blue-100 text-sm text-blue-700">
-  💡 광고주가 로그인하면 <strong>/advertiser</strong> 페이지에서 허용된 해시태그의 승인된 인플루언서만 볼 수 있습니다.<br>
-  해시태그 접근이 비어있으면 전체 접근 가능 (승인 여부에 따라 제한).
+  💡 광고주 로그인 URL: <strong>/advertiser/login</strong><br>
+  플랜에 따라 해시태그당 수집 건수가 제한됩니다. 크레딧 충전은 수동으로 플랜을 변경하세요.
 </div>
 
-<!-- 추가 모달 -->
+<!-- 광고주 추가 모달 -->
 <div id="addModal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.4);">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
     <h3 class="font-bold text-gray-900 text-lg mb-4">광고주 계정 추가</h3>
     <form action="/advertisers/add" method="post" class="space-y-3">
-      <div>
-        <label class="text-xs text-gray-500 mb-1 block">로그인 ID *</label>
-        <input type="text" name="username" required placeholder="advertiser_company"
-               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
-      </div>
-      <div>
-        <label class="text-xs text-gray-500 mb-1 block">비밀번호 *</label>
-        <input type="password" name="password" required placeholder="최소 8자"
-               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">로그인 ID *</label>
+          <input type="text" name="username" required placeholder="company_id"
+                 class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">비밀번호 *</label>
+          <input type="password" name="password" required placeholder="최소 8자"
+                 class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
       </div>
       <div>
         <label class="text-xs text-gray-500 mb-1 block">회사명</label>
-        <input type="text" name="company_name" placeholder="(주)광고주"
+        <input type="text" name="company_name" placeholder="(주)회사명"
                class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
       </div>
       <div>
@@ -99,16 +144,18 @@
         <input type="text" name="hashtag_access" placeholder="뷰티, 패션, 건강"
                class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
       </div>
-      <div>
-        <label class="text-xs text-gray-500 mb-1 block">최소 팔로워</label>
-        <input type="number" name="min_followers" value="0"
-               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
-      </div>
-      <div>
-        <label class="flex items-center gap-2 text-sm cursor-pointer">
-          <input type="checkbox" name="only_approved" value="1" checked class="rounded">
-          승인된 인플루언서만 표시
-        </label>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">최소 팔로워</label>
+          <input type="number" name="min_followers" value="0"
+                 class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+        <div class="flex items-end pb-2">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" name="only_approved" value="1" checked class="rounded">
+            승인된 인플루언서만
+          </label>
+        </div>
       </div>
       <div class="flex gap-2 pt-2">
         <button type="button" onclick="document.getElementById('addModal').classList.add('hidden')"
@@ -118,4 +165,97 @@
     </form>
   </div>
 </div>
+
+<!-- 플랜 변경 모달 -->
+<div id="planModal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.4);">
+  <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
+    <h3 class="font-bold text-gray-900 text-lg mb-1">플랜 변경</h3>
+    <p id="planModalUser" class="text-sm text-gray-500 mb-4"></p>
+    <form id="planForm" method="post" class="space-y-4">
+      <div>
+        <label class="text-xs text-gray-500 mb-2 block font-medium">구독 플랜 선택</label>
+        <div class="grid grid-cols-2 gap-2">
+          {% for pk, pi in plans.items() %}
+          <label class="plan-option cursor-pointer border-2 rounded-xl p-3 hover:border-indigo-300 transition-all"
+                 style="{% if pk == 'free' %}border-color:#e5e7eb{% elif pk=='starter' %}border-color:#e5e7eb{% elif pk=='pro' %}border-color:#e5e7eb{% else %}border-color:#e5e7eb{% endif %}"
+                 data-plan="{{ pk }}">
+            <input type="radio" name="plan" value="{{ pk }}" class="sr-only" {% if pk == 'free' %}checked{% endif %}>
+            <div class="font-semibold text-sm" style="color:{% if pk=='free' %}#374151{% elif pk=='starter' %}#0891b2{% elif pk=='pro' %}#7c3aed{% else %}#d97706{% endif %}">
+              {{ pi.name }}</div>
+            <div class="text-xs text-gray-500 mt-0.5">{{ "{:,}".format(pi.per_hashtag) }}건/해시태그</div>
+            <div class="text-xs font-bold mt-1">
+              {% if pi.price_1m == 0 %}무료{% else %}{{ "{:,}".format(pi.price_1m) }}원/월{% endif %}
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">기간</label>
+        <select name="months" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+          <option value="1">1개월</option>
+          <option value="3">3개월 (10% 할인)</option>
+          <option value="6">6개월 (15% 할인)</option>
+          <option value="12">12개월 (20% 할인)</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">접근 가능 해시태그 (콤마 구분)</label>
+        <input type="text" name="hashtag_access" id="planHashtag" placeholder="비워두면 전체 접근"
+               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">최소 팔로워</label>
+          <input type="number" name="min_followers" id="planMinF" value="0"
+                 class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+        <div class="flex items-end pb-1">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" name="only_approved" id="planOnlyApproved" value="1" checked class="rounded">
+            승인된 인플루언서만
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button type="button" onclick="document.getElementById('planModal').classList.add('hidden')"
+                class="btn btn-ghost flex-1">취소</button>
+        <button type="submit" class="btn btn-primary flex-1">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openPlanModal(id, username, currentPlan, hashtag, minF, onlyApproved) {
+  document.getElementById('planModalUser').textContent = `광고주: ${username}`;
+  document.getElementById('planForm').action = `/advertisers/${id}/plan`;
+  document.getElementById('planHashtag').value = hashtag;
+  document.getElementById('planMinF').value = minF;
+  document.getElementById('planOnlyApproved').checked = onlyApproved == 1;
+
+  // Plan radio 선택
+  document.querySelectorAll('.plan-option').forEach(el => {
+    const radio = el.querySelector('input[type=radio]');
+    radio.checked = el.dataset.plan === currentPlan;
+    el.style.borderColor = el.dataset.plan === currentPlan ? '#6366f1' : '#e5e7eb';
+    el.style.background = el.dataset.plan === currentPlan ? 'rgba(99,102,241,.04)' : '';
+  });
+
+  document.getElementById('planModal').classList.remove('hidden');
+}
+
+// Plan option 클릭 시 하이라이트
+document.querySelectorAll('.plan-option').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.plan-option').forEach(e => {
+      e.style.borderColor = '#e5e7eb';
+      e.style.background = '';
+    });
+    el.style.borderColor = '#6366f1';
+    el.style.background = 'rgba(99,102,241,.04)';
+    el.querySelector('input').checked = true;
+  });
+});
+</script>
 {% endblock %}
