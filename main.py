@@ -966,7 +966,7 @@ async def account_upload(
                 accounts_parsed.append({
                     "username": _get("username"),
                     "password": _get("password"),
-                    "totp_secret": _get("totp_secret"),
+                    "totp_secret": _get("totp_secret").replace(" ", "").upper(),
                     "proxy_host": _get("proxy_host"),
                     "proxy_port": _get("proxy_port"),
                     "proxy_user": _get("proxy_user"),
@@ -996,14 +996,41 @@ async def account_upload(
                 parts = [p.strip() for p in parts]
                 if len(parts) < 2:
                     continue
+                # TOTP 시크릿은 스페이스 포함 가능 (e.g. "LMT7 GEDD OE5A ...")
+                # username:password:TOTP(스페이스 포함) 형식 처리
+                # 3번째 필드 이후가 proxy가 아닌 경우 TOTP로 합침
+                # proxy는 보통 ip/domain 형식이라 구분 가능
+                totp_raw = parts[2] if len(parts) > 2 else ""
+                proxy_host, proxy_port, proxy_user, proxy_pass = "", "", "", ""
+
+                if len(parts) > 3:
+                    # 4번째 필드가 숫자(포트)거나 ip처럼 보이면 proxy_host:proxy_port
+                    # 그 외엔 totp 시크릿이 스페이스 없이 단일 필드로 있는 경우
+                    fourth = parts[3]
+                    if fourth.isdigit() or (len(fourth) <= 5 and fourth.isdigit()):
+                        # parts[2]=host, parts[3]=port 형태
+                        proxy_host = parts[2]
+                        proxy_port = parts[3]
+                        totp_raw = ""
+                        proxy_user = parts[4] if len(parts) > 4 else ""
+                        proxy_pass = parts[5] if len(parts) > 5 else ""
+                    else:
+                        proxy_host = parts[3] if len(parts) > 3 else ""
+                        proxy_port = parts[4] if len(parts) > 4 else ""
+                        proxy_user = parts[5] if len(parts) > 5 else ""
+                        proxy_pass = parts[6] if len(parts) > 6 else ""
+
+                # TOTP 시크릿 스페이스 제거 (base32는 공백 없어야 함)
+                totp_clean = totp_raw.replace(" ", "").upper()
+
                 accounts_parsed.append({
                     "username": parts[0],
                     "password": parts[1],
-                    "totp_secret": parts[2] if len(parts) > 2 else "",
-                    "proxy_host": parts[3] if len(parts) > 3 else "",
-                    "proxy_port": parts[4] if len(parts) > 4 else "",
-                    "proxy_user": parts[5] if len(parts) > 5 else "",
-                    "proxy_pass": parts[6] if len(parts) > 6 else "",
+                    "totp_secret": totp_clean,
+                    "proxy_host": proxy_host,
+                    "proxy_port": proxy_port,
+                    "proxy_user": proxy_user,
+                    "proxy_pass": proxy_pass,
                 })
 
     except Exception as e:
