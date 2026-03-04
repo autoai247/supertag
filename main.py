@@ -32,7 +32,9 @@ except OSError:
 
 if not _IS_PROD and os.path.isdir(DATA_DIR):
     app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
-app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(_STATIC_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 templates.env.filters["dt"]    = lambda t: datetime.fromtimestamp(float(t)).strftime("%m/%d %H:%M") if t else "-"
