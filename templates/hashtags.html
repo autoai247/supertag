@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% set active = "hashtags" %}
+{% block title %}해시태그 관리 - InstaFinder{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-xl font-bold text-gray-900">해시태그 관리</h1>
+  <p class="text-sm text-gray-500 mt-0.5">수집할 해시태그를 등록합니다. 등록된 해시태그는 자동 수집 대상이 됩니다.</p>
+</div>
+
+<div class="grid grid-cols-5 gap-5">
+  <!-- 추가 폼 -->
+  <div class="col-span-2 card p-5">
+    <h2 class="font-semibold text-gray-800 mb-4">해시태그 추가</h2>
+    <form action="/hashtags/add" method="post" class="space-y-3">
+      <div>
+        <div class="text-xs text-gray-500 mb-1">해시태그 이름 <span class="text-red-400">*</span></div>
+        <div class="flex gap-1.5 items-center border border-gray-200 rounded-lg px-3 py-2 focus-within:border-indigo-400 transition">
+          <span class="text-gray-400 text-sm">#</span>
+          <input type="text" name="name" placeholder="광고" required class="flex-1 text-sm border-none p-0" style="outline:none;">
+        </div>
+        <p class="text-xs text-gray-400 mt-1"># 없이 입력하세요. 여러 개는 , 로 구분</p>
+      </div>
+      <div>
+        <div class="text-xs text-gray-500 mb-1">기본 수집 게시물 수</div>
+        <input type="number" name="requested_count" value="500" min="10" max="10000"
+          class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+      </div>
+      <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+        <input type="checkbox" name="auto_collect" value="1" checked class="rounded">
+        자동 수집에 포함
+      </label>
+      <button type="submit" class="w-full py-2.5 rounded-lg font-semibold text-white text-sm hover:opacity-90 transition"
+        style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">추가</button>
+    </form>
+
+    <!-- 빠른 추가 -->
+    <div class="mt-5">
+      <div class="text-xs font-semibold text-gray-500 mb-2">자주 쓰는 한국 해시태그</div>
+      <div class="flex flex-wrap gap-1.5">
+        {% for tag in ['광고','협찬','뒷광고','맛집','카페','여행','뷰티','패션','운동','다이어트','육아','반려동물','인테리어'] %}
+        <button onclick="document.querySelector('input[name=name]').value='{{ tag }}'"
+          class="badge text-indigo-600 cursor-pointer hover:opacity-80 transition" style="background:rgba(99,102,241,.09);">#{{ tag }}</button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 해시태그 목록 -->
+  <div class="col-span-3 card overflow-hidden">
+    <div class="px-4 py-3 border-b border-gray-100 font-semibold text-gray-800 text-sm">
+      등록된 해시태그 ({{ hashtags|length }}개)
+    </div>
+    {% if hashtags %}
+    <div class="divide-y divide-gray-50">
+      {% for h in hashtags %}
+      {% set sc = {'idle':'gray','running':'amber','done':'emerald','error':'red'}.get(h.status,'gray') %}
+      <div class="flex items-center px-4 py-3 hover:bg-gray-50 transition">
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <span class="font-semibold text-gray-900 text-sm">#{{ h.name }}</span>
+            <span class="badge text-{{ sc }}-700" style="background:rgba(var(--tw-colors-{{ sc }}-500),0.1);">
+              {% if h.status == 'running' %}<span class="inline-block w-1.5 h-1.5 rounded-full mr-1 animate-pulse bg-amber-400"></span>{% endif %}
+              {{ {'idle':'대기','running':'수집 중','done':'완료','error':'오류'}.get(h.status, h.status) }}
+            </span>
+            {% if not h.auto_collect %}<span class="badge text-gray-400" style="background:#f1f5f9;">수동</span>{% endif %}
+          </div>
+          <div class="text-xs text-gray-400 mt-0.5">
+            수집 {{ h.total_collected | comma }}명
+            {% if h.last_run_at %} · 마지막: {{ h.last_run_at | dt }}{% endif %}
+          </div>
+        </div>
+        <div class="flex gap-2 items-center">
+          <a href="/collect?hashtag={{ h.name }}" class="btn btn-ghost text-xs py-1 px-2.5">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            수집
+          </a>
+          <form action="/hashtags/delete" method="post" onsubmit="return confirm('#{{ h.name }} 삭제?')">
+            <input type="hidden" name="name" value="{{ h.name }}">
+            <button type="submit" class="text-gray-300 hover:text-red-400 transition p-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="py-12 text-center text-gray-400 text-sm">등록된 해시태그가 없습니다</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 수집 로그 -->
+{% if jobs %}
+<div class="card mt-5 overflow-hidden">
+  <div class="px-4 py-3 border-b border-gray-100 font-semibold text-gray-800 text-sm">최근 수집 기록</div>
+  <table class="w-full text-xs">
+    <thead style="background:#f8fafc;">
+      <tr class="text-gray-500">
+        <th class="px-4 py-2 text-left">해시태그</th>
+        <th class="px-4 py-2 text-right">요청</th>
+        <th class="px-4 py-2 text-right">수집 게시물</th>
+        <th class="px-4 py-2 text-right">신규 유저</th>
+        <th class="px-4 py-2 text-right">업데이트</th>
+        <th class="px-4 py-2 text-center">상태</th>
+        <th class="px-4 py-2 text-left">시작</th>
+        <th class="px-4 py-2 text-left">종료</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for j in jobs %}
+      {% set sc = {'running':'amber','done':'emerald','error':'red'}.get(j.status,'gray') %}
+      <tr class="border-t border-gray-50 hover:bg-gray-50">
+        <td class="px-4 py-2 font-medium text-gray-800">#{{ j.hashtag }}</td>
+        <td class="px-4 py-2 text-right text-gray-500">{{ j.requested_count }}</td>
+        <td class="px-4 py-2 text-right text-gray-700">{{ j.collected_posts }}</td>
+        <td class="px-4 py-2 text-right font-semibold text-indigo-600">{{ j.new_users }}</td>
+        <td class="px-4 py-2 text-right text-emerald-600">{{ j.updated_users }}</td>
+        <td class="px-4 py-2 text-center">
+          <span class="badge text-{{ sc }}-700">{{ {'running':'수집 중','done':'완료','error':'오류'}.get(j.status, j.status) }}</span>
+        </td>
+        <td class="px-4 py-2 text-gray-400">{{ j.started_at | dt }}</td>
+        <td class="px-4 py-2 text-gray-400">{{ j.finished_at | dt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

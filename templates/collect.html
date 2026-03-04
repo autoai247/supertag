@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% set active = "collect" %}
+{% block title %}실시간 수집 - InstaFinder{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <h1 class="text-xl font-bold text-gray-900">실시간 수집</h1>
+  <p class="text-sm text-gray-500 mt-0.5">해시태그를 입력하면 즉시 수집을 시작합니다. 진행 상황이 실시간으로 표시됩니다.</p>
+</div>
+
+<div class="grid grid-cols-5 gap-5">
+  <!-- 수집 폼 -->
+  <div class="col-span-2 card p-5">
+    <h2 class="font-semibold text-gray-800 mb-4">수집 요청</h2>
+    <div class="space-y-3">
+      <div>
+        <div class="text-xs text-gray-500 mb-1">해시태그 <span class="text-red-400">*</span></div>
+        <div class="flex gap-2">
+          <span class="flex items-center px-2.5 py-2 text-sm text-gray-400 rounded-lg border border-gray-200 border-r-0 rounded-r-none">#</span>
+          <input id="hashtagInput" type="text" placeholder="광고, 협찬, 맛집..."
+            class="flex-1 px-3 py-2 text-sm rounded-lg rounded-l-none border border-gray-200 border-l-0"
+            list="hashtagList">
+          <datalist id="hashtagList">
+            {% for h in hashtags %}<option value="{{ h }}">{% endfor %}
+          </datalist>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs text-gray-500 mb-1">수집 게시물 수</div>
+        <div class="flex gap-2 items-center">
+          <input id="countInput" type="number" value="200" min="10" max="10000"
+            class="w-28 px-3 py-2 text-sm rounded-lg border border-gray-200">
+          <div class="flex gap-1">
+            {% for n in [100, 300, 500, 1000] %}
+            <button onclick="document.getElementById('countInput').value={{n}}"
+              class="px-2 py-1.5 text-xs rounded border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition">{{ n }}</button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <button id="startBtn" onclick="startCollect()"
+        class="w-full py-2.5 rounded-lg font-semibold text-white text-sm hover:opacity-90 transition mt-1"
+        style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+        ▶ 수집 시작
+      </button>
+    </div>
+
+    <!-- 안내 -->
+    <div class="mt-5 p-3 rounded-lg text-xs text-gray-500 space-y-1" style="background:#f8fafc;">
+      <div class="font-semibold text-gray-600 mb-2">수집 흐름</div>
+      <div>① 해시태그 게시물 수집 (n개)</div>
+      <div>② 게시물에서 유저 ID 추출</div>
+      <div>③ 유저 상세 프로필 조회</div>
+      <div>④ DB 저장 (중복 시 정보 갱신)</div>
+      <div class="pt-1 text-gray-400">같은 유저가 여러 해시태그에 있으면<br>해시태그가 누적 저장됩니다</div>
+    </div>
+  </div>
+
+  <!-- 실시간 진행 -->
+  <div class="col-span-3 card p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold text-gray-800">진행 상황</h2>
+      <span id="statusBadge" class="badge text-gray-500" style="background:#f1f5f9;">대기 중</span>
+    </div>
+
+    <!-- 진행률 -->
+    <div id="progressArea" class="hidden">
+      <div class="flex justify-between text-xs text-gray-500 mb-1">
+        <span id="progressLabel">게시물 수집 중...</span>
+        <span id="progressNum">0 / 0</span>
+      </div>
+      <div class="w-full h-2 rounded-full mb-4" style="background:#e2e8f0;">
+        <div id="progressBar" class="h-2 rounded-full transition-all duration-300"
+             style="background:linear-gradient(90deg,#6366f1,#8b5cf6);width:0%"></div>
+      </div>
+
+      <!-- 카운터 -->
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="text-center py-3 rounded-lg" style="background:#f8fafc;">
+          <div id="cntPosts" class="text-2xl font-bold text-gray-900">0</div>
+          <div class="text-xs text-gray-400 mt-0.5">수집 게시물</div>
+        </div>
+        <div class="text-center py-3 rounded-lg" style="background:#eef2ff;">
+          <div id="cntNew" class="text-2xl font-bold text-indigo-600">0</div>
+          <div class="text-xs text-gray-400 mt-0.5">신규 유저</div>
+        </div>
+        <div class="text-center py-3 rounded-lg" style="background:#f0fdf4;">
+          <div id="cntUpdated" class="text-2xl font-bold text-emerald-600">0</div>
+          <div class="text-xs text-gray-400 mt-0.5">업데이트</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 로그 -->
+    <div id="logBox" class="rounded-lg p-3 font-mono text-xs text-gray-500 h-48 overflow-y-auto space-y-1"
+         style="background:#0f172a;">
+      <div class="text-gray-600">⬡ 수집 준비 완료. 해시태그를 입력하고 시작하세요.</div>
+    </div>
+
+    <!-- 완료 후 -->
+    <div id="doneArea" class="hidden mt-4 flex gap-2">
+      <a href="/influencers" class="btn btn-primary text-sm flex-1 justify-center">인플루언서 목록 보기</a>
+      <button onclick="resetForm()" class="btn btn-ghost text-sm">다시 수집</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let sse = null;
+
+function log(msg, color='#94a3b8') {
+  const box = document.getElementById('logBox');
+  const el = document.createElement('div');
+  el.style.color = color;
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+function startCollect() {
+  const hashtag = document.getElementById('hashtagInput').value.trim().replace(/^#/,'');
+  const count = document.getElementById('countInput').value;
+  if (!hashtag) { alert('해시태그를 입력해주세요'); return; }
+
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('startBtn').textContent = '수집 중...';
+  document.getElementById('progressArea').classList.remove('hidden');
+  document.getElementById('statusBadge').textContent = '수집 중';
+  document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
+
+  log(`#${hashtag} 수집 시작 (게시물 ${count}개 요청)`, '#6366f1');
+
+  const form = new URLSearchParams({ hashtag, requested_count: count });
+  fetch('/collect/start', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
+    .then(r => r.text())
+    .then(jobId => {
+      log(`작업 ID: ${jobId.substring(0,8)}...`, '#475569');
+      listenProgress(jobId, parseInt(count));
+    })
+    .catch(e => log(`에러: ${e}`, '#ef4444'));
+}
+
+function listenProgress(jobId, totalRequested) {
+  if (sse) sse.close();
+  sse = new EventSource(`/collect/progress/${jobId}`);
+
+  sse.onmessage = function(e) {
+    const p = JSON.parse(e.data);
+    if (!p || !p.hashtag) return;
+
+    document.getElementById('cntPosts').textContent = p.posts || 0;
+    document.getElementById('cntNew').textContent = p.new || 0;
+    document.getElementById('cntUpdated').textContent = p.updated || 0;
+
+    const pct = Math.min(100, Math.round(((p.posts||0) / totalRequested) * 100));
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressNum').textContent = `${p.posts||0} / ${totalRequested}`;
+    document.getElementById('progressLabel').textContent = p.status || '';
+
+    if (p.status && p.status !== document.getElementById('statusBadge').textContent) {
+      log(p.status, p.error ? '#ef4444' : '#a5b4fc');
+    }
+
+    if (p.done) {
+      sse.close();
+      if (p.error) {
+        log(`❌ 에러: ${p.error}`, '#ef4444');
+        document.getElementById('statusBadge').textContent = '에러';
+        document.getElementById('statusBadge').style.cssText = 'background:rgba(239,68,68,.1);color:#ef4444';
+      } else {
+        log(`✅ 완료! 신규 ${p.new}명, 업데이트 ${p.updated}명`, '#10b981');
+        document.getElementById('statusBadge').textContent = '완료';
+        document.getElementById('statusBadge').style.cssText = 'background:rgba(16,185,129,.1);color:#10b981';
+        document.getElementById('progressBar').style.width = '100%';
+        document.getElementById('doneArea').classList.remove('hidden');
+      }
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('startBtn').textContent = '▶ 수집 시작';
+    }
+  };
+}
+
+function resetForm() {
+  document.getElementById('hashtagInput').value = '';
+  document.getElementById('progressArea').classList.add('hidden');
+  document.getElementById('doneArea').classList.add('hidden');
+  document.getElementById('statusBadge').textContent = '대기 중';
+  document.getElementById('statusBadge').style.cssText = 'background:#f1f5f9;color:#64748b';
+  document.getElementById('cntPosts').textContent = document.getElementById('cntNew').textContent = document.getElementById('cntUpdated').textContent = '0';
+  document.getElementById('progressBar').style.width = '0%';
+}
+</script>
+{% endblock %}

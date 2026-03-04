@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+.env
+app.log
+*.db
+insta_crawler.db
+data/profile_pics/
+data/posts/

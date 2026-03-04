@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% set active = "influencers" %}
+{% block title %}편집 @{{ inf.username }} - InstaFinder{% endblock %}
+{% block content %}
+
+<div class="mb-4 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/influencers/{{ inf.pk }}" class="text-gray-400 hover:text-gray-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    </a>
+    <h1 class="text-xl font-bold text-gray-900">수동 정보 입력 - @{{ inf.username }}</h1>
+  </div>
+</div>
+
+<form action="/influencers/{{ inf.pk }}/edit" method="post" class="grid grid-cols-3 gap-4">
+
+  <!-- 연락처 -->
+  <div class="card p-5">
+    <h3 class="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs text-white" style="background:#6366f1;">📞</span>
+      연락처 정보
+    </h3>
+    <div class="space-y-3">
+      {% for field, label, placeholder in [
+        ('contact_name', '담당자명', '홍길동'),
+        ('contact_kakao', '카카오톡 ID', '@kakao_id'),
+        ('contact_email', '이메일', 'email@example.com'),
+        ('contact_phone', '전화번호', '010-0000-0000'),
+      ] %}
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">{{ label }}</label>
+        <input type="text" name="{{ field }}" value="{{ manual.get(field, '') or '' }}"
+               placeholder="{{ placeholder }}"
+               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- 라이브커머스 -->
+  <div class="card p-5">
+    <h3 class="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs text-white" style="background:#f59e0b;">📡</span>
+      라이브커머스
+    </h3>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-gray-500 mb-2 block">라이브 가능 여부</label>
+        <div class="flex gap-3">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="can_live" value="1" {% if manual.get('can_live') %}checked{% endif %}>
+            <span class="text-sm font-medium text-green-600">가능 ✓</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="can_live" value="0" {% if not manual.get('can_live') %}checked{% endif %}>
+            <span class="text-sm text-gray-500">불가</span>
+          </label>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">라이브 플랫폼</label>
+        <div class="space-y-1">
+          {% for platform in ['인스타 라이브', '네이버 쇼핑라이브', '카카오 쇼핑라이브', '유튜브 라이브', '그립', '기타'] %}
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" name="live_platform_{{ loop.index }}" value="{{ platform }}"
+                   {% if platform in (manual.get('live_platforms') or '') %}checked{% endif %}>
+            {{ platform }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">라이브 단가 (만원)</label>
+        <input type="number" name="live_price" value="{{ manual.get('live_price', '') or '' }}"
+               placeholder="100" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+      </div>
+    </div>
+  </div>
+
+  <!-- 단가표 -->
+  <div class="card p-5">
+    <h3 class="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs text-white" style="background:#10b981;">💰</span>
+      단가표 (만원)
+    </h3>
+    <div class="space-y-3">
+      {% for field, label in [
+        ('feed_price', '피드 포스팅'),
+        ('reel_price', '릴스'),
+        ('story_price', '스토리'),
+        ('bundle_price', '패키지 묶음'),
+      ] %}
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">{{ label }}</label>
+        <div class="flex items-center gap-2">
+          <input type="number" name="{{ field }}" value="{{ manual.get(field, '') or '' }}"
+                 placeholder="0"
+                 class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200">
+          <span class="text-xs text-gray-400">만원</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- 카테고리 / 타겟 -->
+  <div class="card p-5">
+    <h3 class="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs text-white" style="background:#8b5cf6;">🎯</span>
+      카테고리 / 타겟
+    </h3>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">주요 카테고리</label>
+        <select name="main_category" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+          <option value="">선택...</option>
+          {% for cat in ['뷰티','패션','푸드','육아','여행','건강/운동','라이프스타일','반려동물','IT/테크','교육','엔터테인먼트','기타'] %}
+          <option value="{{ cat }}" {% if manual.get('main_category') == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">서브 카테고리</label>
+        <input type="text" name="sub_categories" value="{{ manual.get('sub_categories', '') or '' }}"
+               placeholder="예: 스킨케어, 메이크업"
+               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">타겟 성별</label>
+        <div class="flex gap-2">
+          {% for g in ['여성', '남성', '혼합'] %}
+          <label class="flex items-center gap-1 text-sm cursor-pointer">
+            <input type="radio" name="target_gender" value="{{ g }}" {% if manual.get('target_gender') == g %}checked{% endif %}>{{ g }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">타겟 연령</label>
+        <input type="text" name="target_age" value="{{ manual.get('target_age', '') or '' }}"
+               placeholder="예: 20-35세"
+               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">주요 타겟 지역</label>
+        <select name="target_region" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+          <option value="">선택...</option>
+          {% for r in ['서울/수도권','부산/경남','대구/경북','광주/전남','대전/충남','전국','베트남','동남아','해외'] %}
+          <option value="{{ r }}" {% if manual.get('target_region') == r %}selected{% endif %}>{{ r }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- 협업 정보 -->
+  <div class="card p-5">
+    <h3 class="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs text-white" style="background:#3b82f6;">🤝</span>
+      협업 정보
+    </h3>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-gray-500 mb-2 block">협업 가능 유형</label>
+        <div class="space-y-1">
+          {% for type in ['체험단','공동구매','PPL','라이브커머스','모델활동','이벤트'] %}
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" name="collab_type_{{ loop.index }}" value="{{ type }}"
+                   {% if type in (manual.get('collab_types') or '') %}checked{% endif %}>
+            {{ type }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">과거 협업 브랜드</label>
+        <textarea name="past_brands" rows="3" placeholder="예: 아모레퍼시픽, 올리브영, 쿠팡..."
+                  class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 resize-none">{{ manual.get('past_brands', '') or '' }}</textarea>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">콘텐츠 품질 점수</label>
+        <div class="flex gap-2">
+          {% for i in [1,2,3,4,5] %}
+          <label class="cursor-pointer">
+            <input type="radio" name="quality_score" value="{{ i }}" class="hidden peer"
+                   {% if manual.get('quality_score') == i %}checked{% endif %}>
+            <span class="peer-checked:text-yellow-400 text-gray-300 text-2xl">⭐</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 타 SNS 계정 -->
+  <div class="card p-5">
+    <h3 class="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs text-white" style="background:#6366f1;">🌐</span>
+      타 SNS 계정 & 브랜드 여부
+    </h3>
+    <div class="space-y-3">
+      <label class="flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer hover:bg-orange-50" style="border-color:#fb923c;">
+        <input type="checkbox" name="is_brand" value="1" {% if manual.get('is_brand') %}checked{% endif %} class="w-4 h-4 rounded">
+        <div>
+          <div class="text-sm font-semibold text-orange-700">🏢 브랜드/기업 계정</div>
+          <div class="text-xs text-gray-400">개인이 아닌 회사·브랜드가 운영하는 계정</div>
+        </div>
+      </label>
+      <label class="flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer hover:bg-pink-50" style="border-color:#f472b6;">
+        <input type="checkbox" name="is_visual" value="1" {% if manual.get('is_visual') %}checked{% endif %} class="w-4 h-4 rounded">
+        <div>
+          <div class="text-sm font-semibold text-pink-600">✨ 비주얼 인플루언서</div>
+          <div class="text-xs text-gray-400">패션·뷰티·라이프스타일 등 외모·비주얼 중심 콘텐츠</div>
+        </div>
+      </label>
+      <label class="flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer hover:bg-rose-50" style="border-color:#fca5a5;">
+        <input type="checkbox" name="face_exposed" value="1" {% if manual.get('face_exposed') %}checked{% endif %} class="w-4 h-4 rounded">
+        <div>
+          <div class="text-sm font-semibold text-rose-600">👤 얼굴 노출 가능</div>
+          <div class="text-xs text-gray-400">광고 촬영 시 얼굴 노출에 동의하는 인플루언서</div>
+        </div>
+      </label>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">🎵 틱톡 URL</label>
+          <input type="text" name="tiktok_url" value="{{ manual.get('tiktok_url', '') or '' }}"
+                 placeholder="https://tiktok.com/@id"
+                 class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">🎥 유튜브 URL</label>
+          <input type="text" name="youtube_url" value="{{ manual.get('youtube_url', '') or '' }}"
+                 placeholder="https://youtube.com/@id"
+                 class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">📘 페이스북 URL</label>
+          <input type="text" name="facebook_url" value="{{ manual.get('facebook_url', '') or '' }}"
+                 placeholder="https://facebook.com/id"
+                 class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">🧵 스레드 URL</label>
+          <input type="text" name="threads_url" value="{{ manual.get('threads_url', '') or '' }}"
+                 placeholder="https://threads.net/@id"
+                 class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">틱톡 팔로워</label>
+          <input type="number" name="tiktok_followers" value="{{ manual.get('tiktok_followers', '') or '' }}"
+                 placeholder="0" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">유튜브 구독자</label>
+          <input type="number" name="youtube_subscribers" value="{{ manual.get('youtube_subscribers', '') or '' }}"
+                 placeholder="0" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 인플루언서 개인 특성 -->
+  <div class="card p-5">
+    <h3 class="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs text-white" style="background:#10b981;">🏷</span>
+      인플루언서 특성 (필터용)
+    </h3>
+    <div class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <label class="flex items-center gap-2 p-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+          <input type="checkbox" name="has_pet" value="1" {% if manual.get('has_pet') %}checked{% endif %} class="w-4 h-4 rounded">
+          <span class="text-sm">🐾 반려동물 있음</span>
+        </label>
+        <label class="flex items-center gap-2 p-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+          <input type="checkbox" name="is_married" value="1" {% if manual.get('is_married') %}checked{% endif %} class="w-4 h-4 rounded">
+          <span class="text-sm">💍 기혼</span>
+        </label>
+        <label class="flex items-center gap-2 p-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+          <input type="checkbox" name="has_kids" value="1" {% if manual.get('has_kids') %}checked{% endif %} class="w-4 h-4 rounded">
+          <span class="text-sm">👶 자녀 있음</span>
+        </label>
+        <label class="flex items-center gap-2 p-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+          <input type="checkbox" name="has_car" value="1" {% if manual.get('has_car') %}checked{% endif %} class="w-4 h-4 rounded">
+          <span class="text-sm">🚗 차량 있음</span>
+        </label>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">반려동물 종류 (예: 강아지, 고양이)</label>
+        <input type="text" name="pet_type" value="{{ manual.get('pet_type', '') or '' }}"
+               placeholder="강아지, 고양이..."
+               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">자녀 나이 (예: 2세, 5세, 8세)</label>
+        <input type="text" name="kids_age" value="{{ manual.get('kids_age', '') or '' }}"
+               placeholder="예: 2세, 5세"
+               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+      </div>
+    </div>
+  </div>
+
+  <!-- 배포 승인 + 메모 -->
+  <div class="card p-5">
+    <h3 class="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs text-white" style="background:#ef4444;">⚙️</span>
+      관리 설정
+    </h3>
+    <div class="space-y-3">
+      <div class="p-3 rounded-xl border-2 border-dashed border-gray-200">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" name="is_approved" value="1" {% if manual.get('is_approved') %}checked{% endif %}
+                 class="w-4 h-4 rounded">
+          <div>
+            <div class="font-semibold text-sm text-gray-700">광고주 배포 승인</div>
+            <div class="text-xs text-gray-400">광고주 계정에 이 인플루언서 공개</div>
+          </div>
+        </label>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">메모 / 특이사항</label>
+        <textarea name="notes" rows="6" placeholder="특이사항, 주의점, 협업 경험 등..."
+                  class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 resize-none">{{ manual.get('notes', '') or '' }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 저장 버튼 -->
+  <div class="col-span-3 flex justify-end gap-3">
+    <a href="/influencers/{{ inf.pk }}" class="btn btn-ghost">취소</a>
+    <button type="submit" class="btn btn-primary">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+      저장하기
+    </button>
+  </div>
+
+</form>
+
+<script>
+// 라이브 플랫폼 체크박스 → hidden input으로 합치기
+document.querySelector('form').addEventListener('submit', function(e) {
+  // 라이브 플랫폼 합치기
+  const platforms = [...document.querySelectorAll('[name^="live_platform_"]:checked')].map(c => c.value).join(', ');
+  let platInput = document.createElement('input');
+  platInput.type = 'hidden'; platInput.name = 'live_platforms'; platInput.value = platforms;
+  this.appendChild(platInput);
+
+  // 협업 유형 합치기
+  const types = [...document.querySelectorAll('[name^="collab_type_"]:checked')].map(c => c.value).join(', ');
+  let typeInput = document.createElement('input');
+  typeInput.type = 'hidden'; typeInput.name = 'collab_types'; typeInput.value = types;
+  this.appendChild(typeInput);
+});
+</script>
+{% endblock %}

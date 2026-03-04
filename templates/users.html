@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}유저 검색 - InstaFinder{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">유저 검색</h1>
+    <p class="text-sm text-gray-500 mt-1">수집된 인스타그램 유저를 검색하고 필터링합니다</p>
+  </div>
+  {% if results %}
+  <button id="exportBtn" class="btn-primary px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+    </svg>
+    엑셀 다운로드
+  </button>
+  {% endif %}
+</div>
+
+<!-- 검색/필터 -->
+<div class="card p-4 mb-4">
+  <form action="/users" method="get" class="flex flex-wrap gap-3 items-end">
+    <div class="flex-1 min-w-48">
+      <label class="block text-xs font-medium text-gray-500 mb-1">해시태그 / 유저명</label>
+      <input type="text" name="keyword" value="{{ keyword or '' }}" placeholder="예: 제주도, travel..."
+        class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 transition">
+    </div>
+    <div class="w-36">
+      <label class="block text-xs font-medium text-gray-500 mb-1">팔로워 최소</label>
+      <input type="number" name="min_followers" value="{{ min_followers or '' }}" placeholder="0"
+        class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 transition">
+    </div>
+    <div class="w-36">
+      <label class="block text-xs font-medium text-gray-500 mb-1">팔로워 최대</label>
+      <input type="number" name="max_followers" value="{{ max_followers or '' }}" placeholder="무제한"
+        class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 transition">
+    </div>
+    <div class="flex gap-2 items-center">
+      <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+        <input type="checkbox" name="only_verified" value="1" {% if only_verified %}checked{% endif %} class="rounded">
+        인증만
+      </label>
+      <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+        <input type="checkbox" name="exclude_private" value="1" {% if exclude_private %}checked{% endif %} class="rounded">
+        공개만
+      </label>
+    </div>
+    <button type="submit" class="btn-primary px-5 py-2 rounded-lg text-sm">검색</button>
+    <a href="/users" class="px-5 py-2 rounded-lg text-sm text-gray-500 border border-gray-200 hover:bg-gray-50 transition">초기화</a>
+  </form>
+</div>
+
+{% if results %}
+<!-- 결과 테이블 -->
+<div class="card overflow-hidden">
+  <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+    <span class="text-sm text-gray-500">총 <strong class="text-gray-900">{{ total }}</strong>명</span>
+    <select id="perPageSel" class="text-xs border border-gray-200 rounded px-2 py-1 outline-none text-gray-600">
+      <option value="20" {% if per_page==20 %}selected{% endif %}>20개씩</option>
+      <option value="50" {% if per_page==50 %}selected{% endif %}>50개씩</option>
+      <option value="100" {% if per_page==100 %}selected{% endif %}>100개씩</option>
+    </select>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+          {% set cols = [
+            ('username','유저명'),('related_hashtag','해시태그'),
+            ('follower_count','팔로워'),('following_count','팔로우'),
+            ('media_count','게시물'),('is_verified','인증'),('is_private','비공개'),
+            ('category','카테고리'),('public_email','이메일'),('external_url','링크')
+          ] %}
+          {% for col_key, col_name in cols %}
+          <th class="px-4 py-3 text-left font-semibold text-gray-600 whitespace-nowrap">
+            <a href="/users?keyword={{ keyword or '' }}&min_followers={{ min_followers or '' }}&max_followers={{ max_followers or '' }}&sort={{ col_key }}&order={{ 'asc' if sort==col_key and order=='desc' else 'desc' }}&page=1&per_page={{ per_page }}"
+              class="flex items-center gap-1 hover:text-indigo-600 transition">
+              {{ col_name }}
+              {% if sort == col_key %}
+                <svg class="w-3 h-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {% if order == 'asc' %}
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>
+                  {% else %}
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+                  {% endif %}
+                </svg>
+              {% endif %}
+            </a>
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in results %}
+        <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
+          <td class="px-4 py-3">
+            <a href="https://www.instagram.com/{{ u.username }}/" target="_blank"
+              class="flex items-center gap-2 font-medium text-gray-900 hover:text-indigo-600 transition">
+              @{{ u.username }}
+              <svg class="w-3 h-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+              </svg>
+            </a>
+            <div class="text-xs text-gray-400 mt-0.5">{{ u.full_name }}</div>
+          </td>
+          <td class="px-4 py-3">
+            {% if u.related_hashtag %}
+            {% for tag in u.related_hashtag.split(',') %}
+            <span class="inline-block px-2 py-0.5 rounded-full text-xs text-indigo-600 mr-1" style="background:rgba(99,102,241,.08);">#{{ tag.strip() }}</span>
+            {% endfor %}
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-right font-semibold text-gray-900">{{ "{:,}".format(u.follower_count or 0) }}</td>
+          <td class="px-4 py-3 text-right text-gray-500">{{ "{:,}".format(u.following_count or 0) }}</td>
+          <td class="px-4 py-3 text-right text-gray-500">{{ "{:,}".format(u.media_count or 0) }}</td>
+          <td class="px-4 py-3 text-center">
+            {% if u.is_verified %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-blue-700" style="background:rgba(59,130,246,.1);">✓ 인증</span>
+            {% else %}
+            <span class="text-gray-300 text-xs">-</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-center">
+            {% if u.is_private %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-gray-600" style="background:#f1f5f9;">🔒</span>
+            {% else %}
+            <span class="text-green-400 text-xs">공개</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-xs text-gray-500">{{ u.category or '-' }}</td>
+          <td class="px-4 py-3 text-xs text-gray-500">{{ u.public_email or '-' }}</td>
+          <td class="px-4 py-3">
+            {% if u.external_url %}
+            <a href="{{ u.external_url }}" target="_blank" class="text-xs text-indigo-500 hover:underline truncate block max-w-32">{{ u.external_url }}</a>
+            {% else %}
+            <span class="text-gray-300 text-xs">-</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 페이지네이션 -->
+  {% set total_pages = (total // per_page) + (1 if total % per_page > 0 else 0) %}
+  <div class="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+    <span class="text-sm text-gray-400">{{ page }} / {{ total_pages }} 페이지</span>
+    <div class="flex gap-1">
+      {% if page > 1 %}
+      <a href="/users?keyword={{ keyword or '' }}&page={{ page-1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}"
+        class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition">이전</a>
+      {% endif %}
+      {% if page < total_pages %}
+      <a href="/users?keyword={{ keyword or '' }}&page={{ page+1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}"
+        class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition">다음</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% elif keyword %}
+<div class="card p-10 text-center text-gray-400">검색 결과가 없습니다</div>
+{% else %}
+<div class="card p-10 text-center text-gray-400">
+  <p class="mb-2">수집된 유저가 없습니다</p>
+  <a href="/crawling" class="text-indigo-500 text-sm hover:underline">수집 요청하기 →</a>
+</div>
+{% endif %}
+
+<script>
+document.getElementById('perPageSel')?.addEventListener('change', function() {
+  const url = new URL(window.location);
+  url.searchParams.set('per_page', this.value);
+  url.searchParams.set('page', 1);
+  window.location.href = url.toString();
+});
+document.getElementById('exportBtn')?.addEventListener('click', () => {
+  const url = new URL(window.location);
+  url.pathname = '/export';
+  window.location.href = url.toString();
+});
+</script>
+{% endblock %}

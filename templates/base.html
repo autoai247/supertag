@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}InstaFinder{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"/>
+  <style>
+    * { font-family:"Pretendard Variable",Pretendard,sans-serif; }
+    .nav-link { display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:#94a3b8;font-size:13.5px;font-weight:500;transition:all .15s; }
+    .nav-link:hover { background:#1e293b;color:#e2e8f0; }
+    .nav-link.on { background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;box-shadow:0 4px 12px rgba(99,102,241,.35); }
+    .nav-link svg { width:17px;height:17px;flex-shrink:0; }
+    .btn { display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s; }
+    .btn-primary { background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff; }
+    .btn-primary:hover { opacity:.88; }
+    .btn-ghost { background:transparent;color:#64748b;border:1px solid #e2e8f0; }
+    .btn-ghost:hover { background:#f8fafc; }
+    .btn-green { background:linear-gradient(135deg,#10b981,#059669);color:#fff; }
+    .btn-green:hover { opacity:.88; }
+    .btn-orange { background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff; }
+    .btn-sm { padding:5px 10px;font-size:12px; }
+    .card { background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07),0 4px 16px rgba(0,0,0,.04); }
+    .badge { display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600; }
+    input,select,textarea { outline:none; }
+    input:focus,select:focus,textarea:focus { border-color:#6366f1!important; }
+    ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+    .nav-section { padding:4px 12px;font-size:10px;font-weight:700;text-transform:uppercase;color:#475569;letter-spacing:.8px;margin-top:12px;margin-bottom:2px; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body style="background:#f1f5f9;">
+<aside class="fixed top-0 left-0 h-screen w-56 flex flex-col z-20" style="background:#0f172a;border-right:1px solid #1e293b;">
+  <div class="px-4 py-5 border-b" style="border-color:#1e293b;">
+    <a href="/" class="flex items-center gap-2.5">
+      <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      </div>
+      <span class="font-bold text-white text-sm">InstaFinder</span>
+    </a>
+  </div>
+  <nav class="flex-1 px-2 py-3 overflow-y-auto">
+    <a href="/influencers" class="nav-link {% if active=='influencers' %}on{% endif %}">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      인플루언서 DB
+    </a>
+    <a href="/collect" class="nav-link {% if active=='collect' %}on{% endif %}">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      해시태그 수집
+    </a>
+    <a href="/hashtags" class="nav-link {% if active=='hashtags' %}on{% endif %}">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/></svg>
+      해시태그 관리
+    </a>
+    <div class="nav-section">배포</div>
+    <a href="/advertisers" class="nav-link {% if active=='advertisers' %}on{% endif %}">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+      광고주 계정
+    </a>
+    <div class="nav-section">시스템</div>
+    <a href="/settings" class="nav-link {% if active=='settings' %}on{% endif %}">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+      설정
+    </a>
+  </nav>
+  <div class="px-3 py-3 border-t" style="border-color:#1e293b;">
+    <div class="flex items-center gap-2 px-2 py-1.5">
+      <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+        {{ user.username[0].upper() if user else 'A' }}
+      </div>
+      <span class="text-gray-400 text-xs flex-1 truncate">{{ user.username if user else '' }}</span>
+      <a href="/logout" class="text-gray-600 hover:text-gray-300 transition">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+      </a>
+    </div>
+  </div>
+</aside>
+<main class="ml-56 min-h-screen"><div class="p-5">{% block content %}{% endblock %}</div></main>
+</body></html>

@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}작업 현황 - InstaFinder{% endblock %}
+{% block content %}
+
+{% set status_label = {
+  'media_pending': ('게시물 수집 대기', '#94a3b8', '#f1f5f9'),
+  'media_running': ('게시물 수집 중', '#f59e0b', '#fffbeb'),
+  'media_failed': ('게시물 수집 실패', '#ef4444', '#fef2f2'),
+  'media_succeeded': ('게시물 수집 완료', '#10b981', '#ecfdf5'),
+  'user_extract_pending': ('유저 추출 대기', '#6366f1', '#eef2ff'),
+  'user_extract_running': ('유저 추출 중', '#8b5cf6', '#f5f3ff'),
+  'user_extract_failed': ('유저 추출 실패', '#ef4444', '#fef2f2'),
+  'user_extract_succeeded': ('완료', '#10b981', '#ecfdf5'),
+} %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">작업 현황</h1>
+    <p class="text-sm text-gray-500 mt-1">총 {{ total }}개 작업</p>
+  </div>
+  <a href="/crawling" class="btn-primary px-4 py-2 rounded-lg text-sm">+ 새 수집 요청</a>
+</div>
+
+{% if task_list %}
+<div class="card overflow-hidden">
+  <table class="w-full text-sm" id="tasksTable">
+    <thead>
+      <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+        <th class="px-4 py-3 text-center w-10"><input type="checkbox" id="selectAll" class="rounded"></th>
+        <th class="px-4 py-3 text-left font-semibold text-gray-600">작업명</th>
+        <th class="px-4 py-3 text-left font-semibold text-gray-600">키워드</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-600">요청</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-600">수집</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-600">유저</th>
+        <th class="px-4 py-3 text-center font-semibold text-gray-600">상태</th>
+        <th class="px-4 py-3 text-left font-semibold text-gray-600">생성일</th>
+        <th class="px-4 py-3 text-center font-semibold text-gray-600">상세</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for task in task_list %}
+      {% set ns = namespace(req=0, col=0, usr=0) %}
+      {% for sub in task.sub_tasks %}
+        {% set ns.req = ns.req + (sub.requested_post_count or 0) %}
+        {% set ns.col = ns.col + (sub.collected_post_count or 0) %}
+        {% set ns.usr = ns.usr + (sub.collected_user_count or 0) %}
+      {% endfor %}
+      {% set sl = status_label.get(task.overall_status, ('알수없음', '#94a3b8', '#f1f5f9')) %}
+
+      <!-- 메인 행 -->
+      <tr class="main-row border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition" data-id="{{ task.task_id }}">
+        <td class="px-4 py-3 text-center">
+          {% if task.overall_status in ['media_running','user_extract_running'] %}
+            <input type="checkbox" class="task-cb rounded" disabled>
+          {% else %}
+            <input type="checkbox" class="task-cb rounded" value="{{ task.task_id }}">
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 font-medium text-gray-900">{{ task.task_name }}</td>
+        <td class="px-4 py-3">
+          <div class="flex flex-wrap gap-1">
+            {% for kw in task.keyword_list %}
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium text-indigo-700" style="background:rgba(99,102,241,.1);">#{{ kw }}</span>
+            {% endfor %}
+          </div>
+        </td>
+        <td class="px-4 py-3 text-right text-gray-600">{{ ns.req | int }}</td>
+        <td class="px-4 py-3 text-right">
+          <div class="text-gray-900 font-medium">{{ ns.col | int }}</div>
+          {% if ns.req > 0 %}
+          <div class="w-20 h-1.5 rounded-full mt-1 ml-auto" style="background:#e2e8f0;">
+            <div class="h-1.5 rounded-full" style="background:#6366f1; width:{{ [((ns.col/ns.req)*100)|int, 100]|min }}%;"></div>
+          </div>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-right font-semibold text-gray-900">{{ ns.usr | int }}</td>
+        <td class="px-4 py-3 text-center">
+          <span class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
+            style="color:{{ sl[1] }}; background:{{ sl[2] }};">
+            {% if task.overall_status in ['media_running','user_extract_running'] %}
+            <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 animate-pulse" style="background:{{ sl[1] }};"></span>
+            {% endif %}
+            {{ sl[0] }}
+          </span>
+        </td>
+        <td class="px-4 py-3 text-gray-400 text-xs">{{ task.created_at | datetimeformat }}</td>
+        <td class="px-4 py-3 text-center">
+          <button class="toggle-btn w-7 h-7 rounded-lg flex items-center justify-center mx-auto transition" style="background:#f1f5f9;">
+            <svg class="w-4 h-4 text-gray-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+        </td>
+      </tr>
+
+      <!-- 서브태스크 행 -->
+      <tr class="sub-row hidden" data-parent="{{ task.task_id }}">
+        <td colspan="9" class="px-4 py-3" style="background:#f8fafc;">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="text-gray-500">
+                <th class="py-1.5 text-left px-3 font-medium">키워드</th>
+                <th class="py-1.5 text-right font-medium">요청</th>
+                <th class="py-1.5 text-right font-medium">수집 게시물</th>
+                <th class="py-1.5 text-right font-medium">확보 유저</th>
+                <th class="py-1.5 text-center font-medium">상태</th>
+                <th class="py-1.5 text-left font-medium">생성시간</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for sub in task.sub_tasks %}
+              {% set ssl = status_label.get(sub.status, ('알수없음', '#94a3b8', '#f1f5f9')) %}
+              <tr class="border-t border-gray-200">
+                <td class="py-2 px-3 font-medium text-gray-700">#{{ sub.keyword }}</td>
+                <td class="py-2 text-right text-gray-500">{{ sub.requested_post_count or 0 }}</td>
+                <td class="py-2 text-right text-gray-700">{{ sub.collected_post_count or 0 }}</td>
+                <td class="py-2 text-right font-semibold text-gray-900">{{ sub.collected_user_count or 0 }}</td>
+                <td class="py-2 text-center">
+                  <span class="px-2 py-0.5 rounded-full text-xs font-medium" style="color:{{ ssl[1] }}; background:{{ ssl[2] }};">{{ ssl[0] }}</span>
+                </td>
+                <td class="py-2 text-gray-400">{{ sub.created_at | datetimeformat }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 하단 버튼 -->
+<div class="flex justify-between items-center mt-4">
+  <div class="flex gap-2">
+    <select id="perPage" class="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 outline-none">
+      <option value="10" {% if per_page==10 %}selected{% endif %}>10개씩</option>
+      <option value="20" {% if per_page==20 %}selected{% endif %}>20개씩</option>
+      <option value="50" {% if per_page==50 %}selected{% endif %}>50개씩</option>
+    </select>
+    <span class="px-3 py-2 text-sm text-gray-400">{{ page }} / {{ total_pages }} 페이지</span>
+  </div>
+  <div class="flex gap-2">
+    <button id="viewSelectedBtn" class="btn-primary px-4 py-2 rounded-lg text-sm">선택 유저 조회</button>
+    <button id="deleteSelectedBtn" class="px-4 py-2 rounded-lg text-sm font-semibold text-red-600 border border-red-200 hover:bg-red-50 transition">선택 삭제</button>
+  </div>
+</div>
+
+{% else %}
+<div class="card p-12 text-center">
+  <div class="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style="background:#f1f5f9;">
+    <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+    </svg>
+  </div>
+  <p class="text-gray-400 mb-4">아직 등록된 작업이 없습니다</p>
+  <a href="/crawling" class="btn-primary px-6 py-2.5 rounded-lg text-sm inline-block">첫 수집 시작하기</a>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // 서브태스크 토글
+  document.querySelectorAll('.main-row').forEach(row => {
+    row.addEventListener('click', e => {
+      if (e.target.closest('input') || e.target.closest('button')) return;
+      toggleRow(row);
+    });
+  });
+  document.querySelectorAll('.toggle-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleRow(btn.closest('.main-row'));
+    });
+  });
+
+  function toggleRow(row) {
+    const id = row.dataset.id;
+    const sub = document.querySelector(`.sub-row[data-parent="${id}"]`);
+    if (!sub) return;
+    const isHidden = sub.classList.contains('hidden');
+    sub.classList.toggle('hidden');
+    const icon = row.querySelector('.toggle-btn svg');
+    if (icon) icon.style.transform = isHidden ? 'rotate(180deg)' : '';
+  }
+
+  // 전체선택
+  document.getElementById('selectAll').addEventListener('change', function() {
+    document.querySelectorAll('.task-cb:not(:disabled)').forEach(cb => cb.checked = this.checked);
+  });
+
+  // 선택 유저 조회
+  document.getElementById('viewSelectedBtn').addEventListener('click', () => {
+    const checked = [...document.querySelectorAll('.task-cb:checked')];
+    if (!checked.length) return alert('작업을 선택해주세요.');
+    if (checked.length > 1) return alert('하나의 작업만 선택해주세요.');
+    window.location.href = `/users?task_id=${checked[0].value}`;
+  });
+
+  // 선택 삭제
+  document.getElementById('deleteSelectedBtn').addEventListener('click', () => {
+    const checked = [...document.querySelectorAll('.task-cb:checked')];
+    if (!checked.length) return alert('삭제할 작업을 선택해주세요.');
+    if (!confirm(`${checked.length}개 작업을 삭제하시겠습니까?`)) return;
+    const ids = checked.map(cb => cb.value).join(',');
+    fetch('/delete_tasks', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:`task_ids=${ids}` })
+      .then(r => r.ok ? checked.forEach(cb => {
+        const id = cb.value;
+        document.querySelector(`.main-row[data-id="${id}"]`)?.remove();
+        document.querySelector(`.sub-row[data-parent="${id}"]`)?.remove();
+      }) : r.text().then(t => alert('삭제 실패: ' + t)));
+  });
+});
+</script>
+{% endblock %}

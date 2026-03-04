@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>InstaFinder - 인플루언서 데이터베이스</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"/>
+  <style>
+    * { font-family:"Pretendard Variable",sans-serif; }
+    body { background:#0f172a; color:#e2e8f0; }
+    .gradient-text { background:linear-gradient(135deg,#a5b4fc,#8b5cf6,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent; }
+    .card-dark { background:#1e293b;border:1px solid #334155;border-radius:16px; }
+    .inf-card { background:#1e293b;border:1px solid #334155;border-radius:12px;transition:all .2s;position:relative;overflow:hidden; }
+    .inf-card:hover { border-color:#6366f1;transform:translateY(-2px);box-shadow:0 8px 24px rgba(99,102,241,.2); }
+    .badge { display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:600; }
+    /* 민감정보 잠금 뱃지 */
+    .lock-badge { display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:999px;font-size:10px;font-weight:600;background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.25); }
+    .crawled-badge { display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:999px;font-size:10px;background:rgba(99,102,241,.12);color:#a5b4fc;border:1px solid rgba(99,102,241,.25); }
+    /* 50개 이후 블러 카드 */
+    .blurred-card { filter:blur(6px);pointer-events:none;user-select:none; }
+    .lock-overlay { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;z-index:10; }
+    /* 카운터 애니메이션 */
+    @keyframes countUp { from { opacity:0;transform:translateY(10px); } to { opacity:1;transform:translateY(0); } }
+    .count-anim { animation:countUp .6s ease forwards; }
+    ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}
+    .stat-card { background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #334155;border-radius:16px;padding:20px;text-align:center; }
+  </style>
+</head>
+<body>
+
+<!-- 네비 -->
+<nav class="border-b px-6 py-4 flex items-center justify-between sticky top-0 z-20" style="background:#0f172a99;backdrop-filter:blur(16px);border-color:#1e293b;">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+      <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+    </div>
+    <span class="font-bold text-white text-lg">InstaFinder</span>
+    <span class="text-xs px-2 py-0.5 rounded font-medium" style="background:#312e81;color:#a5b4fc;">Pro</span>
+  </div>
+  <div class="flex items-center gap-3">
+    {% if user %}
+    <a href="/influencers" class="px-4 py-2 rounded-lg text-sm font-semibold text-white" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">관리자 대시보드 →</a>
+    {% else %}
+    <a href="/advertiser/login" class="px-4 py-2 rounded-lg text-sm font-medium text-gray-300 hover:text-white border border-gray-700 hover:border-gray-500 transition">광고주 로그인</a>
+    <a href="/login" class="px-4 py-2 rounded-lg text-sm font-semibold text-white" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">관리자 로그인</a>
+    {% endif %}
+  </div>
+</nav>
+
+<!-- 히어로 -->
+<section class="px-6 py-16 text-center" style="background:radial-gradient(ellipse at top,#1e1b4b 0%,#0f172a 60%);">
+  <div class="max-w-4xl mx-auto">
+    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-6 text-xs font-semibold" style="background:#312e81;color:#a5b4fc;border:1px solid #4338ca;">
+      <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+      실시간 인플루언서 데이터베이스 운영 중
+    </div>
+    <h1 class="text-5xl font-black mb-3 leading-tight">
+      <span class="gradient-text">{{ stats.total | int | string }}명</span>의<br>인플루언서 DB
+    </h1>
+    <p class="text-gray-400 text-lg mb-10">체험단 · 공동구매 · 라이브커머스를 위한 전문 인플루언서 플랫폼</p>
+
+    <!-- 통계 -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="stat-card">
+        <div class="text-4xl font-black gradient-text">{{ stats.total | int }}</div>
+        <div class="text-gray-400 text-sm mt-1">전체 인플루언서</div>
+      </div>
+      <div class="stat-card">
+        <div class="text-4xl font-black" style="color:#10b981;">{{ stats.verified | int }}</div>
+        <div class="text-gray-400 text-sm mt-1">인증 계정</div>
+      </div>
+      <div class="stat-card">
+        <div class="text-4xl font-black" style="color:#f59e0b;">{{ stats.hashtags }}</div>
+        <div class="text-gray-400 text-sm mt-1">수집 해시태그</div>
+      </div>
+      <div class="stat-card">
+        <div class="text-4xl font-black" style="color:#8b5cf6;">
+          {% set tf = stats.total_followers | int %}
+          {% if tf >= 100000000 %}{{ tf // 100000000 }}억{% elif tf >= 10000 %}{{ tf // 10000 }}만{% else %}{{ tf }}{% endif %}
+        </div>
+        <div class="text-gray-400 text-sm mt-1">총 팔로워</div>
+      </div>
+    </div>
+
+    <!-- 데이터 종류 안내 -->
+    <div class="flex justify-center gap-4 text-xs flex-wrap">
+      <div class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+        <span class="text-gray-400">자동 수집</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <svg class="w-3 h-3 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+        <span class="text-gray-400">연락처 · 단가 · 라이브 여부 — 로그인 후 공개</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 인플루언서 목록 -->
+<section class="px-6 pb-20 max-w-7xl mx-auto">
+  <div class="flex items-center justify-between mb-5">
+    <div>
+      <h2 class="text-xl font-bold text-white">인플루언서 목록</h2>
+      <p class="text-gray-500 text-sm mt-0.5">총 <strong class="text-indigo-400">{{ total | int }}</strong>명 ·
+        {% if not user %}처음 50명 공개, 이후 로그인 필요{% else %}전체 공개{% endif %}
+      </p>
+    </div>
+    <div class="flex gap-2">
+      <a href="/?sort=follower_count&page={{ page }}" class="px-3 py-1.5 rounded-lg text-xs font-medium transition {% if sort=='follower_count' %}text-white{% else %}text-gray-400 border border-gray-700 hover:border-indigo-500{% endif %}"
+         {% if sort=='follower_count' %}style="background:#6366f1"{% endif %}>팔로워순</a>
+      <a href="/?sort=engagement_rate&page={{ page }}" class="px-3 py-1.5 rounded-lg text-xs font-medium transition {% if sort=='engagement_rate' %}text-white{% else %}text-gray-400 border border-gray-700 hover:border-indigo-500{% endif %}"
+         {% if sort=='engagement_rate' %}style="background:#6366f1"{% endif %}>참여율순</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3" id="infGrid">
+    {% for r in rows %}
+    {% set global_idx = (page - 1) * 30 + loop.index0 %}
+    {% set is_locked = (not user) and (global_idx >= 50) %}
+
+    <div class="inf-card {% if is_locked %}relative{% endif %}" style="cursor:pointer;"
+         onclick="location.href='{{ '/login' if not user else '/influencers/' + r.pk }}'">
+      {% if is_locked %}
+      <!-- 블러 내용 -->
+      <div class="blurred-card p-4">
+        <div class="flex justify-center mb-3">
+          <div class="w-14 h-14 rounded-full" style="background:#334155;"></div>
+        </div>
+        <div class="h-3 rounded bg-gray-700 mb-2 w-3/4 mx-auto"></div>
+        <div class="h-2 rounded bg-gray-800 mb-3 w-1/2 mx-auto"></div>
+        <div class="h-6 rounded bg-gray-700 w-2/3 mx-auto"></div>
+      </div>
+      <!-- 잠금 오버레이 -->
+      <div class="lock-overlay">
+        <svg class="w-7 h-7 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        <a href="/login" class="text-xs font-bold text-white px-3 py-1.5 rounded-lg" style="background:#6366f1;">로그인</a>
+      </div>
+
+      {% else %}
+      <!-- 공개 카드 -->
+      <div class="p-4">
+        <div class="flex flex-col items-center text-center">
+          <!-- 프로필 이미지 -->
+          {% if r.profile_pic_local %}
+          <img src="/data/{{ r.profile_pic_local }}" alt="{{ r.username }}"
+               class="w-14 h-14 rounded-full object-cover border-2 mb-2 flex-shrink-0" style="border-color:#6366f1;">
+          {% else %}
+          <div class="w-14 h-14 rounded-full flex items-center justify-center text-white text-lg font-bold mb-2 flex-shrink-0"
+               style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+            {{ r.username[0].upper() if r.username else '?' }}
+          </div>
+          {% endif %}
+
+          <!-- 이름 -->
+          <div class="flex items-center gap-1 mb-0.5">
+            <span class="font-bold text-white text-sm leading-tight">@{{ r.username }}</span>
+            {% if r.is_verified %}
+            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="#3b82f6" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            {% endif %}
+          </div>
+          <div class="text-gray-400 text-xs mb-1 truncate w-full">{{ r.full_name or '' }}</div>
+
+          {% if r.hashtags %}
+          <div class="flex flex-wrap justify-center gap-1 mb-2">
+            {% for tag in (r.hashtags or '').split(',')[:2] if tag.strip() %}
+            <span class="badge" style="background:#312e81;color:#a5b4fc;">#{{ tag.strip() }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <!-- 팔로워 (크롤링) -->
+          <div class="w-full rounded-xl p-2 mb-2" style="background:#0f172a;">
+            <div class="flex items-center justify-between text-xs mb-1">
+              <span class="crawled-badge">
+                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                자동수집
+              </span>
+              <span class="text-gray-500 text-xs">팔로워</span>
+            </div>
+            {% set f = r.follower_count | int %}
+            <div class="text-xl font-black" style="color:#a5b4fc;">
+              {% if f >= 10000 %}{{ f // 10000 }}만{% if (f % 10000) >= 1000 %}{{ (f % 10000) // 1000 }}천{% endif %}{% else %}{{ "{:,}".format(f) }}{% endif %}
+            </div>
+          </div>
+
+          <!-- 통계 2개 -->
+          <div class="w-full grid grid-cols-2 gap-1 mb-2">
+            <div class="rounded-lg p-1.5 text-center" style="background:#0f172a;">
+              <div class="font-bold text-xs" style="color:#34d399;">{{ '%.1f'|format(r.engagement_rate or 0) }}%</div>
+              <div class="text-gray-600 text-xs">참여율</div>
+            </div>
+            <div class="rounded-lg p-1.5 text-center" style="background:#0f172a;">
+              {% set v = r.avg_reel_views | int %}
+              <div class="font-bold text-xs" style="color:#c4b5fd;">
+                {% if v >= 10000 %}{{ v // 10000 }}만{% else %}{{ "{:,}".format(v) }}{% endif %}
+              </div>
+              <div class="text-gray-600 text-xs">릴스뷰</div>
+            </div>
+          </div>
+
+          <!-- 민감 정보 잠금 표시 -->
+          <div class="w-full rounded-xl p-2" style="background:#1a0a0a;border:1px solid rgba(239,68,68,.2);">
+            <div class="flex items-center gap-1 mb-1.5">
+              <svg class="w-3 h-3 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+              <span class="text-xs font-semibold text-red-400">민감 정보</span>
+              <span class="text-xs text-gray-600">— 로그인 필요</span>
+            </div>
+            <div class="space-y-1 text-left">
+              {% set locked_items = ['연락처 / 카카오', '협업 단가표', '라이브 가능 여부', '과거 협업 브랜드'] %}
+              {% for item in locked_items %}
+              <div class="flex items-center gap-1.5">
+                <svg class="w-2.5 h-2.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+                <span class="text-xs text-gray-600">{{ item }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="mt-2 w-full text-center py-1.5 rounded-lg text-xs font-semibold text-white"
+             style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">상세보기 →</div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 50개 이후 로그인 유도 배너 -->
+  {% if not user and total > 50 %}
+  <div class="mt-6 rounded-2xl p-8 text-center" style="background:linear-gradient(135deg,#312e81,#1e1b4b);border:1px solid #4338ca;">
+    <div class="text-3xl mb-2">🔒</div>
+    <h3 class="text-xl font-bold text-white mb-2">{{ total - 50 }}명의 인플루언서가 더 있습니다</h3>
+    <p class="text-indigo-300 text-sm mb-5">전체 데이터 열람, 필터링, 연락처·단가 확인은 로그인 후 가능</p>
+    <div class="flex justify-center gap-3">
+      <a href="/login" class="px-6 py-3 rounded-xl font-semibold text-white text-sm" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">관리자 로그인</a>
+      <a href="/advertiser/login" class="px-6 py-3 rounded-xl font-medium text-indigo-300 border border-indigo-600 hover:bg-indigo-900 transition text-sm">광고주 로그인</a>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 페이지네이션 (로그인 유저만) -->
+  {% if user and total_pages > 1 %}
+  <div class="flex justify-center gap-2 mt-8">
+    {% if page > 1 %}<a href="/?sort={{ sort }}&page={{ page-1 }}" class="px-4 py-2 rounded-lg border border-gray-700 text-gray-400 text-sm hover:border-indigo-500 transition">이전</a>{% endif %}
+    {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
+    <a href="/?sort={{ sort }}&page={{ p }}"
+       class="px-4 py-2 rounded-lg text-sm transition {% if p==page %}text-white font-bold{% else %}border border-gray-700 text-gray-400 hover:border-indigo-500{% endif %}"
+       {% if p==page %}style="background:#6366f1"{% endif %}>{{ p }}</a>
+    {% endfor %}
+    {% if page < total_pages %}<a href="/?sort={{ sort }}&page={{ page+1 }}" class="px-4 py-2 rounded-lg border border-gray-700 text-gray-400 text-sm hover:border-indigo-500 transition">다음</a>{% endif %}
+  </div>
+  {% endif %}
+
+</section>
+
+</body>
+</html>

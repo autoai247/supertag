@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}수집 요청 - InstaFinder{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-gray-900">수집 요청</h1>
+  <p class="text-sm text-gray-500 mt-1">해시태그 키워드를 입력하면 해당 게시물에서 인스타 유저를 자동 수집합니다</p>
+</div>
+
+<div class="grid grid-cols-3 gap-6">
+  <!-- 수집 요청 폼 -->
+  <div class="col-span-2 card p-6">
+    {% if message %}
+    <div class="mb-5 px-4 py-3 rounded-lg text-sm flex items-center gap-2" style="background:rgba(16,185,129,.08); border:1px solid rgba(16,185,129,.2); color:#065f46;">
+      <svg class="w-4 h-4 flex-shrink-0" style="color:#10b981;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+      </svg>
+      {{ message|safe }}
+    </div>
+    {% endif %}
+
+    <form action="/crawling" method="post" id="crawlingForm" onsubmit="return validateForm()">
+      <!-- 작업명 -->
+      <div class="mb-5">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">작업 이름 <span class="text-red-500">*</span></label>
+        <input type="text" name="task_name" id="task_name" required
+          placeholder="예: 여행 인플루언서 수집 2026-03"
+          class="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50">
+      </div>
+
+      <!-- 키워드 -->
+      <div class="mb-5">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">해시태그 키워드 <span class="text-red-500">*</span></label>
+        <div class="flex gap-2 mb-2">
+          <input type="text" id="keyword_input"
+            placeholder="키워드 입력 후 Enter 또는 + 버튼 (예: 제주도, 맛집)"
+            class="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition">
+          <button type="button" id="add_btn" class="btn-primary px-4 py-2.5 rounded-lg text-sm whitespace-nowrap">
+            + 추가
+          </button>
+        </div>
+        <!-- 태그 목록 -->
+        <div id="tag_container" class="flex flex-wrap gap-2 min-h-8"></div>
+        <input type="hidden" name="keywords" id="keywords_hidden">
+        <p class="text-xs text-gray-400 mt-2">콤마(,)로 구분해 여러 개를 한번에 추가할 수 있습니다</p>
+      </div>
+
+      <!-- 수집 게시물 수 -->
+      <div class="mb-6">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">키워드당 수집 게시물 수 <span class="text-red-500">*</span></label>
+        <div class="flex items-center gap-4">
+          <input type="number" name="requested_post_count" id="post_count"
+            min="1" max="10000" value="100" required
+            class="w-40 px-4 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition">
+          <div class="flex gap-2">
+            <button type="button" onclick="setCount(100)" class="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600 transition">100</button>
+            <button type="button" onclick="setCount(500)" class="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600 transition">500</button>
+            <button type="button" onclick="setCount(1000)" class="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600 transition">1,000</button>
+            <button type="button" onclick="setCount(5000)" class="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600 transition">5,000</button>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-primary w-full py-3 rounded-lg text-base">
+        수집 시작
+      </button>
+    </form>
+  </div>
+
+  <!-- 안내 -->
+  <div class="space-y-4">
+    <div class="card p-5">
+      <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+        <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        수집 방식
+      </h3>
+      <ol class="text-sm text-gray-600 space-y-2">
+        <li class="flex gap-2"><span class="text-indigo-500 font-bold">1.</span> 해시태그 최신 게시물 수집</li>
+        <li class="flex gap-2"><span class="text-indigo-500 font-bold">2.</span> 게시물에서 유저 ID 추출</li>
+        <li class="flex gap-2"><span class="text-indigo-500 font-bold">3.</span> 유저 상세 프로필 조회</li>
+        <li class="flex gap-2"><span class="text-indigo-500 font-bold">4.</span> DB 저장</li>
+      </ol>
+    </div>
+
+    <div class="card p-5">
+      <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        수집 정보
+      </h3>
+      <ul class="text-sm text-gray-600 space-y-1">
+        <li>• 팔로워 / 팔로우 수</li>
+        <li>• 게시물 수</li>
+        <li>• 자기소개 (바이오)</li>
+        <li>• 공개 이메일</li>
+        <li>• 공개 전화번호</li>
+        <li>• 외부 링크 (URL)</li>
+        <li>• 계정 카테고리</li>
+        <li>• 인증 / 비공개 여부</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+function setCount(n) {
+  document.getElementById('post_count').value = n;
+}
+
+const tagContainer = document.getElementById('tag_container');
+const keywordsHidden = document.getElementById('keywords_hidden');
+
+function addTags(text) {
+  text.split(',').map(s => s.trim()).filter(Boolean).forEach(kw => {
+    if ([...tagContainer.querySelectorAll('span')].some(s => s.dataset.kw === kw)) return;
+    const tag = document.createElement('span');
+    tag.dataset.kw = kw;
+    tag.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-indigo-700';
+    tag.style.background = 'rgba(99,102,241,.1)';
+    tag.innerHTML = `#${kw} <button type="button" onclick="this.parentElement.remove();updateHidden()" class="text-indigo-400 hover:text-red-500 transition font-bold leading-none">×</button>`;
+    tagContainer.appendChild(tag);
+  });
+  updateHidden();
+}
+
+function updateHidden() {
+  keywordsHidden.value = [...tagContainer.querySelectorAll('span')].map(s => s.dataset.kw).join(',');
+}
+
+document.getElementById('add_btn').addEventListener('click', () => {
+  const inp = document.getElementById('keyword_input');
+  addTags(inp.value); inp.value = '';
+});
+
+document.getElementById('keyword_input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('add_btn').click(); }
+});
+
+function validateForm() {
+  if (!keywordsHidden.value.trim()) { alert('키워드를 최소 1개 이상 추가해주세요.'); return false; }
+  return true;
+}
+</script>
+{% endblock %}
