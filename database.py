@@ -315,6 +315,21 @@ def update_influencer_stats(pk: str, stats: dict):
         _sq_run(f"UPDATE {T_INF} SET {sets} WHERE pk=?", list(payload.values()) + [pk])
 
 
+def update_influencer_profile(pk: str, fields: dict):
+    """팔로워 수, 바이오 등 기본 프로필 정보 갱신 (pk 기반)"""
+    if not fields:
+        return
+    allowed = {"follower_count", "following_count", "media_count", "bio", "full_name"}
+    payload = {k: v for k, v in fields.items() if k in allowed}
+    if not payload:
+        return
+    if _USE_SUPABASE:
+        _sb_patch(T_INF, f"?pk=eq.{pk}", payload)
+    else:
+        sets = ",".join(f"{k}=?" for k in payload)
+        _sq_run(f"UPDATE {T_INF} SET {sets} WHERE pk=?", list(payload.values()) + [pk])
+
+
 def upsert_post(data: dict):
     now = time.time()
     if _USE_SUPABASE:
@@ -523,6 +538,13 @@ def get_influencer(pk: str) -> dict:
         r = _sb_get(T_INF, {"pk": f"eq.{pk}"})
         return r[0] if r else {}
     return _sq_one(f"SELECT * FROM {T_INF} WHERE pk=?", (pk,)) or {}
+
+
+def get_influencer_by_username(username: str) -> dict:
+    if _USE_SUPABASE:
+        r = _sb_get(T_INF, {"username": f"eq.{username}"})
+        return r[0] if r else {}
+    return _sq_one(f"SELECT * FROM {T_INF} WHERE username=?", (username,)) or {}
 
 
 def get_influencer_posts(pk: str) -> list:

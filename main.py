@@ -236,6 +236,10 @@ def influencers(
     stats = get_stats()
     refresh = get_refresh_status()
     total_pages = max(1, (total + per_page - 1) // per_page)
+    # 검색어가 있고 결과가 없으면 즉시 수집 제안
+    instant_collect_target = ""
+    if q and total == 0 and re.match(r'^[a-zA-Z0-9._]+$', q):
+        instant_collect_target = q
     return templates.TemplateResponse("influencers.html", {
         "request": request, "user": user,
         "rows": rows, "total": total, "total_pages": total_pages,
@@ -249,7 +253,36 @@ def influencers(
         "is_visual": is_visual,
         "sort": sort, "order": order,
         "stats": stats, "refresh": refresh,
+        "instant_collect_target": instant_collect_target,
     })
+
+
+# ═══════════════════════════════════════════════════════
+# 즉시 수집 (계정명으로 실시간 크롤링)
+# ═══════════════════════════════════════════════════════
+
+@app.post("/influencers/instant-collect")
+async def instant_collect(
+    background_tasks: BackgroundTasks,
+    username: str = Form(...),
+    session_id: Optional[str] = Cookie(default=None)
+):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "로그인 필요"}, 401)
+    username = username.strip().lstrip("@")
+    if not re.match(r'^[a-zA-Z0-9._]+$', username):
+        return JSONResponse({"error": "올바르지 않은 계정명"}, 400)
+
+    from crawler import crawl_single_user
+    # 백그라운드로 실행
+    background_tasks.add_task(_run_instant_collect, username)
+    return JSONResponse({"ok": True, "message": f"@{username} 수집 시작"})
+
+
+def _run_instant_collect(username: str):
+    from crawler import crawl_single_user
+    crawl_single_user(username)
 
 
 # ═══════════════════════════════════════════════════════

@@ -322,17 +322,33 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
         # 통계 계산
         stats = calc_stats(pk, username, medias, follower_count)
 
-        # 프로필 사진 다운로드
+        # 프로필 정보 갱신 (팔로워/팔로잉/게시물수/바이오 등) + 프로필 사진
         pic_local = ""
         try:
             u_info = cl.user_info(int(pk))
+            # 팔로워 수 등 기본 정보 DB 갱신
+            profile_updates = {}
+            if hasattr(u_info, "follower_count") and u_info.follower_count:
+                profile_updates["follower_count"] = u_info.follower_count
+            if hasattr(u_info, "following_count") and u_info.following_count:
+                profile_updates["following_count"] = u_info.following_count
+            if hasattr(u_info, "media_count") and u_info.media_count:
+                profile_updates["media_count"] = u_info.media_count
+            if hasattr(u_info, "biography") and u_info.biography:
+                profile_updates["bio"] = str(u_info.biography)
+            if hasattr(u_info, "full_name") and u_info.full_name:
+                profile_updates["full_name"] = str(u_info.full_name)
+            if profile_updates:
+                from database import update_influencer_profile
+                update_influencer_profile(pk, profile_updates)
+            # 프로필 사진 다운로드
             pic_url = str(u_info.profile_pic_url) if u_info.profile_pic_url else ""
             if pic_url:
                 pic_path = os.path.join(PROFILE_PIC_DIR, f"{username}.jpg")
                 if download_image(pic_url, pic_path):
                     pic_local = f"profile_pics/{username}.jpg"
-        except:
-            pass
+        except Exception as e:
+            log.debug(f"프로필 갱신 오류 {username}: {e}")
 
         stats["profile_pic_local"] = pic_local
 
@@ -396,6 +412,58 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
     except Exception as e:
         log.error(f"[{username}] 상세 수집 실패: {e}")
         return False
+
+
+def crawl_single_user(target_username: str) -> dict:
+    """
+    특정 계정명을 즉시 수집하여 DB에 저장하고 pk 반환.
+    DB에 없는 계정을 검색할 때 실시간으로 호출.
+    """
+    from database import upsert_influencer, get_influencer_by_username
+
+    # 이미 DB에 있으면 상세만 갱신
+    existing = get_influencer_by_username(target_username)
+
+    try:
+        cl, used_acc_id = get_client_from_pool()
+    except Exception as e:
+        log.error(f"계정 풀 로그인 실패: {e}")
+        return {"error": str(e)}
+
+    try:
+        u = cl.user_info_by_username(target_username)
+        pk = str(u.pk)
+
+        # 기본 프로필 upsert
+        upsert_influencer({
+            "pk": pk,
+            "username": u.username,
+            "full_name": str(u.full_name or ""),
+            "follower_count": u.follower_count or 0,
+            "following_count": u.following_count or 0,
+            "media_count": u.media_count or 0,
+            "bio": str(u.biography or ""),
+            "is_private": 1 if u.is_private else 0,
+            "is_verified": 1 if u.is_verified else 0,
+            "hashtag": "__direct__",
+        })
+
+        # 상세 수집 (게시물/통계/프로필 사진)
+        crawl_user_detail(cl, pk, u.username, u.follower_count or 0)
+
+        if used_acc_id:
+            from database import update_account_status
+            update_account_status(used_acc_id, "idle")
+
+        log.info(f"즉시 수집 완료: @{target_username} (pk={pk})")
+        return {"ok": True, "pk": pk, "username": u.username}
+
+    except Exception as e:
+        log.error(f"즉시 수집 실패 @{target_username}: {e}")
+        if used_acc_id:
+            from database import update_account_status
+            update_account_status(used_acc_id, "idle")
+        return {"error": str(e)}
 
 
 def crawl_hashtag(hashtag: str, requested_count: int,
