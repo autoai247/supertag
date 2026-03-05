@@ -28,6 +28,50 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       get_campaigns, create_campaign, get_campaign, get_campaign_influencers,
                       add_to_campaign, remove_from_campaign, delete_campaign)
 
+# ── 해시태그 활동 유형 분석 헬퍼 ──
+_SELLER_KW = {
+    "공동구매","공구","단독공구","공구오픈","공구마감","공구진행","공구알림",
+    "마감임박","품절임박","재오픈","재입고","선착순","추가생산","예약구매","한정수량",
+    "오픈예정","마감","품절","솔드아웃","추가주문",
+    "스마트스토어","쇼핑몰","내쇼핑몰","구매대행","셀러",
+    "링크인바이오","프로필링크","네이버쇼핑","카카오쇼핑",
+    "라이브커머스","네이버라이브","카카오라이브","라이브쇼핑","쇼핑라이브",
+}
+_AD_KW = {
+    "협찬","체험단","광고","유료광고","제공","제공받음","후원","지원받음",
+    "ad","sponsored","partnership","콜라보","콜라보레이션",
+    "ppl","브랜드협찬","브랜드체험","무료체험","서포터즈","앰배서더",
+    "솔직후기","내돈내산","리뷰","사용후기","실사용","내돈내구매",
+}
+
+def _analyze_activity(htags: list) -> dict:
+    """해시태그 사용 빈도 가중합으로 공구셀러 vs 광고수신 vs 순수콘텐츠 비중 계산"""
+    def _match(tag: str, kw_set) -> bool:
+        t = tag.lower().replace(" ", "").replace("#", "")
+        return any(kw in t for kw in kw_set)
+
+    seller_score = sum(h["count"] for h in htags if _match(h["tag"], _SELLER_KW))
+    ad_score     = sum(h["count"] for h in htags if _match(h["tag"], _AD_KW))
+    total_tagged = seller_score + ad_score
+    content_score = max(0, sum(h["count"] for h in htags) - total_tagged)
+    grand = seller_score + ad_score + content_score or 1
+
+    return {
+        "seller_pct":  round(seller_score  / grand * 100),
+        "ad_pct":      round(ad_score      / grand * 100),
+        "content_pct": round(content_score / grand * 100),
+        "seller_tags": [h["tag"] for h in htags if _match(h["tag"], _SELLER_KW)][:8],
+        "ad_tags":     [h["tag"] for h in htags if _match(h["tag"], _AD_KW)][:8],
+        "primary": (
+            "seller"  if seller_score > ad_score * 1.5 and seller_score > 0
+            else "ad" if ad_score > seller_score * 1.5 and ad_score > 0
+            else "mixed"  if total_tagged > 0
+            else "content"
+        ),
+        "has_data": len(htags) > 0,
+    }
+
+
 app = FastAPI()
 app.add_middleware(CORSMiddleware,
     allow_origins=["chrome-extension://*", "*"],
@@ -453,6 +497,9 @@ def influencer_detail(
     except:
         inf["top_hashtags"] = []
 
+    # ── 해시태그 활동 유형 분석 ──
+    activity_analysis = _analyze_activity(inf.get("top_hashtags", []))
+
     # posts DB에 있으면 top posts도 posts 기반으로 재계산
     if posts:
         reels_p = [p for p in posts if p.get("post_type") == "reel"]
@@ -475,6 +522,7 @@ def influencer_detail(
     return templates.TemplateResponse("influencer_detail.html", {
         "request": request, "user": user,
         "inf": inf, "manual": manual, "posts": posts,
+        "activity": activity_analysis,
     })
 
 
@@ -1148,11 +1196,19 @@ def adv_influencer_detail(pk: str, request: Request,
     for key in ["top_posts_likes", "top_posts_comments", "top_reels_views"]:
         try: inf[key] = json.loads(inf.get(key) or "[]")
         except: inf[key] = []
+    try:
+        raw = json.loads(inf.get("top_hashtags") or "[]")
+        inf["top_hashtags"] = [{"tag": t, "count": 1} for t in raw] if raw and isinstance(raw[0], str) else raw
+    except:
+        inf["top_hashtags"] = []
     posts = get_influencer_posts(pk)
+    # 활동 유형 분석 (광고주 뷰에서도 동일하게 표시)
+    activity = _analyze_activity(inf.get("top_hashtags", []))
     return templates.TemplateResponse("influencer_detail.html", {
         "request": request, "adv": adv, "user": None,
         "inf": inf, "manual": manual_safe, "posts": posts,
         "is_advertiser_view": True,
+        "activity": activity,
     })
 
 

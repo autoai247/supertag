@@ -514,6 +514,95 @@
       </div>
     </div>
 
+    <!-- 활동 유형 분석 -->
+    {% if activity and activity.has_data %}
+    <div class="card p-4">
+      <div class="section-title">
+        📊 활동 유형 분석
+        <span class="text-xs font-normal text-gray-400 ml-1">— 해시태그 빈도 기반</span>
+      </div>
+
+      {# 주활동 판정 배너 #}
+      {% if activity.primary == 'seller' %}
+      <div class="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl" style="background:#fff7ed;border:1.5px solid #fed7aa;">
+        <span class="text-lg">🛒</span>
+        <div>
+          <span class="font-bold text-orange-700 text-sm">공동구매 / 쇼핑 셀러 위주</span>
+          <span class="text-xs text-orange-500 ml-1">— 직접 판매 활동이 주를 이룸</span>
+        </div>
+      </div>
+      {% elif activity.primary == 'ad' %}
+      <div class="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl" style="background:#eff6ff;border:1.5px solid #bfdbfe;">
+        <span class="text-lg">📢</span>
+        <div>
+          <span class="font-bold text-blue-700 text-sm">광고 / 체험단 위주</span>
+          <span class="text-xs text-blue-500 ml-1">— 브랜드 협찬·체험 콘텐츠 중심</span>
+        </div>
+      </div>
+      {% elif activity.primary == 'mixed' %}
+      <div class="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl" style="background:#f5f3ff;border:1.5px solid #ddd6fe;">
+        <span class="text-lg">🔀</span>
+        <div>
+          <span class="font-bold text-purple-700 text-sm">공구 + 광고 복합형</span>
+          <span class="text-xs text-purple-500 ml-1">— 판매와 협찬을 병행</span>
+        </div>
+      </div>
+      {% else %}
+      <div class="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl" style="background:#f0fdf4;border:1.5px solid #bbf7d0;">
+        <span class="text-lg">✍️</span>
+        <div>
+          <span class="font-bold text-green-700 text-sm">순수 콘텐츠 크리에이터</span>
+          <span class="text-xs text-green-500 ml-1">— 광고·판매 해시태그 거의 없음</span>
+        </div>
+      </div>
+      {% endif %}
+
+      {# 비율 스택 바 #}
+      <div class="mb-3">
+        <div class="flex text-xs text-gray-500 justify-between mb-1">
+          <span>🛒 공구/판매 {{ activity.seller_pct }}%</span>
+          <span>📢 광고/협찬 {{ activity.ad_pct }}%</span>
+          <span>✍️ 일반 콘텐츠 {{ activity.content_pct }}%</span>
+        </div>
+        <div class="flex h-3 rounded-full overflow-hidden" style="background:#f3f4f6;">
+          {% if activity.seller_pct > 0 %}
+          <div style="width:{{ activity.seller_pct }}%;background:linear-gradient(90deg,#f97316,#fb923c);" title="공구/판매"></div>
+          {% endif %}
+          {% if activity.ad_pct > 0 %}
+          <div style="width:{{ activity.ad_pct }}%;background:linear-gradient(90deg,#3b82f6,#60a5fa);" title="광고/협찬"></div>
+          {% endif %}
+          {% if activity.content_pct > 0 %}
+          <div style="width:{{ activity.content_pct }}%;background:linear-gradient(90deg,#10b981,#34d399);" title="일반 콘텐츠"></div>
+          {% endif %}
+        </div>
+      </div>
+
+      {# 매칭 태그 #}
+      <div class="grid grid-cols-2 gap-3">
+        {% if activity.seller_tags %}
+        <div>
+          <div class="text-xs font-semibold text-orange-600 mb-1.5">🛒 판매 관련 태그</div>
+          <div class="flex flex-wrap gap-1">
+            {% for tag in activity.seller_tags %}
+            <span style="display:inline-flex;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;background:#fff7ed;color:#c2410c;">#{{ tag }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {% if activity.ad_tags %}
+        <div>
+          <div class="text-xs font-semibold text-blue-600 mb-1.5">📢 광고/협찬 관련 태그</div>
+          <div class="flex flex-wrap gap-1">
+            {% for tag in activity.ad_tags %}
+            <span style="display:inline-flex;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;background:#eff6ff;color:#1d4ed8;">#{{ tag }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     <!-- 해시태그 분석 -->
     {% set htags_list = inf.top_hashtags if (inf.top_hashtags is iterable and inf.top_hashtags is not string) else [] %}
     <div class="card p-4">
