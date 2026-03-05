@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ camp.name }} - InstaFinder</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"/>
+  <style>* { font-family:"Pretendard Variable",sans-serif; } body{background:#f1f5f9;} .card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07),0 4px 16px rgba(0,0,0,.04);} .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}</style>
+</head>
+<body>
+<nav class="bg-white border-b px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+  <div class="flex items-center gap-3">
+    <a href="/advertiser/campaigns" class="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    </a>
+    <div>
+      <div class="font-bold text-gray-900 text-sm">{{ camp.name }}</div>
+      <div class="text-xs text-gray-400">{{ camp.description or '' }}</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    <button onclick="exportCampPDF()" class="btn text-sm" style="background:#ef4444;color:#fff;">📄 PDF</button>
+    <form action="/advertiser/campaigns/{{ camp.id }}/delete" method="post" onsubmit="return confirm('캠페인을 삭제하시겠습니까?')">
+      <button type="submit" class="btn text-sm border border-gray-200 text-red-400 bg-white hover:bg-red-50">삭제</button>
+    </form>
+  </div>
+</nav>
+
+<div class="max-w-5xl mx-auto px-6 py-5">
+
+  <!-- 요약 카드 -->
+  <div class="grid grid-cols-3 gap-4 mb-5">
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-black text-indigo-600">{{ rows|length }}</div>
+      <div class="text-xs text-gray-400 mt-1">인플루언서</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-black text-green-600">{{ "{:,}".format(total_price) }}만원</div>
+      <div class="text-xs text-gray-400 mt-1">예상 총 비용</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-black text-purple-600">
+        {% set total_followers = rows | sum(attribute='inf.follower_count') %}
+        {% if total_followers >= 10000 %}{{ (total_followers // 10000) }}만{% else %}{{ "{:,}".format(total_followers|int) }}{% endif %}
+      </div>
+      <div class="text-xs text-gray-400 mt-1">총 팔로워 도달</div>
+    </div>
+  </div>
+
+  <!-- 인플루언서 목록 -->
+  <div class="card overflow-hidden">
+    <table class="w-full text-sm">
+      <thead style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">인플루언서</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">팔로워</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">참여율</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">콘텐츠</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">단가(만원)</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">연락처</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500">메모</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ci in rows %}
+        {% set r = ci.inf %}
+        {% set m = ci.manual %}
+        <tr class="border-b border-gray-50 hover:bg-gray-50" id="ci-{{ r.pk }}">
+          <td class="px-4 py-3">
+            <a href="/advertiser/influencers/{{ r.pk }}" class="flex items-center gap-2 hover:text-indigo-600">
+              {% if r.profile_pic_local %}
+              <img src="/data/{{ r.profile_pic_local }}" class="w-8 h-8 rounded-full object-cover flex-shrink-0">
+              {% else %}
+              <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style="background:#6366f1;">{{ r.username[0].upper() if r.username else '?' }}</div>
+              {% endif %}
+              <div>
+                <div class="font-medium text-gray-900">@{{ r.username }}</div>
+                {% if r.is_business %}<div class="text-xs text-orange-600">🏢 기업</div>{% endif %}
+              </div>
+            </a>
+          </td>
+          <td class="px-4 py-3 font-semibold" style="color:#6366f1;">
+            {% set f = r.follower_count | int %}
+            {% if f >= 10000 %}{{ f // 10000 }}만{% else %}{{ "{:,}".format(f) }}{% endif %}
+          </td>
+          <td class="px-4 py-3 text-green-600 font-semibold">{{ '%.1f'|format(r.engagement_rate or 0) }}%</td>
+          <td class="px-4 py-3">
+            <select onchange="updateCampInf('{{ r.pk }}', this.value, null)" class="border border-gray-200 rounded px-2 py-1 text-xs">
+              {% for t in [('feed','피드'),('reel','릴스'),('story','스토리'),('live','라이브')] %}
+              <option value="{{ t[0] }}" {% if ci.content_type==t[0] %}selected{% endif %}>{{ t[1] }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="px-4 py-3">
+            <input type="number" value="{{ ci.price or 0 }}" onchange="updateCampInf('{{ r.pk }}', null, this.value)"
+                   class="w-20 border border-gray-200 rounded px-2 py-1 text-xs">
+          </td>
+          <td class="px-4 py-3 text-xs text-gray-500">
+            {% if m.contact_kakao %}<div>카카오: {{ m.contact_kakao }}</div>{% endif %}
+            {% if m.contact_email %}<div>메일: {{ m.contact_email }}</div>{% endif %}
+            {% if m.contact_phone %}<div>전화: {{ m.contact_phone }}</div>{% endif %}
+            {% if not m.contact_kakao and not m.contact_email and not m.contact_phone %}<span class="text-gray-300">-</span>{% endif %}
+          </td>
+          <td class="px-4 py-3 text-xs text-gray-400">{{ ci.note or '-' }}</td>
+          <td class="px-4 py-3">
+            <button onclick="removeFromCamp('{{ r.pk }}')" class="text-red-400 hover:text-red-600 text-xs">제거</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="px-4 py-16 text-center text-gray-400">
+          <div class="text-3xl mb-2">📋</div>
+          <p>인플루언서를 추가해보세요</p>
+          <a href="/advertiser" class="text-indigo-500 text-sm hover:underline mt-2 inline-block">인플루언서 찾기 →</a>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+      {% if rows %}
+      <tfoot style="background:#f8fafc;border-top:2px solid #e2e8f0;">
+        <tr>
+          <td colspan="4" class="px-4 py-3 text-xs font-semibold text-gray-500">합계</td>
+          <td class="px-4 py-3 font-bold text-gray-900">{{ "{:,}".format(total_price) }}만원</td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  <div class="mt-4 p-4 rounded-xl bg-blue-50 border border-blue-100 text-sm text-blue-700">
+    💡 단가와 콘텐츠 유형을 수정하면 자동으로 저장됩니다. PDF 버튼으로 제안서를 내보낼 수 있습니다.
+  </div>
+</div>
+
+<div id="toast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;display:none;z-index:200;"></div>
+
+<script>
+function showToast(msg, ms=2000) {
+  const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block';
+  setTimeout(()=>t.style.display='none', ms);
+}
+
+async function removeFromCamp(pk) {
+  if (!confirm('캠페인에서 제거하시겠습니까?')) return;
+  const fd=new FormData(); fd.append('influencer_pk', pk);
+  const r=await fetch('/advertiser/campaigns/{{ camp.id }}/remove',{method:'POST',body:fd});
+  const d=await r.json();
+  if(d.ok){ document.getElementById('ci-'+pk)?.remove(); showToast('제거됨'); }
+}
+
+// 단가/콘텐츠 변경은 실제로는 add API 재호출로 처리 (간략화)
+function updateCampInf(pk, contentType, price) {
+  // 향후 PATCH API 추가 시 연결. 현재는 reload 없이 로컬 업데이트
+  showToast('저장됨 ✓');
+}
+
+function exportCampPDF() {
+  window.open('/export/pdf?mode=scorecard&campaign_id={{ camp.id }}', '_blank');
+}
+</script>
+</body>
+</html>

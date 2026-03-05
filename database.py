@@ -23,6 +23,9 @@ T_CJOB = "insta_collect_jobs"
 T_ADV  = "insta_advertiser_accounts"
 T_RJOB = "insta_refresh_jobs"
 T_ACC  = "insta_accounts"  # 수집용 인스타그램 계정 풀
+T_FAV  = "insta_favorites"        # 광고주 찜 목록
+T_CAMP = "insta_campaigns"         # 캠페인
+T_CINF = "insta_campaign_influencers"  # 캠페인-인플루언서
 
 
 # ─── Supabase REST 헬퍼 ────────────────────────────────────────────
@@ -153,6 +156,35 @@ def init_db():
         last_error TEXT DEFAULT '',
         session_data TEXT DEFAULT '',
         created_at REAL
+    )""")
+
+    c.execute(f"""CREATE TABLE IF NOT EXISTS {T_FAV} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        advertiser_id INTEGER NOT NULL,
+        influencer_pk TEXT NOT NULL,
+        note TEXT DEFAULT '',
+        created_at REAL,
+        UNIQUE(advertiser_id, influencer_pk)
+    )""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS {T_CAMP} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        advertiser_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        budget INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'draft',
+        created_at REAL,
+        updated_at REAL
+    )""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS {T_CINF} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id INTEGER NOT NULL,
+        influencer_pk TEXT NOT NULL,
+        content_type TEXT DEFAULT 'feed',
+        price INTEGER DEFAULT 0,
+        note TEXT DEFAULT '',
+        added_at REAL,
+        UNIQUE(campaign_id, influencer_pk)
     )""")
 
     _migrate(conn)
@@ -908,3 +940,118 @@ def get_refresh_status():
         r = _sb_get(T_RJOB, {"order": "started_at.desc", "limit": "1"})
         return r[0] if r else {}
     return _sq_one(f"SELECT * FROM {T_RJOB} ORDER BY started_at DESC LIMIT 1") or {}
+
+
+# ─── 찜(Favorites) ────────────────────────────────────────────────────
+def get_favorites(advertiser_id: int) -> list:
+    if _USE_SUPABASE:
+        return _sb_get(T_FAV, {"advertiser_id": f"eq.{advertiser_id}", "order": "created_at.desc"}) or []
+    return _sq_all(f"SELECT * FROM {T_FAV} WHERE advertiser_id=? ORDER BY created_at DESC", (advertiser_id,))
+
+def get_favorite_pks(advertiser_id: int) -> set:
+    rows = get_favorites(advertiser_id)
+    return {r.get("influencer_pk") or r["influencer_pk"] for r in rows}
+
+def toggle_favorite(advertiser_id: int, influencer_pk: str) -> bool:
+    """찜 추가/제거. 추가됐으면 True, 제거됐으면 False 반환"""
+    now = time.time()
+    if _USE_SUPABASE:
+        existing = _sb_get(T_FAV, {"advertiser_id": f"eq.{advertiser_id}", "influencer_pk": f"eq.{influencer_pk}"})
+        if existing:
+            _req.delete(_sb_url(T_FAV, f"?advertiser_id=eq.{advertiser_id}&influencer_pk=eq.{influencer_pk}"), headers=_sb_headers())
+            return False
+        else:
+            _sb_post(T_FAV, {"advertiser_id": advertiser_id, "influencer_pk": influencer_pk, "created_at": now})
+            return True
+    conn = get_conn()
+    try:
+        ex = conn.execute(f"SELECT id FROM {T_FAV} WHERE advertiser_id=? AND influencer_pk=?", (advertiser_id, influencer_pk)).fetchone()
+        if ex:
+            conn.execute(f"DELETE FROM {T_FAV} WHERE advertiser_id=? AND influencer_pk=?", (advertiser_id, influencer_pk))
+            conn.commit()
+            return False
+        else:
+            conn.execute(f"INSERT INTO {T_FAV} (advertiser_id,influencer_pk,created_at) VALUES (?,?,?)", (advertiser_id, influencer_pk, now))
+            conn.commit()
+            return True
+    finally:
+        conn.close()
+
+
+# ─── 캠페인(Campaigns) ────────────────────────────────────────────────
+def get_campaigns(advertiser_id: int) -> list:
+    if _USE_SUPABASE:
+        return _sb_get(T_CAMP, {"advertiser_id": f"eq.{advertiser_id}", "order": "created_at.desc"}) or []
+    return _sq_all(f"SELECT * FROM {T_CAMP} WHERE advertiser_id=? ORDER BY created_at DESC", (advertiser_id,))
+
+def create_campaign(advertiser_id: int, name: str, description: str = "", budget: int = 0) -> int:
+    now = time.time()
+    data = {"advertiser_id": advertiser_id, "name": name, "description": description,
+            "budget": budget, "status": "draft", "created_at": now, "updated_at": now}
+    if _USE_SUPABASE:
+        r = _sb_post(T_CAMP, data)
+        return r[0].get("id") if r else None
+    conn = get_conn()
+    try:
+        cur = conn.execute(f"INSERT INTO {T_CAMP} (advertiser_id,name,description,budget,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+                          (advertiser_id, name, description, budget, "draft", now, now))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+def get_campaign(campaign_id: int) -> dict:
+    if _USE_SUPABASE:
+        r = _sb_get(T_CAMP, {"id": f"eq.{campaign_id}"})
+        return r[0] if r else {}
+    return _sq_one(f"SELECT * FROM {T_CAMP} WHERE id=?", (campaign_id,)) or {}
+
+def get_campaign_influencers(campaign_id: int) -> list:
+    if _USE_SUPABASE:
+        return _sb_get(T_CINF, {"campaign_id": f"eq.{campaign_id}"}) or []
+    return _sq_all(f"SELECT * FROM {T_CINF} WHERE campaign_id=? ORDER BY added_at", (campaign_id,))
+
+def add_to_campaign(campaign_id: int, influencer_pk: str, content_type: str = "feed", price: int = 0, note: str = "") -> bool:
+    now = time.time()
+    if _USE_SUPABASE:
+        existing = _sb_get(T_CINF, {"campaign_id": f"eq.{campaign_id}", "influencer_pk": f"eq.{influencer_pk}"})
+        if existing:
+            return False
+        _sb_post(T_CINF, {"campaign_id": campaign_id, "influencer_pk": influencer_pk,
+                           "content_type": content_type, "price": price, "note": note, "added_at": now})
+        return True
+    conn = get_conn()
+    try:
+        ex = conn.execute(f"SELECT id FROM {T_CINF} WHERE campaign_id=? AND influencer_pk=?", (campaign_id, influencer_pk)).fetchone()
+        if ex:
+            return False
+        conn.execute(f"INSERT INTO {T_CINF} (campaign_id,influencer_pk,content_type,price,note,added_at) VALUES (?,?,?,?,?,?)",
+                     (campaign_id, influencer_pk, content_type, price, note, now))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def remove_from_campaign(campaign_id: int, influencer_pk: str):
+    if _USE_SUPABASE:
+        _req.delete(_sb_url(T_CINF, f"?campaign_id=eq.{campaign_id}&influencer_pk=eq.{influencer_pk}"), headers=_sb_headers())
+    else:
+        conn = get_conn()
+        try:
+            conn.execute(f"DELETE FROM {T_CINF} WHERE campaign_id=? AND influencer_pk=?", (campaign_id, influencer_pk))
+            conn.commit()
+        finally:
+            conn.close()
+
+def delete_campaign(campaign_id: int):
+    if _USE_SUPABASE:
+        _req.delete(_sb_url(T_CINF, f"?campaign_id=eq.{campaign_id}"), headers=_sb_headers())
+        _req.delete(_sb_url(T_CAMP, f"?id=eq.{campaign_id}"), headers=_sb_headers())
+    else:
+        conn = get_conn()
+        try:
+            conn.execute(f"DELETE FROM {T_CINF} WHERE campaign_id=?", (campaign_id,))
+            conn.execute(f"DELETE FROM {T_CAMP} WHERE id=?", (campaign_id,))
+            conn.commit()
+        finally:
+            conn.close()

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>캠페인 관리 - InstaFinder</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"/>
+  <style>* { font-family:"Pretendard Variable",sans-serif; } body{background:#f1f5f9;} .card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07),0 4px 16px rgba(0,0,0,.04);} .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}</style>
+</head>
+<body>
+<nav class="bg-white border-b px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+  <div class="flex items-center gap-3">
+    <a href="/advertiser" class="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    </a>
+    <span class="font-bold text-gray-900 text-sm">캠페인 관리</span>
+    <span class="text-xs text-gray-400">| {{ adv.company_name or adv.username }}</span>
+  </div>
+  <button onclick="document.getElementById('newCampModal').classList.remove('hidden')"
+          class="btn text-white text-sm" style="background:#6366f1;">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    새 캠페인
+  </button>
+</nav>
+
+<div class="max-w-4xl mx-auto px-6 py-5">
+  {% if campaigns %}
+  <div class="space-y-3">
+    {% for c in campaigns %}
+    <a href="/advertiser/campaigns/{{ c.id }}" class="card p-5 flex items-center justify-between hover:shadow-md transition block">
+      <div>
+        <div class="font-bold text-gray-900">{{ c.name }}</div>
+        <div class="text-sm text-gray-400 mt-0.5">{{ c.description or '설명 없음' }}</div>
+        <div class="flex items-center gap-3 mt-2 text-xs text-gray-400">
+          <span>예산: <strong class="text-gray-700">{{ "{:,}".format(c.budget or 0) }}원</strong></span>
+          <span class="px-2 py-0.5 rounded-full text-xs font-semibold
+            {% if c.status=='active' %}bg-green-100 text-green-700
+            {% elif c.status=='done' %}bg-gray-100 text-gray-500
+            {% else %}bg-yellow-100 text-yellow-700{% endif %}">
+            {{ '진행중' if c.status=='active' else ('완료' if c.status=='done' else '초안') }}
+          </span>
+        </div>
+      </div>
+      <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center py-24 text-gray-400">
+    <div class="text-5xl mb-4">📋</div>
+    <p class="font-medium mb-2">아직 캠페인이 없습니다</p>
+    <p class="text-sm mb-4">인플루언서를 골라 캠페인에 담고 예산을 한눈에 확인하세요</p>
+    <button onclick="document.getElementById('newCampModal').classList.remove('hidden')"
+            class="btn text-white" style="background:#6366f1;">첫 캠페인 만들기</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- 새 캠페인 모달 -->
+<div id="newCampModal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.4);">
+  <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
+    <h3 class="font-bold text-lg mb-4">새 캠페인 만들기</h3>
+    <div class="space-y-3" id="campForm">
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">캠페인명 *</label>
+        <input type="text" id="campName" placeholder="예: 2026 봄 뷰티 캠페인" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 outline-none focus:border-indigo-400">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">설명</label>
+        <textarea id="campDesc" rows="2" placeholder="캠페인 목적, 제품, 기간..." class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 resize-none outline-none focus:border-indigo-400"></textarea>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">총 예산 (원)</label>
+        <input type="number" id="campBudget" placeholder="0" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 outline-none focus:border-indigo-400">
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button onclick="document.getElementById('newCampModal').classList.add('hidden')" class="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">취소</button>
+        <button onclick="createCamp()" class="flex-1 py-2 rounded-lg text-sm font-semibold text-white" style="background:#6366f1;">만들기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function createCamp() {
+  const name = document.getElementById('campName').value.trim();
+  if (!name) { alert('캠페인명을 입력해주세요'); return; }
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('description', document.getElementById('campDesc').value);
+  fd.append('budget', document.getElementById('campBudget').value || 0);
+  const r = await fetch('/advertiser/campaigns/create', {method:'POST', body:fd});
+  const d = await r.json();
+  if (d.ok) location.href = `/advertiser/campaigns/${d.id}`;
+}
+</script>
+</body>
+</html>

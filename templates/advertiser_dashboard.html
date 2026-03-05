@@ -11,14 +11,23 @@
     .btn { display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer; }
     .badge { display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600; }
     .card { background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.07),0 4px 16px rgba(0,0,0,.04); }
-    .inf-card { transition:all .2s; }
+    .inf-card { transition:all .2s;position:relative; }
     .inf-card:hover { transform:translateY(-2px);box-shadow:0 8px 24px rgba(99,102,241,.15); }
+    .heart-btn { position:absolute;top:8px;right:8px;z-index:10;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.9);border:none;cursor:pointer;transition:all .15s; }
+    .heart-btn:hover { transform:scale(1.15); }
+    .heart-btn svg { width:16px;height:16px; }
+    .camp-btn { position:absolute;top:8px;left:8px;z-index:10;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.9);border:none;cursor:pointer;transition:all .15s; }
+    .camp-btn:hover { background:#e0e7ff; }
+    /* 캠페인 패널 */
+    #campPanel { position:fixed;bottom:20px;right:20px;z-index:100;width:300px; }
+    /* 브랜드 배지 */
+    .brand-badge { position:absolute;bottom:8px;left:8px;z-index:10; }
   </style>
 </head>
 <body>
 
 <!-- 헤더 -->
-<nav class="bg-white border-b px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+<nav class="bg-white border-b px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm">
   <div class="flex items-center gap-3">
     <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
       <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -26,23 +35,27 @@
     <span class="font-bold text-gray-900 text-sm">InstaFinder</span>
     <span class="text-xs text-gray-400">| {{ adv.company_name or adv.username }}</span>
   </div>
-  <div class="flex items-center gap-3">
+  <div class="flex items-center gap-2">
+    <!-- 찜 목록 -->
+    <a href="/advertiser/favorites" class="btn text-sm border border-gray-200 text-gray-600 bg-white hover:bg-gray-50">
+      <svg class="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+      찜 목록
+    </a>
+    <!-- 캠페인 -->
+    <a href="/advertiser/campaigns" class="btn text-sm border border-gray-200 text-gray-600 bg-white hover:bg-gray-50">
+      <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      캠페인
+    </a>
     <!-- 내보내기 -->
     <div class="relative group">
-      <button class="btn text-sm border border-gray-200 text-gray-600 bg-white hover:bg-gray-50">
-        내보내기 ▾
-      </button>
+      <button class="btn text-sm border border-gray-200 text-gray-600 bg-white hover:bg-gray-50">내보내기 ▾</button>
       <div class="hidden group-hover:block absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-1 z-50 min-w-48">
         <a href="/export?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved=1"
            class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg">📊 엑셀</a>
-        <a href="/export/pdf?mode=scorecard&q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved=1"
+        <a href="/export/pdf?mode=scorecard&q={{ q }}&hashtag={{ hashtag }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved=1"
            class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg">📄 PDF 스코어카드</a>
-        <a href="/export/pdf?mode=list&q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved=1"
-           class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg">📄 PDF 비교표</a>
-        <a href="/export/ppt?mode=scorecard&q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved=1"
+        <a href="/export/ppt?mode=scorecard&q={{ q }}&hashtag={{ hashtag }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved=1"
            class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg">📊 PPT 스코어카드</a>
-        <a href="/export/ppt?mode=list&q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved=1"
-           class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg">📊 PPT 비교표</a>
       </div>
     </div>
     <a href="/advertiser/logout" class="text-xs text-gray-400 hover:text-gray-600">로그아웃</a>
@@ -108,54 +121,91 @@
     </form>
   </div>
 
-  <p class="text-sm text-gray-500 mb-4">총 <strong class="text-gray-900">{{ total | int | string }}</strong>명의 인플루언서</p>
+  <div class="flex items-center justify-between mb-4">
+    <p class="text-sm text-gray-500">총 <strong class="text-gray-900">{{ total | int | string }}</strong>명</p>
+    {% if campaigns %}
+    <div class="flex items-center gap-2 text-xs text-gray-500">
+      <span>캠페인에 담기:</span>
+      <select id="activeCampaign" class="border border-gray-200 rounded-lg px-2 py-1 text-xs">
+        {% for c in campaigns %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+  </div>
 
   <!-- 인플루언서 그리드 -->
   <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
     {% for r in rows %}
-    <a href="/advertiser/influencers/{{ r.pk }}" class="card inf-card p-4 block">
-      <div class="flex flex-col items-center text-center">
-        {% if r.profile_pic_local %}
-        <img src="/data/{{ r.profile_pic_local }}" alt="{{ r.username }}"
-             class="w-16 h-16 rounded-full object-cover border-2 mb-2" style="border-color:#6366f1;">
-        {% else %}
-        <div class="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold mb-2"
-             style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
-          {{ r.username[0].upper() if r.username else '?' }}
-        </div>
-        {% endif %}
-        <div class="flex items-center gap-1 mb-0.5">
-          <span class="font-bold text-gray-900 text-sm">@{{ r.username }}</span>
-          {% if r.is_verified %}<svg class="w-3.5 h-3.5" fill="#3b82f6" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>{% endif %}
-        </div>
-        <div class="text-gray-400 text-xs mb-2">{{ r.full_name or '' }}</div>
+    <div class="card inf-card p-4">
+      <!-- 찜 버튼 -->
+      <button class="heart-btn" onclick="toggleFav(this, '{{ r.pk }}')" data-pk="{{ r.pk }}"
+              title="찜하기">
+        <svg fill="{% if r.pk in fav_pks %}#ef4444{% else %}none{% endif %}"
+             stroke="{% if r.pk in fav_pks %}#ef4444{% else %}#d1d5db{% endif %}"
+             stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+        </svg>
+      </button>
+      <!-- 캠페인 담기 버튼 -->
+      {% if campaigns %}
+      <button class="camp-btn" onclick="addToCamp(this, '{{ r.pk }}')" title="캠페인에 담기">
+        <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+      </button>
+      {% endif %}
 
-        <div class="font-black text-lg" style="color:#6366f1;">
-          {% set f = r.follower_count | int %}
-          {% if f >= 10000 %}{{ f // 10000 }}만{% if (f % 10000) >= 1000 %}{{ (f % 10000) // 1000 }}천{% endif %}{% else %}{{ "{:,}".format(f) }}{% endif %}
-        </div>
-        <div class="text-gray-400 text-xs mb-2">팔로워</div>
-
-        <div class="w-full grid grid-cols-2 gap-1 text-xs">
-          <div class="bg-gray-50 rounded-lg p-1.5 text-center">
-            <div class="font-semibold text-green-600">{{ '%.1f'|format(r.engagement_rate or 0) }}%</div>
-            <div class="text-gray-400">참여율</div>
+      <a href="/advertiser/influencers/{{ r.pk }}" class="block">
+        <div class="flex flex-col items-center text-center">
+          {% if r.profile_pic_local %}
+          <img src="/data/{{ r.profile_pic_local }}" alt="{{ r.username }}"
+               class="w-16 h-16 rounded-full object-cover border-2 mb-2" style="border-color:#6366f1;">
+          {% else %}
+          <div class="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold mb-2"
+               style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+            {{ r.username[0].upper() if r.username else '?' }}
           </div>
-          <div class="bg-gray-50 rounded-lg p-1.5 text-center">
-            <div class="font-semibold text-purple-600">
-              {% set v = r.avg_reel_views | int %}
-              {% if v >= 10000 %}{{ v // 10000 }}만{% else %}{{ "{:,}".format(v) }}{% endif %}
+          {% endif %}
+          <div class="flex items-center gap-1 mb-0.5 flex-wrap justify-center">
+            <span class="font-bold text-gray-900 text-sm">@{{ r.username }}</span>
+            {% if r.is_verified %}<svg class="w-3.5 h-3.5 flex-shrink-0" fill="#3b82f6" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>{% endif %}
+          </div>
+          <div class="text-gray-400 text-xs mb-1">{{ r.full_name or '' }}</div>
+
+          <!-- 브랜드/기업 배지 -->
+          {% if r.is_business %}
+          <span class="badge mb-1" style="background:#fff7ed;color:#c2410c;font-size:9px;">🏢 기업/브랜드</span>
+          {% endif %}
+
+          <div class="font-black text-lg" style="color:#6366f1;">
+            {% set f = r.follower_count | int %}
+            {% if f >= 10000 %}{{ f // 10000 }}만{% if (f % 10000) >= 1000 %}{{ (f % 10000) // 1000 }}천{% endif %}{% else %}{{ "{:,}".format(f) }}{% endif %}
+          </div>
+          <div class="text-gray-400 text-xs mb-2">팔로워</div>
+
+          <div class="w-full grid grid-cols-2 gap-1 text-xs">
+            <div class="bg-gray-50 rounded-lg p-1.5 text-center">
+              <div class="font-semibold text-green-600">{{ '%.1f'|format(r.engagement_rate or 0) }}%</div>
+              <div class="text-gray-400">참여율</div>
             </div>
-            <div class="text-gray-400">릴스뷰</div>
+            <div class="bg-gray-50 rounded-lg p-1.5 text-center">
+              <div class="font-semibold text-purple-600">
+                {% set v = r.avg_reel_views | int %}
+                {% if v >= 10000 %}{{ v // 10000 }}만{% else %}{{ "{:,}".format(v) }}{% endif %}
+              </div>
+              <div class="text-gray-400">릴스뷰</div>
+            </div>
+          </div>
+
+          <div class="mt-2 flex flex-wrap justify-center gap-1">
+            {% if r.can_live %}<span class="badge text-orange-700" style="background:rgba(245,158,11,.1);">📡 라이브</span>{% endif %}
+            {% if r.manual_category %}<span class="badge text-gray-600" style="background:#f1f5f9;">{{ r.manual_category }}</span>{% endif %}
           </div>
         </div>
-
-        <div class="mt-2 flex flex-wrap justify-center gap-1">
-          {% if r.can_live %}<span class="badge text-orange-700" style="background:rgba(245,158,11,.1);">📡 라이브</span>{% endif %}
-          {% if r.manual_category %}<span class="badge text-gray-600" style="background:#f1f5f9;">{{ r.manual_category }}</span>{% endif %}
-        </div>
-      </div>
-    </a>
+      </a>
+    </div>
     {% else %}
     <div class="col-span-5 text-center py-16 text-gray-400">
       <div class="text-4xl mb-3">🔍</div>
@@ -178,5 +228,54 @@
   {% endif %}
 
 </div>
+
+<!-- 토스트 -->
+<div id="toast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;display:none;z-index:200;"></div>
+
+<script>
+function showToast(msg, ms=2000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', ms);
+}
+
+async function toggleFav(btn, pk) {
+  const fd = new FormData();
+  fd.append('influencer_pk', pk);
+  const r = await fetch('/advertiser/favorites/toggle', {method:'POST', body:fd});
+  const d = await r.json();
+  if (d.ok) {
+    const svg = btn.querySelector('svg');
+    if (d.favorited) {
+      svg.setAttribute('fill', '#ef4444');
+      svg.setAttribute('stroke', '#ef4444');
+      showToast('찜 목록에 추가했습니다 ❤️');
+    } else {
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', '#d1d5db');
+      showToast('찜 목록에서 제거했습니다');
+    }
+  }
+}
+
+async function addToCamp(btn, pk) {
+  const sel = document.getElementById('activeCampaign');
+  if (!sel) { showToast('먼저 캠페인을 만들어주세요'); return; }
+  const campId = sel.value;
+  const fd = new FormData();
+  fd.append('influencer_pk', pk);
+  const r = await fetch(`/advertiser/campaigns/${campId}/add`, {method:'POST', body:fd});
+  const d = await r.json();
+  if (d.ok) {
+    if (d.added) {
+      btn.style.background = '#c7d2fe';
+      showToast('캠페인에 추가했습니다 ✓');
+    } else {
+      showToast('이미 캠페인에 있습니다');
+    }
+  }
+}
+</script>
+
 </body>
 </html>

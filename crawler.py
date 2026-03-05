@@ -338,6 +338,18 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
                 profile_updates["bio"] = str(u_info.biography)
             if hasattr(u_info, "full_name") and u_info.full_name:
                 profile_updates["full_name"] = str(u_info.full_name)
+            # 브랜드/기업 계정 자동 감지
+            is_biz = 1 if getattr(u_info, "is_business", False) else 0
+            cat = str(getattr(u_info, "category", "") or "")
+            profile_updates["is_business"] = is_biz
+            if cat:
+                profile_updates["category"] = cat
+            # is_business=True 면 manual.is_brand 도 자동 태깅
+            if is_biz:
+                from database import save_manual, get_manual
+                m = get_manual(pk)
+                if not m.get("is_brand"):
+                    save_manual(pk, {**m, "is_brand": 1})
             if profile_updates:
                 from database import update_influencer_profile
                 update_influencer_profile(pk, profile_updates)

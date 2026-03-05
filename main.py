@@ -21,7 +21,11 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       delete_hashtag as db_delete_hashtag, update_hashtag_status,
                       add_collect_job, update_collect_job,
                       get_accounts, upsert_account, delete_account, update_account_status,
-                      reset_account_errors)
+                      reset_account_errors,
+                      get_influencer_by_username, update_influencer_profile,
+                      get_favorites, get_favorite_pks, toggle_favorite,
+                      get_campaigns, create_campaign, get_campaign, get_campaign_influencers,
+                      add_to_campaign, remove_from_campaign, delete_campaign)
 
 app = FastAPI()
 
@@ -831,6 +835,110 @@ def adv_logout(adv_session_id: Optional[str] = Cookie(default=None)):
     res.delete_cookie("adv_session_id")
     return res
 
+# ─── 찜 API ───────────────────────────────────────────────────────────
+@app.post("/advertiser/favorites/toggle")
+def adv_toggle_favorite(
+    influencer_pk: str = Form(...),
+    adv_session_id: Optional[str] = Cookie(default=None)
+):
+    adv = get_adv_user(adv_session_id)
+    if not adv: return JSONResponse({"error": "로그인 필요"}, 401)
+    added = toggle_favorite(adv["id"], influencer_pk)
+    return JSONResponse({"ok": True, "favorited": added})
+
+@app.get("/advertiser/favorites", response_class=HTMLResponse)
+def adv_favorites_page(request: Request, adv_session_id: Optional[str] = Cookie(default=None)):
+    adv = get_adv_user(adv_session_id)
+    if not adv: return RedirectResponse("/advertiser/login", 302)
+    favs = get_favorites(adv["id"])
+    pks = [f["influencer_pk"] for f in favs]
+    rows = [get_influencer(pk) for pk in pks if pk]
+    rows = [r for r in rows if r]
+    campaigns = get_campaigns(adv["id"])
+    return templates.TemplateResponse("advertiser_favorites.html", {
+        "request": request, "adv": adv, "rows": rows,
+        "fav_pks": set(pks), "campaigns": campaigns,
+    })
+
+
+# ─── 캠페인 API ────────────────────────────────────────────────────────
+@app.post("/advertiser/campaigns/create")
+def adv_create_campaign(
+    name: str = Form(...),
+    description: str = Form(default=""),
+    budget: int = Form(default=0),
+    adv_session_id: Optional[str] = Cookie(default=None)
+):
+    adv = get_adv_user(adv_session_id)
+    if not adv: return JSONResponse({"error": "로그인 필요"}, 401)
+    camp_id = create_campaign(adv["id"], name, description, budget)
+    return JSONResponse({"ok": True, "id": camp_id})
+
+@app.get("/advertiser/campaigns", response_class=HTMLResponse)
+def adv_campaigns_page(request: Request, adv_session_id: Optional[str] = Cookie(default=None)):
+    adv = get_adv_user(adv_session_id)
+    if not adv: return RedirectResponse("/advertiser/login", 302)
+    camps = get_campaigns(adv["id"])
+    return templates.TemplateResponse("advertiser_campaigns.html", {
+        "request": request, "adv": adv, "campaigns": camps,
+    })
+
+@app.get("/advertiser/campaigns/{camp_id}", response_class=HTMLResponse)
+def adv_campaign_detail(camp_id: int, request: Request, adv_session_id: Optional[str] = Cookie(default=None)):
+    adv = get_adv_user(adv_session_id)
+    if not adv: return RedirectResponse("/advertiser/login", 302)
+    camp = get_campaign(camp_id)
+    if not camp or camp.get("advertiser_id") != adv["id"]: raise HTTPException(403)
+    cinfs = get_campaign_influencers(camp_id)
+    # 인플루언서 상세 정보 조인
+    rows = []
+    total_price = 0
+    for ci in cinfs:
+        inf = get_influencer(ci["influencer_pk"])
+        if inf:
+            manual = get_manual(ci["influencer_pk"])
+            rows.append({**ci, "inf": inf, "manual": manual})
+            total_price += ci.get("price", 0) or 0
+    return templates.TemplateResponse("advertiser_campaign_detail.html", {
+        "request": request, "adv": adv, "camp": camp,
+        "rows": rows, "total_price": total_price,
+    })
+
+@app.post("/advertiser/campaigns/{camp_id}/add")
+def adv_add_to_campaign(
+    camp_id: int,
+    influencer_pk: str = Form(...),
+    content_type: str = Form(default="feed"),
+    price: int = Form(default=0),
+    note: str = Form(default=""),
+    adv_session_id: Optional[str] = Cookie(default=None)
+):
+    adv = get_adv_user(adv_session_id)
+    if not adv: return JSONResponse({"error": "로그인 필요"}, 401)
+    camp = get_campaign(camp_id)
+    if not camp or camp.get("advertiser_id") != adv["id"]: return JSONResponse({"error": "권한 없음"}, 403)
+    added = add_to_campaign(camp_id, influencer_pk, content_type, price, note)
+    return JSONResponse({"ok": True, "added": added})
+
+@app.post("/advertiser/campaigns/{camp_id}/remove")
+def adv_remove_from_campaign(
+    camp_id: int,
+    influencer_pk: str = Form(...),
+    adv_session_id: Optional[str] = Cookie(default=None)
+):
+    adv = get_adv_user(adv_session_id)
+    if not adv: return JSONResponse({"error": "로그인 필요"}, 401)
+    remove_from_campaign(camp_id, influencer_pk)
+    return JSONResponse({"ok": True})
+
+@app.post("/advertiser/campaigns/{camp_id}/delete")
+def adv_delete_campaign(camp_id: int, adv_session_id: Optional[str] = Cookie(default=None)):
+    adv = get_adv_user(adv_session_id)
+    if not adv: return JSONResponse({"error": "로그인 필요"}, 401)
+    delete_campaign(camp_id)
+    return RedirectResponse("/advertiser/campaigns", 302)
+
+
 @app.get("/advertiser", response_class=HTMLResponse)
 def adv_dashboard(
     request: Request,
@@ -867,6 +975,9 @@ def adv_dashboard(
     )
     total_pages = max(1, (total + per_page - 1) // per_page)
     allowed_list = [h.strip() for h in allowed_hashtags.split(",") if h.strip()] if allowed_hashtags else []
+    adv_id = adv.get("id", 0)
+    fav_pks = get_favorite_pks(adv_id)
+    campaigns = get_campaigns(adv_id)
 
     return templates.TemplateResponse("advertiser_dashboard.html", {
         "request": request, "adv": adv,
@@ -877,6 +988,8 @@ def adv_dashboard(
         "main_category": main_category, "can_live": can_live,
         "sort": sort, "order": order,
         "allowed_hashtags": allowed_list,
+        "fav_pks": fav_pks,
+        "campaigns": campaigns,
     })
 
 @app.get("/advertiser/influencers/{pk}", response_class=HTMLResponse)
