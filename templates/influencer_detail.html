@@ -7,13 +7,10 @@
 .stat-box .val { font-size:1.75rem;font-weight:900;line-height:1; }
 .stat-box .lbl { font-size:11px;color:#94a3b8;margin-top:4px; }
 .stat-box .sub { font-size:10px;color:#cbd5e1;margin-top:2px; }
-.attr-chip { display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;font-size:12px;font-weight:600; }
-.attr-chip.active { background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0; }
-.attr-chip.inactive { background:#f8fafc;color:#94a3b8;border:1px solid #e2e8f0; }
 .tab-btn { padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;border:none;background:transparent;color:#64748b; }
 .tab-btn.active { background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff; }
 .tab-btn:hover:not(.active) { background:#f1f5f9;color:#374151; }
-.post-thumb { aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative;cursor:pointer; }
+.post-thumb { aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;display:block; }
 .post-thumb img { width:100%;height:100%;object-fit:cover;transition:transform .2s; }
 .post-thumb:hover img { transform:scale(1.05); }
 .post-thumb .overlay { position:absolute;inset:0;background:rgba(0,0,0,0);transition:background .2s;display:flex;align-items:center;justify-content:center; }
@@ -22,7 +19,7 @@
 .post-thumb:hover .overlay-txt { opacity:1; }
 .post-thumb .reel-icon { position:absolute;top:5px;left:5px;background:rgba(0,0,0,.5);border-radius:4px;padding:2px 4px; }
 .post-thumb .sponsored-icon { position:absolute;top:5px;right:5px;background:#fbbf24;border-radius:4px;padding:2px 4px;font-size:9px;font-weight:700;color:#fff; }
-.price-row { display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9; }
+.price-row { display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f1f5f9; }
 .price-row:last-child { border-bottom:none; }
 .section-title { font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;display:flex;align-items:center;gap:6px; }
 .info-row { display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0; }
@@ -30,9 +27,6 @@
 .info-row .value { font-weight:600;color:#374151; }
 .hashtag-chip { display:inline-flex;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;background:#ede9fe;color:#7c3aed;margin:2px; }
 .collab-chip { display:inline-flex;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;background:#e0f2fe;color:#0369a1;margin:2px; }
-.sponsored-bar { height:10px;border-radius:999px;background:#fee2e2;overflow:hidden; }
-.sponsored-bar .fill { height:100%;background:linear-gradient(90deg,#f59e0b,#ef4444);border-radius:999px; }
-/* 툴팁 */
 .tip { position:relative;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#e2e8f0;color:#94a3b8;font-size:9px;font-weight:700;cursor:help;flex-shrink:0; }
 .tip::after { content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1e293b;color:#f1f5f9;padding:6px 10px;border-radius:8px;font-size:11px;font-weight:400;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .2s;z-index:100;min-width:160px;text-align:center;line-height:1.4; }
 .tip:hover::after { opacity:1; }
@@ -50,12 +44,10 @@
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
     </a>
     <div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
         <h1 class="text-xl font-bold text-gray-900">@{{ inf.username }}</h1>
         {% if inf.is_verified %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#dbeafe;color:#1d4ed8;">✓ 인증</span>{% endif %}
         {% if manual.can_live %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#fef3c7;color:#b45309;">📡 라이브가능</span>{% endif %}
-        {% if manual.is_visual %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#fdf2f8;color:#be185d;">✨ 비주얼</span>{% endif %}
-        {% if manual.face_exposed %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#fff1f2;color:#be123c;">👤 얼굴노출가능</span>{% endif %}
         {% if manual.is_approved %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#d1fae5;color:#065f46;">✓ 배포승인</span>{% endif %}
       </div>
       {% if inf.full_name %}<p class="text-sm text-gray-400">{{ inf.full_name }}</p>{% endif %}
@@ -66,113 +58,94 @@
     <a href="/influencers/{{ inf.pk }}/edit" class="btn btn-ghost btn-sm">✏️ 수동편집</a>
     <button onclick="refreshOne(this)" class="btn btn-ghost btn-sm">🔄 상세갱신</button>
     {% endif %}
-    <!-- PDF 다운 -->
     <button onclick="document.getElementById('pdfModal').style.display='flex'"
-       class="btn btn-sm" style="background:#ef4444;color:#fff;">
-      📄 PDF 다운
-    </button>
-    <!-- PPT 다운 -->
+       class="btn btn-sm" style="background:#ef4444;color:#fff;">📄 PDF</button>
     <button onclick="document.getElementById('pptModal').style.display='flex'"
-       class="btn btn-sm" style="background:#f59e0b;color:#fff;">
-      📊 PPT 다운
-    </button>
-    <a href="https://www.instagram.com/{{ inf.username }}/" target="_blank"
-       class="btn btn-ghost btn-sm">
+       class="btn btn-sm" style="background:#f59e0b;color:#fff;">📊 PPT</button>
+    <a href="https://www.instagram.com/{{ inf.username }}/" target="_blank" class="btn btn-ghost btn-sm">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
       인스타
     </a>
   </div>
 </div>
 
-<!-- ── 상단 통계: 3 + 5 (피드/릴스) ── -->
-<!-- Row 1: 핵심 지표 -->
-<div class="grid grid-cols-3 gap-3 mb-2">
+<!-- ── 핵심 통계 3박스 ── -->
+<div class="grid grid-cols-3 gap-3 mb-3">
   <div class="stat-box">
     <div class="val" style="color:#6366f1;">
       {% set f = inf.follower_count | int %}
       {% if f >= 10000 %}{{ f // 10000 }}만{% if (f % 10000) >= 1000 %}{{ (f % 10000) // 1000 }}천{% endif %}{% else %}{{ "{:,}".format(f) }}{% endif %}
     </div>
     <div class="lbl flex items-center justify-center gap-1">팔로워
-      <span class="tip" data-tip="인스타그램 팔로워 수. 팔로잉 수 대비 비율도 확인하세요.">?</span>
+      <span class="tip" data-tip="인스타그램 팔로워 수.">?</span>
     </div>
     <div class="sub">팔로잉 {{ inf.following_count | fmtn }}</div>
   </div>
   <div class="stat-box">
     <div class="val" style="color:#10b981;">{{ '%.2f'|format(inf.engagement_rate or 0) }}%</div>
     <div class="lbl flex items-center justify-center gap-1">참여율
-      <span class="tip" data-tip="(평균 좋아요+댓글) ÷ 팔로워 × 100. 팔로워의 실제 반응 비율. 3% 이상이면 우수, 1% 미만이면 팔로워 품질 확인 필요.">?</span>
+      <span class="tip" data-tip="(평균 좋아요+댓글) ÷ 팔로워 × 100. 3% 이상이면 우수.">?</span>
     </div>
     <div class="sub">좋아요+댓글 ÷ 팔로워</div>
   </div>
   <div class="stat-box">
     <div class="val" style="color:#ef4444;">{{ '%.1f'|format(inf.sponsored_ratio or 0) }}%</div>
     <div class="lbl flex items-center justify-center gap-1">협찬/광고 비율
-      <span class="tip" data-tip="#광고 #협찬 #제공 등이 포함된 게시물 비율. 높을수록 팔로워 신뢰도·참여율이 낮을 수 있음.">?</span>
+      <span class="tip" data-tip="#광고 #협찬 #제공 포함 게시물 비율. 높을수록 신뢰도 주의.">?</span>
     </div>
     <div class="sub">최근 게시물 기준</div>
   </div>
 </div>
-<!-- Row 2: 피드/릴스 세부 지표 (그룹 박스) -->
+
+<!-- ── 피드/릴스 그룹 박스 ── -->
 <div class="grid grid-cols-2 gap-3 mb-5">
-  <!-- 📸 피드 그룹 -->
   <div style="background:#eff6ff;border-radius:14px;padding:14px 16px;border:1.5px solid #c7d7fd;">
     <div class="flex items-center gap-2 mb-3">
-      <span style="font-size:20px;">📸</span>
-      <span style="font-size:18px;font-weight:900;color:#4f46e5;letter-spacing:.3px;">피드</span>
+      <span style="font-size:18px;">📸</span>
+      <span style="font-size:16px;font-weight:900;color:#4f46e5;">피드</span>
       <span style="font-size:11px;color:#818cf8;margin-left:auto;">{{ inf.feed_count or 0 }}개 기준</span>
     </div>
     <div class="grid grid-cols-2 gap-2">
       <div style="background:#fff;border-radius:10px;padding:12px;text-align:center;">
-        <div style="font-size:1.5rem;font-weight:900;color:#4f46e5;line-height:1;">{{ inf.avg_feed_likes | fmtn if inf.avg_feed_likes else '-' }}</div>
-        <div style="font-size:11px;color:#818cf8;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:3px;">평균 좋아요
-          <span class="tip" data-tip="피드 게시물의 평균 좋아요 수.">?</span>
-        </div>
+        <div style="font-size:1.4rem;font-weight:900;color:#4f46e5;line-height:1;">{{ inf.avg_feed_likes | fmtn if inf.avg_feed_likes else '-' }}</div>
+        <div style="font-size:11px;color:#818cf8;margin-top:4px;">평균 좋아요</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:12px;text-align:center;">
-        <div style="font-size:1.5rem;font-weight:900;color:#4f46e5;line-height:1;">{{ inf.avg_feed_comments | fmtn if inf.avg_feed_comments else '-' }}</div>
-        <div style="font-size:11px;color:#818cf8;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:3px;">평균 댓글
-          <span class="tip" data-tip="피드 게시물당 평균 댓글 수. 팬과의 소통 지표.">?</span>
-        </div>
+        <div style="font-size:1.4rem;font-weight:900;color:#4f46e5;line-height:1;">{{ inf.avg_feed_comments | fmtn if inf.avg_feed_comments else '-' }}</div>
+        <div style="font-size:11px;color:#818cf8;margin-top:4px;">평균 댓글</div>
       </div>
     </div>
   </div>
-  <!-- 🎬 릴스 그룹 -->
   <div style="background:#f5f3ff;border-radius:14px;padding:14px 16px;border:1.5px solid #ddd6fe;">
     <div class="flex items-center gap-2 mb-3">
-      <span style="font-size:20px;">🎬</span>
-      <span style="font-size:18px;font-weight:900;color:#7c3aed;letter-spacing:.3px;">릴스</span>
+      <span style="font-size:18px;">🎬</span>
+      <span style="font-size:16px;font-weight:900;color:#7c3aed;">릴스</span>
       <span style="font-size:11px;color:#a78bfa;margin-left:auto;">{{ inf.reel_count or 0 }}개 기준</span>
     </div>
     <div class="grid grid-cols-3 gap-2">
       <div style="background:#fff;border-radius:10px;padding:12px;text-align:center;">
-        <div style="font-size:1.4rem;font-weight:900;color:#7c3aed;line-height:1;">{{ inf.avg_reel_views | fmtn if inf.avg_reel_views else '-' }}</div>
-        <div style="font-size:11px;color:#a78bfa;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:3px;">평균 조회
-          <span class="tip" data-tip="릴스 평균 조회수. 팔로워보다 많으면 비팔로워에게도 도달 중.">?</span>
-        </div>
+        <div style="font-size:1.3rem;font-weight:900;color:#7c3aed;line-height:1;">{{ inf.avg_reel_views | fmtn if inf.avg_reel_views else '-' }}</div>
+        <div style="font-size:11px;color:#a78bfa;margin-top:4px;">평균 조회</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:12px;text-align:center;">
-        <div style="font-size:1.4rem;font-weight:900;color:#7c3aed;line-height:1;">{{ inf.avg_reel_likes | fmtn if inf.avg_reel_likes else '-' }}</div>
-        <div style="font-size:11px;color:#a78bfa;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:3px;">평균 좋아요
-          <span class="tip" data-tip="릴스 게시물당 평균 좋아요 수.">?</span>
-        </div>
+        <div style="font-size:1.3rem;font-weight:900;color:#7c3aed;line-height:1;">{{ inf.avg_reel_likes | fmtn if inf.avg_reel_likes else '-' }}</div>
+        <div style="font-size:11px;color:#a78bfa;margin-top:4px;">평균 좋아요</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:12px;text-align:center;">
-        <div style="font-size:1.4rem;font-weight:900;color:#7c3aed;line-height:1;">{{ inf.avg_reel_comments | fmtn if inf.avg_reel_comments else '-' }}</div>
-        <div style="font-size:11px;color:#a78bfa;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:3px;">평균 댓글
-          <span class="tip" data-tip="릴스 게시물당 평균 댓글 수.">?</span>
-        </div>
+        <div style="font-size:1.3rem;font-weight:900;color:#7c3aed;line-height:1;">{{ inf.avg_reel_comments | fmtn if inf.avg_reel_comments else '-' }}</div>
+        <div style="font-size:11px;color:#a78bfa;margin-top:4px;">평균 댓글</div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ── 메인 레이아웃 ── -->
+<!-- ── 메인 2컬럼 레이아웃 ── -->
 <div class="grid grid-cols-3 gap-4">
 
-  <!-- ── 왼쪽 1/3: 프로필 + 정보 ── -->
+  <!-- ── 왼쪽 1/3 ── -->
   <div class="space-y-3">
 
-    <!-- 프로필 카드 -->
+    <!-- 프로필 -->
     <div class="card p-4">
       <div class="flex flex-col items-center text-center mb-3">
         {% if inf.profile_pic_local %}
@@ -185,9 +158,6 @@
         </div>
         {% endif %}
         <div class="font-bold text-gray-900">@{{ inf.username }}</div>
-        {% if manual.is_brand %}
-        <span class="mt-1 px-2 py-0.5 rounded-full text-xs font-bold" style="background:#fff7ed;color:#c2410c;">🏢 브랜드 계정</span>
-        {% endif %}
         {% if inf.category %}<div class="text-xs text-gray-400 mt-0.5">{{ inf.category }}</div>{% endif %}
         {% if inf.external_url %}
         <a href="{{ inf.external_url }}" target="_blank" class="text-indigo-500 text-xs hover:underline mt-1 truncate max-w-full">🔗 {{ inf.external_url }}</a>
@@ -196,7 +166,6 @@
       {% if inf.biography %}
       <p class="text-gray-500 text-xs leading-relaxed border-t pt-3">{{ inf.biography }}</p>
       {% endif %}
-      <!-- 타 SNS -->
       {% if manual.tiktok_url or manual.youtube_url or manual.facebook_url or manual.threads_url %}
       <div class="mt-2 pt-2 border-t flex flex-wrap gap-1.5">
         {% if manual.tiktok_url %}
@@ -230,42 +199,12 @@
       {% endif %}
     </div>
 
-    <!-- 인플루언서 특성 -->
-    <div class="card p-4">
-      <div class="section-title">🏷 인플루언서 특성</div>
-      <div class="flex flex-wrap gap-2">
-        <span class="attr-chip {{ 'active' if manual.has_pet else 'inactive' }}">
-          🐾 반려동물 {{ '(' + manual.pet_type + ')' if manual.has_pet and manual.pet_type else ('있음' if manual.has_pet else '없음') }}
-        </span>
-        <span class="attr-chip {{ 'active' if manual.is_married else 'inactive' }}">
-          💍 {{ '기혼' if manual.is_married else '미혼' }}
-        </span>
-        <span class="attr-chip {{ 'active' if manual.has_kids else 'inactive' }}">
-          👶 자녀 {{ '(' + manual.kids_age + ')' if manual.has_kids and manual.kids_age else ('있음' if manual.has_kids else '없음') }}
-        </span>
-        <span class="attr-chip {{ 'active' if manual.has_car else 'inactive' }}">
-          🚗 차량 {{ '있음' if manual.has_car else '없음' }}
-        </span>
-        <span class="attr-chip {{ 'active' if manual.is_visual else 'inactive' }}" style="{% if manual.is_visual %}background:#fdf2f8;color:#be185d;border-color:#fbcfe8;{% endif %}">
-          ✨ 비주얼 {{ '가능' if manual.is_visual else '해당없음' }}
-        </span>
-        {% if manual.is_visual %}
-        <span class="attr-chip {{ 'active' if manual.face_exposed else 'inactive' }}" style="{% if manual.face_exposed %}background:#fff1f2;color:#be123c;border-color:#fecdd3;{% endif %}">
-          👤 얼굴노출 {{ '가능' if manual.face_exposed else '미동의' }}
-        </span>
-        {% endif %}
-      </div>
-      {% if not is_advertiser_view %}
-      <a href="/influencers/{{ inf.pk }}/edit" class="block mt-3 text-center text-xs text-indigo-500 hover:underline">특성 수정하기 →</a>
-      {% endif %}
-    </div>
-
-    <!-- 협업 정보 -->
+    <!-- 협업 정보 + 단가 통합 카드 -->
     <div class="card p-4">
       <div class="section-title">🎯 협업 정보</div>
-      <div class="space-y-1">
+      <div class="space-y-1 mb-3">
         {% if manual.main_category %}
-        <div class="info-row"><span class="label">주요 카테고리</span><span class="value">{{ manual.main_category }}</span></div>
+        <div class="info-row"><span class="label">카테고리</span><span class="value">{{ manual.main_category }}</span></div>
         {% endif %}
         {% if manual.target_gender %}
         <div class="info-row"><span class="label">타겟 성별</span><span class="value">{{ manual.target_gender }}</span></div>
@@ -283,226 +222,133 @@
         {% endif %}
       </div>
       {% if manual.collab_types %}
-      <div class="mt-2 flex flex-wrap">
+      <div class="flex flex-wrap mb-3">
         {% for t in manual.collab_types.split(',') if t.strip() %}
         <span class="collab-chip">{{ t.strip() }}</span>
         {% endfor %}
       </div>
       {% endif %}
+
+      <!-- 단가 -->
+      <div class="pt-2 border-t">
+        <div class="text-xs font-bold text-gray-500 mb-1.5">💰 협업 단가</div>
+        {% if manual.feed_price or manual.reel_price or manual.story_price or manual.live_price or manual.bundle_price %}
+        {% if manual.feed_price %}
+        <div class="price-row"><span class="text-xs text-gray-500">📸 피드</span><span class="font-bold text-gray-800 text-sm">{{ manual.feed_price | comma }}<span class="text-xs text-gray-400">만원</span></span></div>
+        {% endif %}
+        {% if manual.reel_price %}
+        <div class="price-row"><span class="text-xs text-gray-500">🎬 릴스</span><span class="font-bold text-gray-800 text-sm">{{ manual.reel_price | comma }}<span class="text-xs text-gray-400">만원</span></span></div>
+        {% endif %}
+        {% if manual.story_price %}
+        <div class="price-row"><span class="text-xs text-gray-500">⭕ 스토리</span><span class="font-bold text-gray-800 text-sm">{{ manual.story_price | comma }}<span class="text-xs text-gray-400">만원</span></span></div>
+        {% endif %}
+        {% if manual.bundle_price %}
+        <div class="price-row"><span class="text-xs text-gray-500">📦 패키지</span><span class="font-bold text-indigo-600 text-sm">{{ manual.bundle_price | comma }}<span class="text-xs text-gray-400">만원</span></span></div>
+        {% endif %}
+        {% if manual.live_price %}
+        <div class="price-row"><span class="text-xs text-gray-500">📡 라이브</span><span class="font-bold text-orange-600 text-sm">{{ manual.live_price | comma }}<span class="text-xs text-gray-400">만원</span></span></div>
+        {% endif %}
+        {% else %}
+        <p class="text-xs text-gray-400 py-1">
+          단가 미입력
+          {% if not is_advertiser_view %} — <a href="/influencers/{{ inf.pk }}/edit" class="text-indigo-500 hover:underline">입력하기</a>{% endif %}
+        </p>
+        {% endif %}
+      </div>
+
       {% if manual.past_brands %}
       <div class="mt-2 pt-2 border-t">
         <div class="text-xs text-gray-400 mb-1">과거 협업 브랜드</div>
         <p class="text-xs text-gray-600 leading-relaxed">{{ manual.past_brands }}</p>
       </div>
       {% endif %}
-    </div>
-
-    <!-- 라이브커머스 -->
-    {% if manual.can_live %}
-    <div class="card p-4" style="border:1px solid rgba(245,158,11,.3);background:rgba(255,251,235,.5);">
-      <div class="section-title" style="color:#b45309;">📡 라이브커머스 가능</div>
-      <div class="space-y-1">
-        {% if manual.live_platforms %}
-        <div class="info-row"><span class="label">플랫폼</span><span class="value text-orange-700">{{ manual.live_platforms }}</span></div>
-        {% endif %}
-        {% if manual.live_price %}
-        <div class="info-row"><span class="label">라이브 단가</span><span class="font-bold text-orange-600 text-sm">{{ manual.live_price | comma }}만원</span></div>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-
-    <!-- 💰 단가표 (항상 표시) -->
-    <div class="card p-4" style="border-left:3px solid #6366f1;">
-      <div class="section-title">💰 협업 단가표</div>
-      {% if manual.feed_price or manual.reel_price or manual.story_price or manual.live_price %}
-      <div>
-        {% if manual.feed_price %}
-        <div class="price-row">
-          <span class="text-xs text-gray-500">📸 피드 포스팅</span>
-          <span class="font-bold text-gray-800">{{ manual.feed_price | comma }}<span class="text-xs text-gray-400">만원</span></span>
-        </div>
-        {% endif %}
-        {% if manual.reel_price %}
-        <div class="price-row">
-          <span class="text-xs text-gray-500">🎬 릴스</span>
-          <span class="font-bold text-gray-800">{{ manual.reel_price | comma }}<span class="text-xs text-gray-400">만원</span></span>
-        </div>
-        {% endif %}
-        {% if manual.story_price %}
-        <div class="price-row">
-          <span class="text-xs text-gray-500">⭕ 스토리</span>
-          <span class="font-bold text-gray-800">{{ manual.story_price | comma }}<span class="text-xs text-gray-400">만원</span></span>
-        </div>
-        {% endif %}
-        {% if manual.bundle_price %}
-        <div class="price-row">
-          <span class="text-xs text-gray-500">📦 패키지 묶음</span>
-          <span class="font-bold text-indigo-600">{{ manual.bundle_price | comma }}<span class="text-xs text-gray-400">만원</span></span>
-        </div>
-        {% endif %}
-        {% if manual.live_price %}
-        <div class="price-row">
-          <span class="text-xs text-gray-500">📡 라이브커머스</span>
-          <span class="font-bold text-orange-600">{{ manual.live_price | comma }}<span class="text-xs text-gray-400">만원</span></span>
-        </div>
-        {% endif %}
-      </div>
-      {% else %}
-      <p class="text-xs text-gray-400 text-center py-2">
-        단가 미입력
-        {% if not is_advertiser_view %}
-        — <a href="/influencers/{{ inf.pk }}/edit" class="text-indigo-500 hover:underline">입력하기</a>
-        {% endif %}
-      </p>
+      {% if not is_advertiser_view %}
+      <a href="/influencers/{{ inf.pk }}/edit" class="block mt-3 text-center text-xs text-indigo-500 hover:underline">편집하기 →</a>
       {% endif %}
     </div>
 
-    <!-- 연락처 (관리자만) -->
-    {% if not is_advertiser_view and (manual.contact_name or manual.contact_kakao or manual.contact_phone) %}
+    <!-- 연락처 + 메모 (관리자만) -->
+    {% if not is_advertiser_view and (manual.contact_name or manual.contact_kakao or manual.contact_phone or manual.notes) %}
     <div class="card p-4" style="border-left:3px solid #ef4444;">
-      <div class="section-title" style="color:#dc2626;">🔒 연락처 (관리자 전용)</div>
-      <div class="space-y-1">
+      <div class="section-title" style="color:#dc2626;">🔒 관리자 메모</div>
+      <div class="space-y-1 mb-2">
         {% if manual.contact_name %}<div class="info-row"><span class="label">담당자</span><span class="value">{{ manual.contact_name }}</span></div>{% endif %}
         {% if manual.contact_kakao %}<div class="info-row"><span class="label">카카오</span><span class="value">{{ manual.contact_kakao }}</span></div>{% endif %}
         {% if manual.contact_email %}<div class="info-row"><span class="label">이메일</span><a href="mailto:{{ manual.contact_email }}" class="value text-indigo-500">{{ manual.contact_email }}</a></div>{% endif %}
         {% if manual.contact_phone %}<div class="info-row"><span class="label">전화</span><span class="value">{{ manual.contact_phone }}</span></div>{% endif %}
       </div>
-    </div>
-    {% endif %}
-
-    {% if manual.notes %}
-    <div class="card p-4">
-      <div class="section-title">📝 메모</div>
-      <p class="text-xs text-gray-600 leading-relaxed">{{ manual.notes }}</p>
+      {% if manual.notes %}<p class="text-xs text-gray-600 leading-relaxed border-t pt-2">{{ manual.notes }}</p>{% endif %}
     </div>
     {% endif %}
 
   </div><!-- /left -->
 
-  <!-- ── 오른쪽 2/3: 통계 + 게시물 ── -->
+  <!-- ── 오른쪽 2/3 ── -->
   <div class="col-span-2 space-y-4">
 
-    <!-- 계정 현황 + 게시 패턴 -->
-    <div class="grid grid-cols-2 gap-3">
-      <div class="card p-4">
-        <div class="section-title">📊 계정 현황</div>
-        <div class="space-y-1.5">
-          <div class="info-row"><span class="label">총 게시물</span><span class="value">{{ inf.media_count | comma }}</span></div>
-          <div class="info-row">
-            <span class="label">피드 / 릴스</span>
-            <span class="value">
-              <span style="color:#6366f1;">{{ inf.feed_count or 0 }}</span>
-              <span class="text-gray-300 mx-1">/</span>
-              <span style="color:#8b5cf6;">{{ inf.reel_count or 0 }}</span>
-            </span>
-          </div>
-          <div class="info-row"><span class="label">마지막 게시</span><span class="value">{{ inf.last_post_date or '-' }}</span></div>
-          <div class="info-row"><span class="label">게시 간격</span><span class="value">{{ '%.1f일'|format(inf.avg_posting_interval or 0) if inf.avg_posting_interval else '-' }}</span></div>
-          <div class="info-row"><span class="label">업로드 빈도</span><span class="value">{{ inf.upload_frequency or '-' }}</span></div>
-          <div class="info-row"><span class="label">활성 시간대</span><span class="value">{{ inf.active_hours or '-' }}</span></div>
-        </div>
-      </div>
-
-      <div class="card p-4">
-        <div class="section-title">📈 성과 지표</div>
-        <div class="space-y-1.5">
-          <div class="info-row"><span class="label">피드 평균 좋아요</span><span class="value" style="color:#6366f1;">{{ inf.avg_feed_likes | fmtn if inf.avg_feed_likes else '-' }}</span></div>
-          <div class="info-row"><span class="label">피드 평균 댓글</span><span class="value" style="color:#6366f1;">{{ inf.avg_feed_comments | fmtn if inf.avg_feed_comments else '-' }}</span></div>
-          <div class="info-row"><span class="label">릴스 평균 조회</span><span class="value" style="color:#8b5cf6;">{{ inf.avg_reel_views | fmtn if inf.avg_reel_views else '-' }}</span></div>
-          <div class="info-row"><span class="label">릴스 평균 좋아요</span><span class="value" style="color:#8b5cf6;">{{ inf.avg_reel_likes | fmtn if inf.avg_reel_likes else '-' }}</span></div>
-          <div class="info-row"><span class="label">릴스 평균 댓글</span><span class="value" style="color:#8b5cf6;">{{ inf.avg_reel_comments | fmtn if inf.avg_reel_comments else '-' }}</span></div>
-          <div class="info-row"><span class="label">참여율</span><span class="value" style="color:#10b981;">{{ '%.2f%%'|format(inf.engagement_rate or 0) }}</span></div>
-        </div>
-        <!-- 피드 vs 릴스 비율 -->
-        {% if inf.reel_count or inf.feed_count %}
-        {% set total_p = (inf.reel_count or 0) + (inf.feed_count or 0) %}
-        {% set feed_pct = ((inf.feed_count or 0) / total_p * 100) | round | int if total_p > 0 else 0 %}
-        <div class="mt-3 pt-3 border-t">
-          <div class="flex justify-between text-xs text-gray-400 mb-1.5">
-            <span>📸 피드 {{ feed_pct }}%</span>
-            <span>🎬 릴스 {{ 100 - feed_pct }}%</span>
-          </div>
-          <div class="w-full h-3 rounded-full overflow-hidden flex" style="background:#e5e7eb;">
-            <div class="h-full" style="width:{{ feed_pct }}%;background:linear-gradient(90deg,#6366f1,#3b82f6);"></div>
-            <div class="h-full flex-1" style="background:linear-gradient(90deg,#8b5cf6,#6366f1);"></div>
-          </div>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-
-    <!-- 협찬/광고 분석 -->
+    <!-- 계정 현황 -->
     <div class="card p-4">
-      <div class="flex items-center justify-between mb-3">
-        <div class="section-title mb-0">🏷 협찬/광고 비율 분석</div>
-        <span class="text-xs px-2 py-1 rounded-full font-bold
-          {% if (inf.sponsored_ratio or 0) > 50 %}text-red-600" style="background:#fee2e2;"
-          {% elif (inf.sponsored_ratio or 0) > 20 %}text-orange-600" style="background:#fef3c7;"
-          {% else %}text-green-600" style="background:#d1fae5;"{% endif %}>
-          {{ '%.1f'|format(inf.sponsored_ratio or 0) }}%
-        </span>
+      <div class="section-title">📊 계정 현황</div>
+      <div class="grid grid-cols-3 gap-x-6 gap-y-1">
+        <div class="info-row"><span class="label">총 게시물</span><span class="value">{{ inf.media_count | comma }}</span></div>
+        <div class="info-row"><span class="label">피드 / 릴스</span>
+          <span class="value"><span style="color:#6366f1;">{{ inf.feed_count or 0 }}</span><span class="text-gray-300 mx-1">/</span><span style="color:#8b5cf6;">{{ inf.reel_count or 0 }}</span></span>
+        </div>
+        <div class="info-row"><span class="label">마지막 게시</span><span class="value">{{ inf.last_post_date or '-' }}</span></div>
+        <div class="info-row"><span class="label">게시 간격</span><span class="value">{{ '%.1f일'|format(inf.avg_posting_interval or 0) if inf.avg_posting_interval else '-' }}</span></div>
+        <div class="info-row"><span class="label">업로드 빈도</span><span class="value">{{ inf.upload_frequency or '-' }}</span></div>
+        <div class="info-row"><span class="label">활성 시간대</span><span class="value">{{ inf.active_hours or '-' }}</span></div>
       </div>
-      <div class="sponsored-bar mb-2">
-        <div class="fill" style="width:{{ [inf.sponsored_ratio or 0, 100] | min | int }}%;"></div>
+      {% if inf.reel_count or inf.feed_count %}
+      {% set total_p = (inf.reel_count or 0) + (inf.feed_count or 0) %}
+      {% set feed_pct = ((inf.feed_count or 0) / total_p * 100) | round | int if total_p > 0 else 0 %}
+      <div class="mt-3 pt-3 border-t">
+        <div class="flex justify-between text-xs text-gray-400 mb-1.5">
+          <span>📸 피드 {{ feed_pct }}%</span>
+          <span>🎬 릴스 {{ 100 - feed_pct }}%</span>
+        </div>
+        <div class="w-full h-2.5 rounded-full overflow-hidden flex" style="background:#e5e7eb;">
+          <div class="h-full" style="width:{{ feed_pct }}%;background:linear-gradient(90deg,#6366f1,#3b82f6);"></div>
+          <div class="h-full flex-1" style="background:linear-gradient(90deg,#8b5cf6,#6366f1);"></div>
+        </div>
       </div>
-      <div class="flex justify-between text-xs text-gray-400">
-        <span>일반 게시물 {{ '%.1f'|format(100 - (inf.sponsored_ratio or 0)) }}%</span>
-        <span>협찬/광고 {{ '%.1f'|format(inf.sponsored_ratio or 0) }}%</span>
-      </div>
-      <p class="text-xs text-gray-400 mt-1.5">
-        {% if (inf.sponsored_ratio or 0) <= 20 %}✅ 광고 비율이 낮아 신뢰도 높음
-        {% elif (inf.sponsored_ratio or 0) <= 40 %}⚠️ 광고 비율 보통 수준
-        {% else %}🔴 광고 비율이 높음 — 팔로워 신뢰도 확인 권장{% endif %}
-      </p>
+      {% endif %}
     </div>
 
     <!-- 해시태그 분석 -->
     {% set htags_list = inf.top_hashtags if (inf.top_hashtags is iterable and inf.top_hashtags is not string) else [] %}
     <div class="card p-4">
       <div class="flex items-center justify-between mb-3">
-        <div class="section-title mb-0">🔍 해시태그 분석
-          <span class="tip" data-tip="이 인플루언서가 게시물에서 자주 사용하는 해시태그와 사용 빈도를 분석합니다.">?</span>
-        </div>
-        {% if htags_list %}
-        <span class="text-xs text-gray-400">총 {{ htags_list | length }}개 태그 분석</span>
-        {% endif %}
+        <div class="section-title mb-0">🔍 해시태그 분석</div>
+        {% if htags_list %}<span class="text-xs text-gray-400">{{ htags_list | length }}개 태그</span>{% endif %}
       </div>
-
       {% if htags_list %}
-      <!-- 빈도 막대 차트 -->
       {% set max_count = htags_list[0].count if htags_list else 1 %}
       <div class="space-y-1.5 mb-3">
-        {% for item in htags_list[:12] %}
+        {% for item in htags_list[:10] %}
         {% set pct = ((item.count / max_count) * 100) | int %}
         <div class="flex items-center gap-2">
           <span class="text-xs font-semibold text-purple-700 w-28 truncate shrink-0">#{{ item.tag }}</span>
-          <div class="flex-1 h-4 rounded-full overflow-hidden" style="background:#f3f4f6;">
-            <div class="h-full rounded-full flex items-center pl-1.5 transition-all"
-                 style="width:{{ [pct, 5] | max }}%;background:linear-gradient(90deg,#8b5cf6,#6366f1);">
-            </div>
+          <div class="flex-1 h-3.5 rounded-full overflow-hidden" style="background:#f3f4f6;">
+            <div class="h-full rounded-full" style="width:{{ [pct, 5] | max }}%;background:linear-gradient(90deg,#8b5cf6,#6366f1);"></div>
           </div>
-          <span class="text-xs text-gray-400 w-6 text-right shrink-0">{{ item.count }}</span>
+          <span class="text-xs text-gray-400 w-5 text-right shrink-0">{{ item.count }}</span>
         </div>
         {% endfor %}
       </div>
-      <!-- 칩 형태로도 표시 (나머지) -->
-      {% if htags_list | length > 12 %}
+      {% if htags_list | length > 10 %}
       <div class="pt-2 border-t flex flex-wrap gap-1">
-        {% for item in htags_list[12:] %}
-        <span class="hashtag-chip text-xs" style="font-size:10px;">
-          #{{ item.tag }} <span class="opacity-60 ml-0.5">{{ item.count }}</span>
-        </span>
+        {% for item in htags_list[10:] %}
+        <span class="hashtag-chip" style="font-size:10px;">#{{ item.tag }} <span class="opacity-60 ml-0.5">{{ item.count }}</span></span>
         {% endfor %}
       </div>
       {% endif %}
       {% else %}
       <p class="text-xs text-gray-400 text-center py-3">게시물 수집 후 자동 분석됩니다</p>
       {% endif %}
-
       {% if inf.hashtags %}
       <div class="mt-3 pt-3 border-t">
-        <div class="text-xs text-gray-400 mb-1.5">수집 경로 해시태그</div>
+        <div class="text-xs text-gray-400 mb-1.5">수집 경로 태그</div>
         <div class="flex flex-wrap gap-1">
           {% for tag in (inf.hashtags or '').split(',') if tag.strip() %}
           <a href="/influencers?hashtag={{ tag.strip() }}" class="hashtag-chip" style="background:#e0f2fe;color:#0369a1;font-size:10px;">#{{ tag.strip() }}</a>
@@ -512,48 +358,32 @@
       {% endif %}
     </div>
 
-    <!-- ── 인기 게시물 TOP5 (피드 먼저, 릴스 나중에) ── -->
+    <!-- 인기 게시물 TOP5 -->
     {% if inf.top_reels_views or inf.top_posts_likes %}
     <div class="card p-4">
       <div class="section-title">🏆 인기 게시물 TOP 5</div>
-      <!-- 인기 피드 (먼저) -->
       {% if inf.top_posts_likes %}
       <div class="mb-4">
-        <div class="text-xs font-bold mb-2 flex items-center gap-1" style="color:#6366f1;">
-          📸 인기 피드 (좋아요순)
-        </div>
+        <div class="text-xs font-bold mb-2" style="color:#6366f1;">📸 인기 피드 (좋아요순)</div>
         <div class="grid grid-cols-5 gap-2">
           {% for post in inf.top_posts_likes %}
           <a href="{{ post.url }}" target="_blank" class="post-thumb">
-            {% if post.thumbnail %}
-            <img src="{{ post.thumbnail }}" alt="" style="width:100%;height:100%;object-fit:cover;">
-            {% else %}
-            <div class="w-full h-full flex items-center justify-center" style="background:#eff6ff;">
-              <span class="text-xl">📸</span>
-            </div>
-            {% endif %}
+            {% if post.thumbnail %}<img src="{{ post.thumbnail }}" alt="">
+            {% else %}<div class="w-full h-full flex items-center justify-center" style="background:#eff6ff;"><span class="text-xl">📸</span></div>{% endif %}
             <div class="overlay"><div class="overlay-txt"><div>❤️ {{ post.likes | fmtn if post.likes else '-' }}</div></div></div>
           </a>
           {% endfor %}
         </div>
       </div>
       {% endif %}
-      <!-- 인기 릴스 (나중에) -->
       {% if inf.top_reels_views %}
       <div>
-        <div class="text-xs font-bold mb-2 flex items-center gap-1" style="color:#8b5cf6;">
-          🎬 인기 릴스 (조회수순)
-        </div>
+        <div class="text-xs font-bold mb-2" style="color:#8b5cf6;">🎬 인기 릴스 (조회수순)</div>
         <div class="grid grid-cols-5 gap-2">
           {% for post in inf.top_reels_views %}
           <a href="{{ post.url }}" target="_blank" class="post-thumb">
-            {% if post.thumbnail %}
-            <img src="{{ post.thumbnail }}" alt="" style="width:100%;height:100%;object-fit:cover;">
-            {% else %}
-            <div class="w-full h-full flex items-center justify-center" style="background:#f5f3ff;">
-              <span class="text-xl">🎬</span>
-            </div>
-            {% endif %}
+            {% if post.thumbnail %}<img src="{{ post.thumbnail }}" alt="">
+            {% else %}<div class="w-full h-full flex items-center justify-center" style="background:#f5f3ff;"><span class="text-xl">🎬</span></div>{% endif %}
             <div class="overlay"><div class="overlay-txt"><div>👁 {{ post.views | fmtn if post.views else '-' }}</div></div></div>
             <div class="reel-icon"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>
           </a>
@@ -564,15 +394,10 @@
     </div>
     {% endif %}
 
-    <!-- ── 최근 게시물 전체 (탭) ── -->
+    <!-- 최근 게시물 탭 -->
     <div class="card p-4">
       <div class="flex items-center justify-between mb-3">
-        <div class="section-title mb-0">
-          📋 최근 게시물
-          <span class="text-xs font-normal text-gray-400 ml-1">
-            {% if posts %}({{ posts | length }}개){% endif %}
-          </span>
-        </div>
+        <div class="section-title mb-0">📋 최근 게시물{% if posts %} <span class="text-xs font-normal text-gray-400">({{ posts | length }}개)</span>{% endif %}</div>
         <div class="flex gap-1">
           <button class="tab-btn active" onclick="switchTab(this,'all')">전체</button>
           <button class="tab-btn" onclick="switchTab(this,'feed')">📸 피드</button>
@@ -580,23 +405,14 @@
           <button class="tab-btn" onclick="switchTab(this,'sponsored')">🏷 협찬</button>
         </div>
       </div>
-
       {% if posts %}
       <div class="grid grid-cols-5 gap-2" id="postGrid">
         {% for post in (posts | sort(attribute='taken_at', reverse=True))[:5] %}
-        <a href="{{ post.post_url }}" target="_blank"
-           class="post-thumb"
-           data-type="{{ post.post_type }}"
-           data-sponsored="{{ post.is_sponsored }}">
-          {% if post.thumbnail_local %}
-          <img src="/data/{{ post.thumbnail_local }}" alt="" loading="lazy">
-          {% elif post.thumbnail_url %}
-          <img src="{{ post.thumbnail_url }}" alt="" loading="lazy">
-          {% else %}
-          <div class="w-full h-full flex items-center justify-center rounded-lg" style="background:#f1f5f9;aspect-ratio:1;">
-            <span class="text-2xl">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span>
-          </div>
-          {% endif %}
+        <a href="{{ post.post_url }}" target="_blank" class="post-thumb"
+           data-type="{{ post.post_type }}" data-sponsored="{{ post.is_sponsored }}">
+          {% if post.thumbnail_local %}<img src="/data/{{ post.thumbnail_local }}" alt="" loading="lazy">
+          {% elif post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy">
+          {% else %}<div class="w-full h-full flex items-center justify-center rounded-lg" style="background:#f1f5f9;aspect-ratio:1;"><span class="text-2xl">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span></div>{% endif %}
           <div class="overlay">
             <div class="overlay-txt">
               {% if post.post_type == 'reel' %}<div>👁 {{ post.views | fmtn }}</div>{% endif %}
@@ -605,13 +421,9 @@
             </div>
           </div>
           {% if post.post_type == 'reel' %}
-          <div class="reel-icon">
-            <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-          </div>
+          <div class="reel-icon"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>
           {% endif %}
-          {% if post.is_sponsored %}
-          <div class="sponsored-icon">광고</div>
-          {% endif %}
+          {% if post.is_sponsored %}<div class="sponsored-icon">광고</div>{% endif %}
         </a>
         {% endfor %}
       </div>
@@ -628,72 +440,48 @@
     </div>
 
   </div><!-- /right -->
-</div><!-- /grid -->
+</div>
 
-<!-- ── PDF 다운 템플릿 선택 모달 ── -->
+<!-- PDF 모달 -->
 <div id="pdfModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center;">
-  <div class="card p-6" style="width:440px;max-width:95vw;">
+  <div class="card p-6" style="width:420px;max-width:95vw;">
     <div class="flex items-center justify-between mb-4">
-      <h3 class="font-bold text-gray-900 text-lg">📄 PDF 다운로드 템플릿 선택</h3>
-      <button onclick="document.getElementById('pdfModal').style.display='none'" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+      <h3 class="font-bold text-gray-900">📄 PDF 다운로드</h3>
+      <button onclick="document.getElementById('pdfModal').style.display='none'" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
     </div>
-    <div class="space-y-3 mb-5">
-      <a href="/influencers/{{ inf.pk }}/export/pdf?tpl=scorecard"
-         onclick="document.getElementById('pdfModal').style.display='none'"
-         class="flex items-start gap-3 p-4 rounded-xl border-2 hover:border-red-400 transition cursor-pointer" style="border-color:#e5e7eb;text-decoration:none;">
-        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style="background:#fee2e2;">
-          <span class="text-xl">📋</span>
-        </div>
-        <div>
-          <div class="font-semibold text-gray-800 text-sm">스코어카드 (A4 가로)</div>
-          <div class="text-xs text-gray-400 mt-0.5">프로필·핵심지표·단가표·협업정보를 1페이지로 요약. 광고주 제안서용.</div>
-        </div>
+    <div class="space-y-2 mb-4">
+      <a href="/influencers/{{ inf.pk }}/export/pdf?tpl=scorecard" onclick="document.getElementById('pdfModal').style.display='none'"
+         class="flex items-center gap-3 p-3 rounded-xl border-2 hover:border-red-400 transition" style="border-color:#e5e7eb;text-decoration:none;">
+        <span class="text-2xl">📋</span>
+        <div><div class="font-semibold text-gray-800 text-sm">스코어카드 (A4 가로)</div><div class="text-xs text-gray-400">핵심지표·단가표 1페이지 요약. 광고주 제안서용.</div></div>
       </a>
-      <a href="/influencers/{{ inf.pk }}/export/pdf?tpl=detail"
-         onclick="document.getElementById('pdfModal').style.display='none'"
-         class="flex items-start gap-3 p-4 rounded-xl border-2 hover:border-red-400 transition cursor-pointer" style="border-color:#e5e7eb;text-decoration:none;">
-        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style="background:#fef3c7;">
-          <span class="text-xl">📊</span>
-        </div>
-        <div>
-          <div class="font-semibold text-gray-800 text-sm">상세 분석 리포트 (A4 세로)</div>
-          <div class="text-xs text-gray-400 mt-0.5">통계·해시태그·게시물 성과·협찬비율 등 전체 데이터 포함. 내부 분석용.</div>
-        </div>
+      <a href="/influencers/{{ inf.pk }}/export/pdf?tpl=detail" onclick="document.getElementById('pdfModal').style.display='none'"
+         class="flex items-center gap-3 p-3 rounded-xl border-2 hover:border-red-400 transition" style="border-color:#e5e7eb;text-decoration:none;">
+        <span class="text-2xl">📊</span>
+        <div><div class="font-semibold text-gray-800 text-sm">상세 분석 리포트 (A4 세로)</div><div class="text-xs text-gray-400">통계·해시태그·협찬비율 전체 데이터. 내부 분석용.</div></div>
       </a>
     </div>
     <button onclick="document.getElementById('pdfModal').style.display='none'" class="w-full py-2 rounded-lg text-sm text-gray-500 border border-gray-200 hover:bg-gray-50">취소</button>
   </div>
 </div>
 
-<!-- ── PPT 다운 템플릿 선택 모달 ── -->
+<!-- PPT 모달 -->
 <div id="pptModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center;">
-  <div class="card p-6" style="width:440px;max-width:95vw;">
+  <div class="card p-6" style="width:420px;max-width:95vw;">
     <div class="flex items-center justify-between mb-4">
-      <h3 class="font-bold text-gray-900 text-lg">📊 PPT 다운로드 템플릿 선택</h3>
-      <button onclick="document.getElementById('pptModal').style.display='none'" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+      <h3 class="font-bold text-gray-900">📊 PPT 다운로드</h3>
+      <button onclick="document.getElementById('pptModal').style.display='none'" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
     </div>
-    <div class="space-y-3 mb-5">
-      <a href="/influencers/{{ inf.pk }}/export/ppt?tpl=scorecard"
-         onclick="document.getElementById('pptModal').style.display='none'"
-         class="flex items-start gap-3 p-4 rounded-xl border-2 hover:border-yellow-400 transition cursor-pointer" style="border-color:#e5e7eb;text-decoration:none;">
-        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style="background:#fef3c7;">
-          <span class="text-xl">🎨</span>
-        </div>
-        <div>
-          <div class="font-semibold text-gray-800 text-sm">스코어카드 슬라이드 (16:9)</div>
-          <div class="text-xs text-gray-400 mt-0.5">프로필·핵심지표·단가표를 깔끔한 슬라이드 1장으로. 미팅 발표용.</div>
-        </div>
+    <div class="space-y-2 mb-4">
+      <a href="/influencers/{{ inf.pk }}/export/ppt?tpl=scorecard" onclick="document.getElementById('pptModal').style.display='none'"
+         class="flex items-center gap-3 p-3 rounded-xl border-2 hover:border-yellow-400 transition" style="border-color:#e5e7eb;text-decoration:none;">
+        <span class="text-2xl">🎨</span>
+        <div><div class="font-semibold text-gray-800 text-sm">스코어카드 슬라이드 (16:9)</div><div class="text-xs text-gray-400">핵심지표·단가표 슬라이드 1장. 미팅 발표용.</div></div>
       </a>
-      <a href="/influencers/{{ inf.pk }}/export/ppt?tpl=proposal"
-         onclick="document.getElementById('pptModal').style.display='none'"
-         class="flex items-start gap-3 p-4 rounded-xl border-2 hover:border-yellow-400 transition cursor-pointer" style="border-color:#e5e7eb;text-decoration:none;">
-        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style="background:#e0f2fe;">
-          <span class="text-xl">📨</span>
-        </div>
-        <div>
-          <div class="font-semibold text-gray-800 text-sm">제안서 슬라이드 (2페이지)</div>
-          <div class="text-xs text-gray-400 mt-0.5">표지 + 상세 통계 슬라이드 2장. 인플루언서 제안서 발송용.</div>
-        </div>
+      <a href="/influencers/{{ inf.pk }}/export/ppt?tpl=proposal" onclick="document.getElementById('pptModal').style.display='none'"
+         class="flex items-center gap-3 p-3 rounded-xl border-2 hover:border-yellow-400 transition" style="border-color:#e5e7eb;text-decoration:none;">
+        <span class="text-2xl">📨</span>
+        <div><div class="font-semibold text-gray-800 text-sm">제안서 슬라이드 (2페이지)</div><div class="text-xs text-gray-400">표지 + 상세 통계 슬라이드 2장. 인플루언서 제안서용.</div></div>
       </a>
     </div>
     <button onclick="document.getElementById('pptModal').style.display='none'" class="w-full py-2 rounded-lg text-sm text-gray-500 border border-gray-200 hover:bg-gray-50">취소</button>
@@ -710,11 +498,10 @@ function switchTab(btn, type) {
   grid.querySelectorAll('.post-thumb').forEach(el => {
     const pt = el.dataset.type || '';
     const sp = el.dataset.sponsored === '1';
-    let match = false;
-    if (type === 'all') match = true;
-    else if (type === 'reel') match = pt === 'reel';
-    else if (type === 'feed') match = pt !== 'reel';
-    else if (type === 'sponsored') match = sp;
+    let match = type === 'all' ? true
+              : type === 'reel' ? pt === 'reel'
+              : type === 'feed' ? pt !== 'reel'
+              : type === 'sponsored' ? sp : false;
     const show = match && shown < 5;
     if (match) shown++;
     el.style.display = show ? '' : 'none';
@@ -723,19 +510,13 @@ function switchTab(btn, type) {
 
 async function refreshOne(btn) {
   if (!confirm('@{{ inf.username }} 상세 정보를 수집합니까? (1~2분 소요)')) return;
-  const origText = btn.textContent;
+  const orig = btn.textContent;
   btn.disabled = true; btn.textContent = '수집 중...';
   try {
     const r = await fetch('/influencers/{{ inf.pk }}/refresh', {method:'POST'});
     const d = await r.json();
-    if (d.ok) {
-      btn.textContent = '수집 시작됨!';
-      setTimeout(() => { window.location.reload(); }, 3000);
-    }
-  } catch(e) {
-    btn.textContent = origText;
-    btn.disabled = false;
-  }
+    if (d.ok) { btn.textContent = '완료!'; setTimeout(() => location.reload(), 2000); }
+  } catch(e) { btn.textContent = orig; btn.disabled = false; }
 }
 </script>
 {% endblock %}
