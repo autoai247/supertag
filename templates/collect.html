@@ -91,10 +91,16 @@
       </div>
     </div>
 
-    <!-- 로그 -->
-    <div id="logBox" class="rounded-lg p-3 font-mono text-xs text-gray-500 h-48 overflow-y-auto space-y-1"
-         style="background:#0f172a;">
-      <div class="text-gray-600">⬡ 수집 준비 완료. 해시태그를 입력하고 시작하세요.</div>
+    <!-- 상태 표시줄 -->
+    <div class="rounded-lg px-4 py-3 font-mono text-xs flex items-center gap-3" style="background:#0f172a;min-height:48px;">
+      <span id="statusDot" class="w-2 h-2 rounded-full flex-shrink-0" style="background:#475569;"></span>
+      <span id="statusLine" class="text-gray-500">수집 준비 완료. 해시태그를 입력하고 시작하세요.</span>
+    </div>
+    <!-- 에러 상세 -->
+    <div id="errorBox" class="hidden mt-2 rounded-lg p-3 text-xs" style="background:#1e1b1b;border:1px solid #450a0a;">
+      <div class="text-red-400 font-semibold mb-1">⚠️ 오류 안내</div>
+      <div id="errorMsg" class="text-red-300 leading-relaxed"></div>
+      <div id="errorHint" class="mt-2 text-orange-400"></div>
     </div>
 
     <!-- 완료 후 -->
@@ -107,14 +113,80 @@
 
 <script>
 let sse = null;
+let dotTimer = null;
+let dotCount = 0;
 
-function log(msg, color='#94a3b8') {
-  const box = document.getElementById('logBox');
-  const el = document.createElement('div');
-  el.style.color = color;
-  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
+// IP 블랙리스트 / 이메일 인증 에러 감지
+const ERROR_HINTS = [
+  {
+    pattern: /email|blacklist|ip|password is correct/i,
+    msg: 'Instagram이 현재 IP를 차단했거나 이메일 인증을 요구하고 있습니다.',
+    hint: '→ 설정에서 프록시(주거용 IP)를 설정하거나, 크롤링 계정의 IP를 변경해 주세요.\n→ 해당 계정으로 직접 로그인해서 이메일 인증을 완료한 후 다시 시도하세요.'
+  },
+  {
+    pattern: /challenge|checkpoint/i,
+    msg: 'Instagram이 보안 인증(체크포인트)을 요구하고 있습니다.',
+    hint: '→ 해당 계정으로 직접 로그인해서 인증을 완료한 후 다시 시도하세요.\n→ 계정 관리에서 해당 계정을 삭제하고 재등록하면 세션이 초기화됩니다.'
+  },
+  {
+    pattern: /rate|wait|please wait/i,
+    msg: '요청이 너무 많아 Instagram이 일시적으로 제한했습니다.',
+    hint: '→ 잠시 후(10~30분) 다시 시도해 주세요.\n→ 계정 풀에 계정을 추가하면 계정을 교체하며 수집할 수 있습니다.'
+  },
+  {
+    pattern: /login|로그인/i,
+    msg: '로그인에 실패했습니다.',
+    hint: '→ 계정 관리에서 해당 계정의 아이디/비밀번호를 확인해 주세요.'
+  },
+];
+
+function setStatus(msg, type='idle') {
+  const line = document.getElementById('statusLine');
+  const dot = document.getElementById('statusDot');
+  // 점 애니메이션 정리
+  if (dotTimer) { clearInterval(dotTimer); dotTimer = null; }
+  line.textContent = msg;
+  if (type === 'running') {
+    dot.style.background = '#6366f1';
+    dot.style.boxShadow = '0 0 6px #6366f1';
+    dotCount = 0;
+    const base = msg.replace(/\.+$/, '');
+    dotTimer = setInterval(() => {
+      dotCount = (dotCount + 1) % 4;
+      line.textContent = base + '.'.repeat(dotCount);
+    }, 400);
+  } else if (type === 'error') {
+    dot.style.background = '#ef4444';
+    dot.style.boxShadow = '0 0 6px #ef4444';
+  } else if (type === 'done') {
+    dot.style.background = '#10b981';
+    dot.style.boxShadow = '0 0 6px #10b981';
+  } else {
+    dot.style.background = '#475569';
+    dot.style.boxShadow = 'none';
+  }
+}
+
+function showError(errMsg) {
+  const box = document.getElementById('errorBox');
+  const msg = document.getElementById('errorMsg');
+  const hint = document.getElementById('errorHint');
+  box.classList.remove('hidden');
+  // 원본 에러 표시
+  msg.textContent = errMsg;
+  // 힌트 매칭
+  const matched = ERROR_HINTS.find(h => h.pattern.test(errMsg));
+  if (matched) {
+    msg.textContent = matched.msg;
+    hint.style.whiteSpace = 'pre-line';
+    hint.textContent = matched.hint;
+  } else {
+    hint.textContent = '';
+  }
+}
+
+function hideError() {
+  document.getElementById('errorBox').classList.add('hidden');
 }
 
 function startCollect() {
@@ -127,17 +199,17 @@ function startCollect() {
   document.getElementById('progressArea').classList.remove('hidden');
   document.getElementById('statusBadge').textContent = '수집 중';
   document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
-
-  log(`#${hashtag} 수집 시작 (게시물 ${count}개 요청)`, '#6366f1');
+  hideError();
+  setStatus(`#${hashtag} 로그인 중`, 'running');
 
   const form = new URLSearchParams({ hashtag, requested_count: count });
   fetch('/collect/start', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     .then(r => r.text())
     .then(jobId => {
-      log(`작업 ID: ${jobId.substring(0,8)}...`, '#475569');
+      setStatus(`#${hashtag} 수집 중`, 'running');
       listenProgress(jobId, parseInt(count));
     })
-    .catch(e => log(`에러: ${e}`, '#ef4444'));
+    .catch(e => { setStatus(`연결 오류: ${e}`, 'error'); showError(String(e)); });
 }
 
 function listenProgress(jobId, totalRequested) {
@@ -157,18 +229,19 @@ function listenProgress(jobId, totalRequested) {
     document.getElementById('progressNum').textContent = `${p.posts||0} / ${totalRequested}`;
     document.getElementById('progressLabel').textContent = p.status || '';
 
-    if (p.status && p.status !== document.getElementById('statusBadge').textContent) {
-      log(p.status, p.error ? '#ef4444' : '#a5b4fc');
+    if (p.status) {
+      setStatus(p.status, p.done ? (p.error ? 'error' : 'done') : 'running');
     }
 
     if (p.done) {
       sse.close();
       if (p.error) {
-        log(`❌ 에러: ${p.error}`, '#ef4444');
+        setStatus('수집 실패', 'error');
+        showError(p.error);
         document.getElementById('statusBadge').textContent = '에러';
         document.getElementById('statusBadge').style.cssText = 'background:rgba(239,68,68,.1);color:#ef4444';
       } else {
-        log(`✅ 완료! 신규 ${p.new}명, 업데이트 ${p.updated}명`, '#10b981');
+        setStatus(`완료 — 신규 ${p.new}명, 업데이트 ${p.updated}명`, 'done');
         document.getElementById('statusBadge').textContent = '완료';
         document.getElementById('statusBadge').style.cssText = 'background:rgba(16,185,129,.1);color:#10b981';
         document.getElementById('progressBar').style.width = '100%';
@@ -188,6 +261,8 @@ function resetForm() {
   document.getElementById('statusBadge').style.cssText = 'background:#f1f5f9;color:#64748b';
   document.getElementById('cntPosts').textContent = document.getElementById('cntNew').textContent = document.getElementById('cntUpdated').textContent = '0';
   document.getElementById('progressBar').style.width = '0%';
+  setStatus('수집 준비 완료. 해시태그를 입력하고 시작하세요.', 'idle');
+  hideError();
 }
 </script>
 {% endblock %}
