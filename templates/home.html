@@ -338,7 +338,7 @@ function fmt(n, type) {
 }
 
 function renderCard(r, idx) {
-  const isLocked = !IS_ADMIN && idx >= 50;
+  const isLocked = !IS_ADMIN && idx >= 10;
   const rank = idx + 1;
 
   if (isLocked) {
@@ -461,8 +461,8 @@ async function loadList(page, sort, filters={}) {
     data.rows.forEach((r,i) => { html += renderCard(r,(page-1)*30+i); });
     list.innerHTML = html || '<div style="text-align:center;padding:80px 0;color:#94a3b8;font-size:14px;">검색 결과가 없습니다</div>';
     const lb = document.getElementById('lockBanner');
-    if (!IS_ADMIN && data.total>50 && !filters.q && !filters.category && !filters.hashtag) {
-      document.getElementById('lockCount').textContent = (data.total-50)+'명이 더 있습니다';
+    if (!IS_ADMIN && data.total>10 && !filters.q && !filters.category && !filters.hashtag) {
+      document.getElementById('lockCount').textContent = (data.total-10)+'명이 더 있습니다';
       lb.classList.remove('hidden');
     } else { lb.classList.add('hidden'); }
     if (IS_ADMIN && data.total_pages>1) renderPagination(page, data.total_pages, sort);
