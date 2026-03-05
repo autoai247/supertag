@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, Form, Cookie, Query, BackgroundTasks, HTTP
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 import uuid, time, json, os, bcrypt, logging
 from datetime import datetime
@@ -28,6 +29,11 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       add_to_campaign, remove_from_campaign, delete_campaign)
 
 app = FastAPI()
+app.add_middleware(CORSMiddleware,
+    allow_origins=["chrome-extension://*", "*"],
+    allow_methods=["GET","POST"],
+    allow_headers=["*"]
+)
 
 # Supabase 모드(프로덕션)이면 /tmp 사용 (Vercel 읽기전용 FS)
 _IS_PROD = bool(os.environ.get("SUPABASE_KEY"))
@@ -69,6 +75,10 @@ ADMIN_PW_HASH = bcrypt.hashpw(
     os.getenv("ADMIN_PASSWORD", "admin").encode(), bcrypt.gensalt()
 )
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
+EXTENSION_API_KEY = os.getenv("EXTENSION_API_KEY", "instafinder-ext-key")
+
+def _check_ext_key(request: Request) -> bool:
+    return request.headers.get("X-Api-Key") == EXTENSION_API_KEY
 
 def _make_jwt(payload: dict, hours: int = JWT_EXP_HOURS) -> str:
     import datetime
@@ -1064,17 +1074,28 @@ def account_add(
 
 @app.post("/accounts/{account_id}/sessionid")
 async def account_update_sessionid(
+    request: Request,
     account_id: int,
     sessionid_cookie: str = Form(...),
     session_id: Optional[str] = Cookie(default=None)
 ):
-    user = get_user(session_id)
-    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    # 관리자 세션 또는 확장 프로그램 API 키 인증
+    if not get_user(session_id) and not _check_ext_key(request):
+        return JSONResponse({"error": "인증 필요"}, 403)
     try:
         update_account_sessionid(account_id, sessionid_cookie.strip())
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
+
+
+@app.get("/api/accounts")
+async def api_accounts_list(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    """확장 프로그램용 계정 목록 API"""
+    if not get_user(session_id) and not _check_ext_key(request):
+        return JSONResponse({"error": "인증 필요"}, 403)
+    accs = get_accounts()
+    return JSONResponse([{"id": a["id"], "username": a["username"]} for a in accs])
 
 @app.post("/accounts/upload")
 async def account_upload(
@@ -1260,6 +1281,7 @@ def settings_page(request: Request, session_id: Optional[str] = Cookie(default=N
         "proxy_host": INSTA_CFG.get("proxy_host",""),
         "proxy_port": INSTA_CFG.get("proxy_port",""),
         "proxy_user": INSTA_CFG.get("proxy_user",""),
+        "extension_api_key": EXTENSION_API_KEY,
         "plans": PLANS,
     })
 

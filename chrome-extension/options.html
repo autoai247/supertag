@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>InstaFinder 설정</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, sans-serif; }
+    body { background: #f1f5f9; margin: 0; padding: 30px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,.08); max-width: 480px; margin: 0 auto; overflow: hidden; }
+    .header { background: linear-gradient(135deg, #7c3aed, #6d28d9); padding: 24px; color: #fff; }
+    .header h1 { font-size: 18px; font-weight: 700; }
+    .header p { font-size: 12px; color: #c4b5fd; margin-top: 4px; }
+    .body { padding: 24px; }
+    label { display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+    input { width: 100%; padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; font-size: 14px; outline: none; margin-bottom: 16px; }
+    input:focus { border-color: #7c3aed; }
+    .hint { font-size: 11px; color: #94a3b8; margin-top: -12px; margin-bottom: 16px; }
+    button { width: 100%; padding: 12px; background: linear-gradient(135deg, #7c3aed, #6d28d9); border: none; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .saved { margin-top: 12px; padding: 10px; background: rgba(16,185,129,.1); color: #059669; border-radius: 8px; font-size: 13px; font-weight: 600; text-align: center; display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>📸 InstaFinder 설정</h1>
+      <p>서버 주소와 API 키를 입력하세요</p>
+    </div>
+    <div class="body">
+      <label>서버 주소</label>
+      <input id="serverUrl" type="url" placeholder="https://exfluencervn.vercel.app">
+      <div class="hint">로컬: http://localhost:8000</div>
+
+      <label>API 키</label>
+      <input id="apiKey" type="text" placeholder="설정 > API 키에서 복사">
+      <div class="hint">InstaFinder 설정 페이지에서 발급받은 키를 입력하세요</div>
+
+      <button onclick="save()">저장</button>
+      <div id="saved" class="saved">✅ 저장됐습니다!</div>
+    </div>
+  </div>
+  <script>
+    chrome.storage.sync.get(['serverUrl','apiKey'], d => {
+      if (d.serverUrl) document.getElementById('serverUrl').value = d.serverUrl;
+      if (d.apiKey) document.getElementById('apiKey').value = d.apiKey;
+    });
+    function save() {
+      const serverUrl = document.getElementById('serverUrl').value.replace(/\/$/, '');
+      const apiKey = document.getElementById('apiKey').value.trim();
+      chrome.storage.sync.set({ serverUrl, apiKey }, () => {
+        document.getElementById('saved').style.display = 'block';
+        setTimeout(() => document.getElementById('saved').style.display = 'none', 2000);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -106,6 +106,39 @@
   </button>
 </form>
 
+<!-- 확장 프로그램 설정 -->
+<div class="mt-8 max-w-2xl">
+  <h2 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+    <span class="text-lg">🔌</span> Chrome 확장 프로그램 설정
+  </h2>
+  <div class="card p-5">
+    <div class="text-sm text-gray-600 mb-4">
+      InstaFinder Session Sync 확장 프로그램을 사용하면 instagram.com에서 세션을 <strong>버튼 한 번</strong>으로 자동 등록할 수 있습니다.
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <div class="text-xs text-gray-500 mb-1">서버 주소 (확장 프로그램 설정에 입력)</div>
+        <div class="flex gap-2 items-center">
+          <input id="serverUrlDisplay" type="text" value="{{ request.base_url | string | replace('http://', 'https://') | trim('/') }}"
+                 class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 font-mono bg-gray-50" readonly>
+          <button onclick="copyText('serverUrlDisplay')" class="btn btn-ghost text-xs px-3">복사</button>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs text-gray-500 mb-1">API 키 (확장 프로그램 설정에 입력)</div>
+        <div class="flex gap-2 items-center">
+          <input id="apiKeyDisplay" type="text" value="{{ extension_api_key }}"
+                 class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 font-mono bg-gray-50" readonly>
+          <button onclick="copyText('apiKeyDisplay')" class="btn btn-ghost text-xs px-3">복사</button>
+        </div>
+      </div>
+    </div>
+    <div class="mt-4 p-3 rounded-lg text-xs text-gray-500" style="background:#f8fafc;">
+      확장 프로그램 아이콘 우클릭 → <strong>옵션</strong> → 위 값 붙여넣기 → 저장
+    </div>
+  </div>
+</div>
+
 <!-- 구독 플랜 안내 -->
 <div class="mt-8 max-w-2xl">
   <h2 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -139,6 +172,14 @@
 </div>
 
 <script>
+function copyText(inputId) {
+  const el = document.getElementById(inputId);
+  navigator.clipboard.writeText(el.value).then(() => {
+    const btn = el.nextElementSibling;
+    btn.textContent = '✓';
+    setTimeout(() => btn.textContent = '복사', 1500);
+  });
+}
 async function testTotp() {
   const btn = document.querySelector('[onclick="testTotp()"]');
   btn.disabled = true; btn.textContent = '확인 중...';
