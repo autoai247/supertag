@@ -248,7 +248,8 @@
         <button class="sort-tab active" data-sort="follower_count" onclick="setSort('follower_count')">팔로워순</button>
         <button class="sort-tab" data-sort="engagement_rate" onclick="setSort('engagement_rate')">참여율순</button>
         <button class="sort-tab" data-sort="avg_reel_views" onclick="setSort('avg_reel_views')">릴스뷰순</button>
-        <button class="sort-tab" data-sort="avg_likes" onclick="setSort('avg_likes')">좋아요순</button>
+        <button class="sort-tab" data-sort="avg_likes" onclick="setSort('avg_likes')">평균 좋아요순</button>
+        <button class="sort-tab" data-sort="avg_comments" onclick="setSort('avg_comments')">평균 댓글순</button>
       </div>
       <div class="text-xs text-slate-500">
         총 <strong class="text-indigo-400" id="totalCount">-</strong>명{% if not user %} · 상위 50명 공개{% endif %}
