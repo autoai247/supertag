@@ -306,12 +306,14 @@ def api_public(
     max_f: int = 0,
     category: str = "",
     hashtag: str = "",
+    public_only: bool = False,
     session_id: Optional[str] = Cookie(default=None)
 ):
     """공개 인플루언서 목록 JSON API - JS 렌더링용"""
     total, rows = get_public_influencers(page=page, per_page=30, sort=sort,
                                          q=q, min_f=min_f, max_f=max_f,
-                                         category=category, hashtag=hashtag)
+                                         category=category, hashtag=hashtag,
+                                         public_only=public_only)
     total_pages = max(1, (total + 29) // 30)
     def _g(r, k, d=0):
         return r[k] if isinstance(r, dict) else getattr(r, k, d)
@@ -333,6 +335,7 @@ def api_public(
             "avg_feed_comments": _g(r,"avg_feed_comments",0),
             "is_verified": _g(r,"is_verified",False),
             "is_business": _g(r,"is_business",False),
+            "is_private": bool(_g(r,"is_private",False)),
             "category": _g(r,"category",""),
             "hashtags": _g(r,"hashtags",""),
             "profile_pic_url": _g(r,"profile_pic_url",""),

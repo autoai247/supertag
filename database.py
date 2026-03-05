@@ -666,8 +666,8 @@ def get_public_stats():
 
 
 def get_public_influencers(page=1, per_page=30, sort="follower_count",
-                           q="", min_f=0, max_f=0, category="", hashtag=""):
-    _SELECT = """pk,username,full_name,follower_count,is_verified,is_business,
+                           q="", min_f=0, max_f=0, category="", hashtag="", public_only=False):
+    _SELECT = """pk,username,full_name,follower_count,is_verified,is_business,is_private,
         category,profile_pic_local,profile_pic_url,engagement_rate,avg_reel_views,avg_likes,avg_comments,
         avg_feed_likes,avg_feed_comments,avg_reel_likes,avg_reel_comments,hashtags,biography"""
     _VALID = {"follower_count","engagement_rate","avg_reel_views","avg_likes","avg_comments"}
@@ -688,6 +688,7 @@ def get_public_influencers(page=1, per_page=30, sort="follower_count",
         if max_f: params["follower_count"] = f"lte.{max_f}"
         if category: params["category"] = f"eq.{category}"
         if hashtag: params["hashtags"] = f"ilike.*{hashtag}*"
+        if public_only: params["is_private"] = "eq.false"
         r = _req.get(_sb_url(T_INF), headers=headers, params=params)
         rows = r.json() if isinstance(r.json(), list) else []
         s = r.headers.get("Content-Range","0/0").split("/")[-1]
@@ -708,6 +709,8 @@ def get_public_influencers(page=1, per_page=30, sort="follower_count",
         conditions.append("category = ?"); params.append(category)
     if hashtag:
         conditions.append("hashtags LIKE ?"); params.append(f"%{hashtag}%")
+    if public_only:
+        conditions.append("(is_private = 0 OR is_private IS NULL)")
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     try:
         total = conn.execute(f"SELECT COUNT(*) FROM {T_INF} {where}", params).fetchone()[0]

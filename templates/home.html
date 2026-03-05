@@ -104,6 +104,13 @@
       position:relative; overflow:hidden;
     }
     .inf-card:hover { border-color:#a5b4fc; transform:translateY(-1px); box-shadow:0 6px 24px rgba(99,102,241,.1); }
+    .inf-card .cat-bar { position:absolute; top:0; left:0; right:0; height:3px; border-radius:18px 18px 0 0; }
+
+    /* 티어 뱃지 */
+    .tier-badge { display:inline-flex; align-items:center; padding:2px 7px; border-radius:999px; font-size:9px; font-weight:800; letter-spacing:.03em; }
+
+    /* ER 하이라이트 */
+    .er-pill { display:inline-flex; align-items:center; gap:3px; padding:3px 8px; border-radius:999px; font-size:12px; font-weight:800; }
 
     /* 프로필 */
     .profile-wrap { position:relative; flex-shrink:0; }
@@ -207,11 +214,12 @@
 <div class="ctrl-bar">
   <div class="max-w-5xl mx-auto px-4 flex items-center gap-2 flex-wrap">
     <!-- 빠른 칩 -->
-    <button class="chip" data-key="category" data-val="뷰티" onclick="quickFilter('category','뷰티')">뷰티</button>
-    <button class="chip" data-key="category" data-val="패션" onclick="quickFilter('category','패션')">패션</button>
-    <button class="chip" data-key="category" data-val="푸드" onclick="quickFilter('category','푸드')">푸드</button>
-    <button class="chip" data-key="category" data-val="육아" onclick="quickFilter('category','육아')">육아</button>
-    <button class="chip" data-key="category" data-val="여행" onclick="quickFilter('category','여행')">여행</button>
+    <button class="chip" data-key="public_only" data-val="1" onclick="quickFilter('public_only','1')" title="비공개 계정 제외">🌐 공개만</button>
+    <button class="chip" data-key="category" data-val="뷰티" onclick="quickFilter('category','뷰티')">💄 뷰티</button>
+    <button class="chip" data-key="category" data-val="패션" onclick="quickFilter('category','패션')">👗 패션</button>
+    <button class="chip" data-key="category" data-val="푸드" onclick="quickFilter('category','푸드')">🍽 푸드</button>
+    <button class="chip" data-key="category" data-val="육아" onclick="quickFilter('category','육아')">👶 육아</button>
+    <button class="chip" data-key="category" data-val="여행" onclick="quickFilter('category','여행')">✈️ 여행</button>
     <button class="chip" data-key="min_f" data-val="10000" onclick="quickFilter('min_f','10000')">1만+</button>
     <button class="chip" data-key="min_f" data-val="100000" onclick="quickFilter('min_f','100000')">10만+</button>
 
@@ -306,9 +314,16 @@
 <script>
 const IS_ADMIN = {{ 'true' if user else 'false' }};
 let currentSort = 'follower_count';
-let currentFilters = { q:'', min_f:0, max_f:0, category:'', hashtag:'' };
+let currentFilters = { q:'', min_f:0, max_f:0, category:'', hashtag:'', public_only:false };
 let _debounceTimer = null;
 let _filterOpen = false;
+
+// 카테고리 색상 맵
+const CAT_COLORS = {
+  '뷰티':'#ec4899','패션':'#8b5cf6','푸드':'#f97316','육아':'#10b981',
+  '여행':'#3b82f6','건강':'#ef4444','라이프스타일':'#6366f1','반려동물':'#f59e0b',
+  '운동':'#06b6d4','IT':'#64748b'
+};
 
 function fmt(n, type) {
   n = n || 0;
@@ -354,36 +369,58 @@ function renderCard(r, idx) {
     ? `<img src="${r.profile_pic_url}" class="profile-img" onerror="this.parentNode.innerHTML='<div class=\\'profile-placeholder\\'>${initial}</div>'">`
     : `<div class="profile-placeholder">${initial}</div>`;
 
-  const verif = r.is_verified ? `<svg style="width:15px;height:15px;color:#3b82f6;flex-shrink:0;" fill="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>` : '';
+  // 티어 계산
+  const fc = r.follower_count || 0;
+  let tier, tierBg, tierColor;
+  if (fc >= 500000)      { tier='매크로'; tierBg='#ede9fe'; tierColor='#7c3aed'; }
+  else if (fc >= 100000) { tier='미들';   tierBg='#dbeafe'; tierColor='#1d4ed8'; }
+  else if (fc >= 10000)  { tier='마이크로'; tierBg='#d1fae5'; tierColor='#065f46'; }
+  else                   { tier='나노';   tierBg='#fef3c7'; tierColor='#92400e'; }
+
+  // 카테고리 색상
+  const catColor = CAT_COLORS[r.category] || '#e2e8f0';
+
+  // 참여율 하이라이트
+  const er = r.engagement_rate || 0;
+  let erBg, erTxt;
+  if (er >= 5)      { erBg='#dcfce7'; erTxt='#15803d'; }
+  else if (er >= 3) { erBg='#dbeafe'; erTxt='#1d4ed8'; }
+  else if (er >= 1) { erBg='#fef9c3'; erTxt='#a16207'; }
+  else              { erBg='#f1f5f9'; erTxt='#94a3b8'; }
+
+  const verif = r.is_verified ? `<svg style="width:14px;height:14px;color:#3b82f6;flex-shrink:0;" fill="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>` : '';
+  const privateBadge = r.is_private ? `<span style="background:#fff1f2;color:#e11d48;border:1px solid #fecdd3;display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;font-size:9px;font-weight:700;">🔒 비공개</span>` : '';
   const bizBadge = r.is_business ? `<span class="badge badge-biz">비즈</span>` : '';
-  const catBadge = r.category ? `<span class="badge badge-cat">${r.category}</span>` : '';
-  const nameLine = r.full_name ? `<span style="font-size:12px;color:#94a3b8;">${r.full_name}</span>` : '';
+  const tierBadge = `<span class="tier-badge" style="background:${tierBg};color:${tierColor};border:1px solid ${tierColor}20;">${tier}</span>`;
+  const nameLine = r.full_name ? `<span style="font-size:11px;color:#94a3b8;">${r.full_name}</span>` : '';
   const tags = (r.hashtags||'').split(',').filter(t=>t.trim()).slice(0,3).map(t=>`<span class="badge badge-tag">#${t.trim()}</span>`).join('');
   const bio = r.biography ? r.biography.substring(0,55)+(r.biography.length>55?'…':'') : '';
-  const er = r.engagement_rate || 0;
-  const erColor = er>=5?'#10b981':er>=2?'#3b82f6':'#94a3b8';
   const rankHtml = rank<=10 ? `<div class="rank-badge">${rank}</div>` : '';
   const hasFeed = r.avg_feed_likes>0||r.avg_feed_comments>0;
   const hasReel = r.avg_reel_views>0||r.avg_reel_likes>0;
 
   return `<div class="inf-card" onclick="location.href='${dest}'">
+    <div class="cat-bar" style="background:${catColor};"></div>
     <div class="profile-wrap">
       <div class="profile-ring"><div class="profile-ring-inner">${imgInner}</div></div>
       ${rankHtml}
     </div>
     <div class="inf-info">
       <div class="inf-name-row">
-        <span class="inf-username">@${r.username}</span>${verif}${bizBadge}${catBadge}${nameLine}
+        <span class="inf-username">@${r.username}</span>${verif}${tierBadge}${bizBadge}${privateBadge}${nameLine}
       </div>
       <div class="inf-bio">${bio}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:3px;">${tags}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;">
+        <span class="er-pill" style="background:${erBg};color:${erTxt};">⚡ ${er.toFixed(1)}%</span>
+        ${tags}
+      </div>
     </div>
     <div class="stat-groups">
       <div class="stat-group">
         <div class="stat-group-title" style="color:#6366f1;">계정</div>
         <div class="stat-group-body">
           <div class="stat-cell"><div class="stat-val" style="color:#6366f1;">${fmt(r.follower_count,'follower')}</div><div class="stat-lbl">팔로워</div></div>
-          <div class="stat-cell"><div class="stat-val" style="color:${erColor};">${er.toFixed(1)}%</div><div class="stat-lbl">참여율</div></div>
+          <div class="stat-cell"><div class="stat-val" style="color:${erTxt};font-size:14px;">${er.toFixed(1)}%</div><div class="stat-lbl">참여율</div></div>
         </div>
       </div>
       <div class="stat-group">
@@ -415,6 +452,7 @@ async function loadList(page, sort, filters={}) {
     if (filters.max_f) p.set('max_f', filters.max_f);
     if (filters.category) p.set('category', filters.category);
     if (filters.hashtag) p.set('hashtag', filters.hashtag);
+    if (filters.public_only) p.set('public_only', 'true');
     const res = await fetch(`/api/public?${p}`);
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
@@ -441,6 +479,7 @@ function applyFilters() {
     max_f: document.getElementById('maxFFilter').value,
     category: document.getElementById('categoryFilter').value,
     hashtag: document.getElementById('hashtagFilter').value.trim(),
+    public_only: document.querySelector('.chip[data-key="public_only"]')?.classList.contains('active') || false,
   };
   updateFilterDot();
   loadList(1, currentSort, currentFilters);
@@ -452,7 +491,7 @@ function debounceFilters() { clearTimeout(_debounceTimer); _debounceTimer = setT
 function quickFilter(key, val) {
   const chips = document.querySelectorAll(`.chip[data-key="${key}"][data-val="${val}"]`);
   const isActive = chips[0]?.classList.contains('active');
-  // 같은 key의 칩은 하나만 active
+  // 같은 key의 칩은 하나만 active (public_only는 toggle)
   document.querySelectorAll(`.chip[data-key="${key}"]`).forEach(c=>c.classList.remove('active'));
   if (!isActive) chips.forEach(c=>c.classList.add('active'));
 
@@ -468,7 +507,7 @@ function resetFilters() {
   document.getElementById('categoryFilter').value='';
   document.getElementById('hashtagFilter').value='';
   document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
-  currentFilters={q:'',min_f:0,max_f:0,category:'',hashtag:''};
+  currentFilters={q:'',min_f:0,max_f:0,category:'',hashtag:'',public_only:false};
   updateFilterDot();
   loadList(1,currentSort,currentFilters);
 }
