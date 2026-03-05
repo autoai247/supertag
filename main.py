@@ -265,23 +265,30 @@ def api_public(
         sort = "follower_count"
     total, rows = get_public_influencers(page=page, per_page=30, sort=sort)
     total_pages = max(1, (total + 29) // 30)
+    def _g(r, k, d=0):
+        return r[k] if isinstance(r, dict) else getattr(r, k, d)
     result = []
     for r in rows:
         result.append({
-            "pk": r.pk if hasattr(r, "pk") else r["pk"],
-            "username": r.username if hasattr(r, "username") else r["username"],
-            "full_name": r.full_name if hasattr(r, "full_name") else r.get("full_name",""),
-            "biography": r.biography if hasattr(r, "biography") else r.get("biography",""),
-            "follower_count": r.follower_count if hasattr(r, "follower_count") else r.get("follower_count",0),
-            "engagement_rate": r.engagement_rate if hasattr(r, "engagement_rate") else r.get("engagement_rate",0),
-            "avg_likes": r.avg_likes if hasattr(r, "avg_likes") else r.get("avg_likes",0),
-            "avg_reel_views": r.avg_reel_views if hasattr(r, "avg_reel_views") else r.get("avg_reel_views",0),
-            "is_verified": r.is_verified if hasattr(r, "is_verified") else r.get("is_verified",False),
-            "is_business": r.is_business if hasattr(r, "is_business") else r.get("is_business",False),
-            "category": r.category if hasattr(r, "category") else r.get("category",""),
-            "hashtags": r.hashtags if hasattr(r, "hashtags") else r.get("hashtags",""),
-            "profile_pic_url": r.profile_pic_url if hasattr(r, "profile_pic_url") else r.get("profile_pic_url",""),
-            "profile_pic_local": r.profile_pic_local if hasattr(r, "profile_pic_local") else r.get("profile_pic_local",""),
+            "pk": _g(r,"pk",""),
+            "username": _g(r,"username",""),
+            "full_name": _g(r,"full_name",""),
+            "biography": _g(r,"biography",""),
+            "follower_count": _g(r,"follower_count",0),
+            "engagement_rate": _g(r,"engagement_rate",0),
+            "avg_likes": _g(r,"avg_likes",0),
+            "avg_comments": _g(r,"avg_comments",0),
+            "avg_reel_views": _g(r,"avg_reel_views",0),
+            "avg_reel_likes": _g(r,"avg_reel_likes",0),
+            "avg_reel_comments": _g(r,"avg_reel_comments",0),
+            "avg_feed_likes": _g(r,"avg_feed_likes",0),
+            "avg_feed_comments": _g(r,"avg_feed_comments",0),
+            "is_verified": _g(r,"is_verified",False),
+            "is_business": _g(r,"is_business",False),
+            "category": _g(r,"category",""),
+            "hashtags": _g(r,"hashtags",""),
+            "profile_pic_url": _g(r,"profile_pic_url",""),
+            "profile_pic_local": _g(r,"profile_pic_local",""),
         })
     return {"total": total, "total_pages": total_pages, "page": page, "rows": result}
 

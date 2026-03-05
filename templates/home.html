@@ -89,18 +89,18 @@
     .badge-cat { background:rgba(99,102,241,.12); color:#a5b4fc; border:1px solid rgba(99,102,241,.2); }
     .badge-tag { background:rgba(139,92,246,.1); color:#c4b5fd; border:1px solid rgba(139,92,246,.18); font-size:10px; }
 
-    /* 스탯 그리드 2×2 */
-    .stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; flex-shrink:0; }
+    /* 스탯 그리드 2×3 */
+    .stat-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; flex-shrink:0; }
     .stat-cell {
       background:rgba(0,0,0,.3);
       border:1px solid rgba(255,255,255,.06);
-      border-radius:12px;
-      padding:8px 14px;
+      border-radius:10px;
+      padding:7px 10px;
       text-align:center;
-      min-width:78px;
+      min-width:68px;
     }
-    .stat-val { font-size:15px; font-weight:800; line-height:1.2; }
-    .stat-lbl { font-size:9px; color:#475569; margin-top:2px; text-transform:uppercase; letter-spacing:.04em; }
+    .stat-val { font-size:14px; font-weight:800; line-height:1.2; }
+    .stat-lbl { font-size:9px; color:#475569; margin-top:2px; letter-spacing:.02em; }
 
     /* 잠금 */
     .lock-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:12px; z-index:10; backdrop-filter:blur(2px); background:rgba(8,8,15,.6); border-radius:20px; }
@@ -231,10 +231,12 @@ function renderCard(r, idx) {
           <div style="height:11px;background:#0f172a;border-radius:6px;width:120px;"></div>
         </div>
         <div class="stat-grid">
-          <div class="stat-cell"><div style="height:16px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
-          <div class="stat-cell"><div style="height:16px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
-          <div class="stat-cell"><div style="height:16px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
-          <div class="stat-cell"><div style="height:16px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
+          <div class="stat-cell"><div style="height:14px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
+          <div class="stat-cell"><div style="height:14px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
+          <div class="stat-cell"><div style="height:14px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
+          <div class="stat-cell"><div style="height:14px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
+          <div class="stat-cell"><div style="height:14px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
+          <div class="stat-cell"><div style="height:14px;background:#1e293b;border-radius:6px;margin-bottom:4px;"></div><div style="height:9px;background:#0f172a;border-radius:4px;"></div></div>
         </div>
       </div>
       <div class="lock-overlay">
@@ -269,32 +271,27 @@ function renderCard(r, idx) {
   // 바이오
   const bio = r.biography ? r.biography.substring(0,60)+(r.biography.length>60?'…':'') : '';
 
-  // 참여율 색상
   const er = r.engagement_rate || 0;
   const erColor = er >= 5 ? '#34d399' : er >= 2 ? '#60a5fa' : '#94a3b8';
-
   const rankBadgeHtml = rank <= 10 ? `<div class="rank-badge">${rank}</div>` : '';
+  const hasFeed = (r.avg_feed_likes > 0 || r.avg_feed_comments > 0);
+  const hasReel = (r.avg_reel_views > 0 || r.avg_reel_likes > 0);
 
   return `<div class="inf-card" onclick="location.href='${dest}'">
-    <!-- 프로필 -->
     <div class="profile-wrap">
       <div class="profile-ring"><div class="profile-ring-inner">${imgInner}</div></div>
       ${rankBadgeHtml}
     </div>
-
-    <!-- 정보 2줄 -->
     <div class="inf-info">
-      <!-- 1줄: 이름 + 배지 -->
       <div class="inf-name-row">
         <span class="inf-username">@${r.username}</span>
         ${verif}${bizBadge}${catBadge}${nameLine}
       </div>
-      <!-- 2줄: 바이오 + 해시태그 -->
-      <div class="inf-bio">${bio || (tags ? '' : '소개 없음')}</div>
+      <div class="inf-bio">${bio || ''}</div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;">${tags}</div>
     </div>
 
-    <!-- 스탯 2×2 -->
+    <!-- 스탯 2×3 -->
     <div class="stat-grid">
       <div class="stat-cell">
         <div class="stat-val" style="color:#a5b4fc;">${fmt(r.follower_count,'follower')}</div>
@@ -305,16 +302,23 @@ function renderCard(r, idx) {
         <div class="stat-lbl">참여율</div>
       </div>
       <div class="stat-cell">
-        <div class="stat-val" style="color:#f472b6;">${fmt(r.avg_likes)}</div>
-        <div class="stat-lbl">평균좋아요</div>
+        <div class="stat-val" style="color:#fb923c;">${hasFeed ? fmt(r.avg_feed_likes) : fmt(r.avg_likes)}</div>
+        <div class="stat-lbl">피드 ❤️</div>
       </div>
       <div class="stat-cell">
-        <div class="stat-val" style="color:#c4b5fd;">${fmt(r.avg_reel_views)}</div>
-        <div class="stat-lbl">릴스뷰</div>
+        <div class="stat-val" style="color:#94a3b8;">${hasFeed ? fmt(r.avg_feed_comments) : fmt(r.avg_comments)}</div>
+        <div class="stat-lbl">피드 💬</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-val" style="color:#f472b6;">${hasReel ? fmt(r.avg_reel_likes) : '-'}</div>
+        <div class="stat-lbl">릴스 ❤️</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-val" style="color:#c4b5fd;">${hasReel ? fmt(r.avg_reel_views) : '-'}</div>
+        <div class="stat-lbl">릴스 👁</div>
       </div>
     </div>
 
-    <!-- 화살표 -->
     <svg style="width:18px;height:18px;color:#334155;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
   </div>`;
 }
