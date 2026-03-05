@@ -280,35 +280,137 @@
 </div>
 
 <!-- Session ID 등록 모달 -->
-<div id="sessionModal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.4);">
-  <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg mx-4">
-    <h3 id="sessionModalTitle" class="font-bold text-gray-900 text-lg mb-1">Session ID 등록</h3>
-    <p class="text-xs text-gray-500 mb-4">브라우저에서 로그인된 Instagram 세션을 사용해 IP 차단을 우회합니다.</p>
+<div id="sessionModal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.5);">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden">
 
-    <div class="p-3 rounded-xl mb-4 text-xs" style="background:#f5f3ff;border:1px solid #ddd6fe;">
-      <div class="font-semibold text-purple-800 mb-2">📋 Session ID 추출 방법</div>
-      <ol class="space-y-1 text-purple-700 list-decimal list-inside">
-        <li>Chrome에서 instagram.com에 <strong>해당 계정으로 로그인</strong></li>
-        <li><strong>F12</strong> (개발자도구) 열기</li>
-        <li><strong>Application</strong> 탭 → 왼쪽 <strong>Cookies</strong> → <strong>instagram.com</strong></li>
-        <li><strong>sessionid</strong> 행 클릭 → Value 열 값 전체 복사</li>
-        <li>아래 입력란에 붙여넣기</li>
-      </ol>
-      <div class="mt-2 text-purple-500">※ 세션은 보통 1~3개월 유지됩니다. 만료 시 재등록하세요.</div>
+    <!-- 헤더 -->
+    <div class="px-6 pt-5 pb-4" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 id="sessionModalTitle" class="font-bold text-white text-base">🍪 Session ID 등록</h3>
+          <p class="text-purple-200 text-xs mt-0.5">로그인된 브라우저 세션으로 IP 차단 우회</p>
+        </div>
+        <button onclick="document.getElementById('sessionModal').classList.add('hidden')"
+                class="text-purple-200 hover:text-white text-xl leading-none">✕</button>
+      </div>
     </div>
 
-    <div>
-      <label class="text-xs text-gray-500 mb-1 block">sessionid 값</label>
-      <textarea id="sessionidInput" rows="3" placeholder="12345678%3AAbCdEfGhIjKl%3A12%3AAbc..."
-                class="w-full px-3 py-2 text-xs rounded-lg border border-purple-200 font-mono resize-none focus:outline-none focus:ring-2 focus:ring-purple-300"></textarea>
-    </div>
+    <div class="p-6">
 
-    <div class="flex gap-2 mt-4">
-      <button type="button" onclick="document.getElementById('sessionModal').classList.add('hidden')"
-              class="btn btn-ghost flex-1">취소</button>
-      <button id="saveSessionBtn" onclick="saveSessionId()"
-              class="flex-1 py-2 rounded-lg font-semibold text-white text-sm"
-              style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">저장</button>
+      <!-- 방법 선택 탭 -->
+      <div class="flex gap-2 mb-4">
+        <button id="tabExt" onclick="switchTab('ext')"
+                class="flex-1 py-2 rounded-xl text-xs font-semibold transition"
+                style="background:#7c3aed;color:#fff;">
+          ⚡ 추천: 확장 프로그램
+        </button>
+        <button id="tabF12" onclick="switchTab('f12')"
+                class="flex-1 py-2 rounded-xl text-xs font-semibold transition border border-gray-200 text-gray-500 hover:border-purple-300">
+          🔧 개발자도구 (F12)
+        </button>
+      </div>
+
+      <!-- 방법 A: 확장 프로그램 -->
+      <div id="panelExt">
+        <div class="rounded-xl p-4 mb-4" style="background:#faf5ff;border:1px solid #e9d5ff;">
+          <div class="text-xs font-bold text-purple-800 mb-3">Cookie-Editor 확장 설치 후 3번만 클릭!</div>
+
+          <!-- Step 1 -->
+          <div class="flex gap-3 mb-3">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style="background:#7c3aed;">1</div>
+            <div class="flex-1">
+              <div class="text-xs font-semibold text-gray-800 mb-1">확장 프로그램 설치 (최초 1회)</div>
+              <a href="https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm"
+                 target="_blank"
+                 class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                 style="background:#4285f4;">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                Chrome 웹스토어에서 설치
+              </a>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="flex gap-3 mb-3">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style="background:#7c3aed;">2</div>
+            <div class="flex-1">
+              <div class="text-xs font-semibold text-gray-800 mb-1">instagram.com에서 해당 계정으로 로그인 후</div>
+              <button onclick="window.open('https://www.instagram.com','_blank')"
+                      class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-600 hover:border-purple-300 hover:text-purple-700">
+                📷 instagram.com 열기
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="flex gap-3">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style="background:#7c3aed;">3</div>
+            <div class="text-xs text-gray-700">
+              주소창 오른쪽 <strong>🍪 아이콘</strong> 클릭 →
+              <code class="bg-purple-100 text-purple-800 px-1 rounded">sessionid</code> 찾아서
+              <strong>복사 아이콘</strong> 클릭 → 아래 붙여넣기
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 방법 B: F12 -->
+      <div id="panelF12" class="hidden">
+        <div class="rounded-xl p-4 mb-4" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+          <div class="text-xs font-bold text-green-800 mb-3">instagram.com에서 F12 열고 붙여넣기</div>
+
+          <!-- Step 1 -->
+          <div class="flex gap-3 mb-2">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style="background:#16a34a;">1</div>
+            <div class="text-xs text-gray-700">
+              <button onclick="window.open('https://www.instagram.com','_blank')"
+                      class="inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-200 text-gray-600 hover:border-green-300 text-xs mr-1">📷 인스타 열기</button>
+              에 해당 계정 로그인
+            </div>
+          </div>
+          <div class="flex gap-3 mb-2">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style="background:#16a34a;">2</div>
+            <div class="text-xs text-gray-700"><strong>F12</strong> 누르기 → <strong>Application</strong> 탭 클릭</div>
+          </div>
+          <div class="flex gap-3 mb-2">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style="background:#16a34a;">3</div>
+            <div class="text-xs text-gray-700">왼쪽 <strong>Cookies</strong> → <strong>https://www.instagram.com</strong></div>
+          </div>
+          <div class="flex gap-3">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style="background:#16a34a;">4</div>
+            <div class="text-xs text-gray-700">
+              필터 박스에 <code class="bg-green-100 text-green-800 px-1 rounded">sessionid</code> 입력 →
+              Value 셀 더블클릭 → <strong>Ctrl+A → Ctrl+C</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 붙여넣기 영역 -->
+      <div class="relative">
+        <textarea id="sessionidInput" rows="3"
+                  placeholder="여기에 붙여넣기 (Ctrl+V)..."
+                  onpaste="setTimeout(()=>checkPaste(),50)"
+                  class="w-full px-4 py-3 text-xs rounded-xl font-mono resize-none transition"
+                  style="background:#1e1b4b;color:#c4b5fd;border:2px solid #7c3aed;outline:none;"></textarea>
+        <div id="pasteHint" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div class="text-center">
+            <div class="text-3xl mb-1">📋</div>
+            <div class="text-xs text-purple-300">Ctrl+V 로 붙여넣기</div>
+          </div>
+        </div>
+      </div>
+      <div id="pasteOk" class="hidden mt-2 text-xs text-emerald-600 font-semibold">✅ 값이 입력됐습니다. 저장 버튼을 누르세요.</div>
+
+      <div class="flex gap-2 mt-4">
+        <button type="button" onclick="document.getElementById('sessionModal').classList.add('hidden')"
+                class="btn btn-ghost flex-1 text-sm">취소</button>
+        <button id="saveSessionBtn" onclick="saveSessionId()"
+                class="flex-1 py-2.5 rounded-xl font-bold text-white text-sm"
+                style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">저장하기</button>
+      </div>
+
+      <div class="mt-3 text-center text-xs text-gray-400">세션은 보통 1~3개월 유지 · 만료 시 재등록</div>
     </div>
   </div>
 </div>
@@ -394,11 +496,36 @@ function translateLoginError(err) {
 
 let _sessionTargetId = null;
 
+function switchTab(tab) {
+  const isExt = tab === 'ext';
+  document.getElementById('panelExt').classList.toggle('hidden', !isExt);
+  document.getElementById('panelF12').classList.toggle('hidden', isExt);
+  document.getElementById('tabExt').style.cssText = isExt ? 'background:#7c3aed;color:#fff;flex:1;padding:8px;border-radius:12px;font-size:12px;font-weight:600;' : 'flex:1;padding:8px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;color:#6b7280;';
+  document.getElementById('tabF12').style.cssText = !isExt ? 'background:#16a34a;color:#fff;flex:1;padding:8px;border-radius:12px;font-size:12px;font-weight:600;' : 'flex:1;padding:8px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;color:#6b7280;';
+}
+
+function checkPaste() {
+  const val = document.getElementById('sessionidInput').value.trim();
+  const hint = document.getElementById('pasteHint');
+  const ok = document.getElementById('pasteOk');
+  if (val.length > 10) {
+    hint.style.display = 'none';
+    ok.classList.remove('hidden');
+  } else {
+    hint.style.display = '';
+    ok.classList.add('hidden');
+  }
+}
+
 function openSessionModal(id, username) {
   _sessionTargetId = id;
   document.getElementById('sessionModalTitle').textContent = `@${username} — Session ID 등록`;
   document.getElementById('sessionidInput').value = '';
+  document.getElementById('pasteHint').style.display = '';
+  document.getElementById('pasteOk').classList.add('hidden');
+  switchTab('ext');
   document.getElementById('sessionModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('sessionidInput').focus(), 100);
 }
 
 async function saveSessionId() {
