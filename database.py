@@ -155,6 +155,7 @@ def init_db():
         last_used_at REAL DEFAULT 0,
         last_error TEXT DEFAULT '',
         session_data TEXT DEFAULT '',
+        sessionid_cookie TEXT DEFAULT '',
         created_at REAL
     )""")
 
@@ -223,6 +224,13 @@ def _migrate(conn):
     ]:
         if col not in adv_existing:
             conn.execute(f"ALTER TABLE {T_ADV} ADD COLUMN {col} {td}")
+
+    # insta_accounts 마이그레이션
+    try:
+        acc_existing = {row[1] for row in conn.execute(f"PRAGMA table_info({T_ACC})").fetchall()}
+        if "sessionid_cookie" not in acc_existing:
+            conn.execute(f"ALTER TABLE {T_ACC} ADD COLUMN sessionid_cookie TEXT DEFAULT ''")
+    except: pass
 
     rj_existing = {row[1] for row in conn.execute(f"PRAGMA table_info({T_RJOB})").fetchall()}
     if "current_user_pk" not in rj_existing and "current_user" in rj_existing:
@@ -861,17 +869,17 @@ def get_next_account():
     return rows[0] if rows else None
 
 def upsert_account(username, password, totp_secret="", proxy_host="", proxy_port="",
-                   proxy_user="", proxy_pass=""):
+                   proxy_user="", proxy_pass="", sessionid_cookie=""):
     now = time.time()
     data = {
         "username": username, "password": password,
         "totp_secret": totp_secret,
         "proxy_host": proxy_host, "proxy_port": proxy_port,
         "proxy_user": proxy_user, "proxy_pass": proxy_pass,
+        "sessionid_cookie": sessionid_cookie,
         "status": "idle", "last_error": "", "created_at": now,
     }
     if _USE_SUPABASE:
-        # upsert via onConflict
         import requests as _r
         h = dict(_sb_headers())
         h["Prefer"] = "resolution=merge-duplicates,return=representation"
@@ -881,15 +889,29 @@ def upsert_account(username, password, totp_secret="", proxy_host="", proxy_port
     try:
         conn.execute(f"""INSERT INTO {T_ACC}
             (username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass,
-             status, last_error, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
+             sessionid_cookie, status, last_error, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(username) DO UPDATE SET
                 password=excluded.password,
                 totp_secret=excluded.totp_secret,
                 proxy_host=excluded.proxy_host, proxy_port=excluded.proxy_port,
-                proxy_user=excluded.proxy_user, proxy_pass=excluded.proxy_pass""",
+                proxy_user=excluded.proxy_user, proxy_pass=excluded.proxy_pass,
+                sessionid_cookie=excluded.sessionid_cookie""",
             (username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass,
-             "idle", "", now))
+             sessionid_cookie, "idle", "", now))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_account_sessionid(account_id: int, sessionid_cookie: str):
+    """기존 계정에 sessionid 쿠키만 업데이트"""
+    if _USE_SUPABASE:
+        _sb_patch(T_ACC, f"?id=eq.{account_id}", {"sessionid_cookie": sessionid_cookie})
+        return
+    conn = get_conn()
+    try:
+        conn.execute(f"UPDATE {T_ACC} SET sessionid_cookie=? WHERE id=?", (sessionid_cookie, account_id))
         conn.commit()
     finally:
         conn.close()

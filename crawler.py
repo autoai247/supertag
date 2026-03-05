@@ -35,12 +35,34 @@ _current_account_id: int = None
 
 
 def _make_client(acc: dict):
-    """계정 딕셔너리로 instagrapi Client 생성 및 로그인"""
+    """계정 딕셔너리로 instagrapi Client 생성 및 로그인.
+    우선순위: ① sessionid 쿠키 → ② 저장된 세션 → ③ 아이디/비밀번호
+    """
     from instagrapi import Client
     cl = Client()
     cl.delay_range = [1, 3]
 
-    # 저장된 세션 복원 시도
+    # 프록시 설정 (모든 방법에 공통 적용)
+    proxy_host = acc.get("proxy_host", "")
+    proxy_port = acc.get("proxy_port", "")
+    if proxy_host and proxy_port:
+        proxy_user = acc.get("proxy_user", "")
+        proxy_pass = acc.get("proxy_pass", "")
+        auth = f"{proxy_user}:{proxy_pass}@" if proxy_user and proxy_pass else ""
+        cl.set_proxy(f"http://{auth}{proxy_host}:{proxy_port}")
+        log.info(f"프록시 설정: {proxy_host}:{proxy_port}")
+
+    # ① sessionid 쿠키로 로그인 (IP 차단 우회 - 최우선)
+    sessionid = (acc.get("sessionid_cookie") or "").strip()
+    if sessionid:
+        try:
+            cl.login_by_sessionid(sessionid)
+            log.info(f"세션ID 로그인 성공: {acc['username']}")
+            return cl
+        except Exception as e:
+            log.warning(f"세션ID 만료 또는 오류 ({acc['username']}): {e}")
+
+    # ② 저장된 instagrapi 세션 복원
     session_data = acc.get("session_data", "")
     if session_data:
         try:
@@ -50,24 +72,15 @@ def _make_client(acc: dict):
             return cl
         except Exception:
             log.info(f"세션 만료, 재로그인: {acc['username']}")
+            cl = Client()  # 클라이언트 초기화 후 재시도
+            cl.delay_range = [1, 3]
+            if proxy_host and proxy_port:
+                auth = f"{proxy_user}:{proxy_pass}@" if proxy_user and proxy_pass else ""
+                cl.set_proxy(f"http://{auth}{proxy_host}:{proxy_port}")
 
-    # 프록시 설정
-    proxy_host = acc.get("proxy_host", "")
-    proxy_port = acc.get("proxy_port", "")
-    if proxy_host and proxy_port:
-        proxy_user = acc.get("proxy_user", "")
-        proxy_pass = acc.get("proxy_pass", "")
-        if proxy_user and proxy_pass:
-            proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
-        else:
-            proxy_url = f"http://{proxy_host}:{proxy_port}"
-        cl.set_proxy(proxy_url)
-        log.info(f"프록시 설정: {proxy_host}:{proxy_port}")
-
-    # 2FA TOTP 자동 생성
+    # ③ 아이디/비밀번호 로그인 (마지막 수단)
     totp_secret = acc.get("totp_secret", "")
     totp_code = pyotp.TOTP(totp_secret).now() if totp_secret else None
-
     cl.login(acc["username"], acc["password"], verification_code=totp_code)
     log.info(f"로그인 성공: {acc['username']}" + (" (2FA)" if totp_code else ""))
     return cl

@@ -20,7 +20,7 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       get_hashtags, get_collect_jobs, add_hashtag as db_add_hashtag,
                       delete_hashtag as db_delete_hashtag, update_hashtag_status,
                       add_collect_job, update_collect_job,
-                      get_accounts, upsert_account, delete_account, update_account_status,
+                      get_accounts, upsert_account, update_account_sessionid, delete_account, update_account_status,
                       reset_account_errors,
                       get_influencer_by_username, update_influencer_profile,
                       get_favorites, get_favorite_pks, toggle_favorite,
@@ -1048,16 +1048,33 @@ def account_add(
     totp_secret: str = Form(default=""),
     proxy_host: str = Form(default=""), proxy_port: str = Form(default=""),
     proxy_user: str = Form(default=""), proxy_pass: str = Form(default=""),
+    sessionid_cookie: str = Form(default=""),
     session_id: Optional[str] = Cookie(default=None)
 ):
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
     try:
         upsert_account(username.strip(), password, totp_secret.strip(),
-                       proxy_host, proxy_port, proxy_user, proxy_pass)
+                       proxy_host, proxy_port, proxy_user, proxy_pass,
+                       sessionid_cookie.strip())
     except Exception as e:
         log.error(f"계정 추가 실패: {e}")
     return RedirectResponse("/accounts?added=1", 302)
+
+
+@app.post("/accounts/{account_id}/sessionid")
+async def account_update_sessionid(
+    account_id: int,
+    sessionid_cookie: str = Form(...),
+    session_id: Optional[str] = Cookie(default=None)
+):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    try:
+        update_account_sessionid(account_id, sessionid_cookie.strip())
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
 
 @app.post("/accounts/upload")
 async def account_upload(
