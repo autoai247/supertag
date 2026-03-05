@@ -115,7 +115,18 @@
       <div class="flex items-center gap-2 flex-wrap mb-1.5">
         <h1 class="text-2xl font-black text-white tracking-tight">@{{ inf.username }}</h1>
         {% if inf.is_verified %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:rgba(99,102,241,.5);color:#c7d2fe;">✓ 공식인증</span>{% endif %}
-        <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:rgba(255,255,255,.15);color:{{ tier_color }};background:{{ tier_bg }};">{{ tier }}</span>
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:{{ tier_bg }};color:{{ tier_color }};">{{ tier }}</span>
+        {# 공개/비공개 + 계정 유형 뱃지 #}
+        {% if inf.is_private %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:rgba(239,68,68,.5);color:#fecaca;">🔒 비공개</span>
+        {% else %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:rgba(16,185,129,.25);color:#a7f3d0;">🌐 공개</span>
+        {% endif %}
+        {% if inf.is_business %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:rgba(59,130,246,.35);color:#bfdbfe;">🏢 비즈니스</span>
+        {% else %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:rgba(255,255,255,.12);color:#e2e8f0;">👤 개인</span>
+        {% endif %}
         {% if manual.can_live %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:rgba(245,158,11,.4);color:#fde68a;">📡 라이브가능</span>{% endif %}
         {% if manual.is_approved %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:rgba(16,185,129,.3);color:#a7f3d0;">✓ 승인</span>{% endif %}
       </div>
@@ -292,6 +303,19 @@
 </div>
 
 <!-- ══════════════════════════════════
+     비공개 계정 경고
+══════════════════════════════════ -->
+{% if inf.is_private %}
+<div class="mb-4 px-4 py-3 rounded-xl flex items-start gap-3" style="background:#fff1f2;border:1.5px solid #fecdd3;">
+  <span class="text-xl flex-shrink-0">🔒</span>
+  <div>
+    <div class="font-bold text-red-700 text-sm mb-0.5">비공개 계정 — 광고 효과 제한됨</div>
+    <p class="text-xs text-red-600 leading-relaxed">이 계정은 비공개(Private) 상태입니다. 팔로워만 게시물을 볼 수 있어 신규 도달이 불가능합니다. 협업 전 계정을 공개로 전환하거나, 스토리 광고 위주로 진행하는 것을 권장합니다.</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════════
      예상 캠페인 효과
 ══════════════════════════════════ -->
 <div class="card p-4 mb-5" style="border-left:3px solid #6366f1;">
@@ -445,6 +469,14 @@
       <div class="section-title">📊 계정 현황</div>
       <div class="grid grid-cols-2 gap-4">
         <div class="space-y-0.5">
+          <div class="info-row"><span class="label">계정 공개 여부</span>
+            <span class="font-bold text-sm {% if inf.is_private %}text-red-500{% else %}text-green-600{% endif %}">
+              {% if inf.is_private %}🔒 비공개{% else %}🌐 공개{% endif %}
+            </span>
+          </div>
+          <div class="info-row"><span class="label">계정 유형</span>
+            <span class="value">{% if inf.is_business %}🏢 비즈니스{% else %}👤 개인{% endif %}</span>
+          </div>
           <div class="info-row"><span class="label">총 게시물</span><span class="value">{{ inf.media_count | comma }}</span></div>
           <div class="info-row"><span class="label">피드 / 릴스</span>
             <span class="value"><span style="color:#6366f1;">{{ fdc }}</span><span class="text-gray-300 mx-1">/</span><span style="color:#8b5cf6;">{{ rc }}</span></span>

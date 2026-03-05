@@ -239,7 +239,8 @@
       <div class="flex items-center gap-1.5 flex-wrap">
         <span class="font-semibold text-gray-900 text-sm group-hover:text-indigo-600">@{{ r.username }}</span>
         {% if r.is_verified %}<svg class="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>{% endif %}
-        {% if r.is_business %}<span class="badge text-emerald-700" style="background:rgba(16,185,129,.1);font-size:9px;">Biz</span>{% endif %}
+        {% if r.is_private %}<span class="badge font-bold" style="background:#fff1f2;color:#e11d48;font-size:9px;">🔒 비공개</span>{% endif %}
+        {% if r.is_business %}<span class="badge text-emerald-700" style="background:rgba(16,185,129,.1);font-size:9px;">🏢 Biz</span>{% endif %}
         {% if r.can_live %}<span class="badge text-orange-700" style="background:rgba(245,158,11,.1);font-size:9px;">📡 라이브</span>{% endif %}
         {% if r.is_approved %}<span class="badge text-green-700" style="background:rgba(16,185,129,.1);font-size:9px;">✅ 승인</span>{% endif %}
       </div>
