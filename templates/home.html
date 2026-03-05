@@ -215,11 +215,16 @@
   <div class="max-w-5xl mx-auto px-4 flex items-center gap-2 flex-wrap">
     <!-- 빠른 칩 -->
     <button class="chip" data-key="public_only" data-val="1" onclick="quickFilter('public_only','1')" title="비공개 계정 제외">🌐 공개만</button>
+    <button class="chip" data-key="verified_only" data-val="1" onclick="quickFilter('verified_only','1')" title="인증 계정만">✓ 인증</button>
+    <button class="chip" data-key="acct_type" data-val="no_biz" onclick="quickFilter('acct_type','no_biz')" title="개인 계정만">👤 개인만</button>
+    <button class="chip" data-key="acct_type" data-val="biz_only" onclick="quickFilter('acct_type','biz_only')" title="비즈니스 계정만">🏢 비즈만</button>
+    <div style="width:1px;height:18px;background:#e2e8f0;flex-shrink:0;"></div>
     <button class="chip" data-key="category" data-val="뷰티" onclick="quickFilter('category','뷰티')">💄 뷰티</button>
     <button class="chip" data-key="category" data-val="패션" onclick="quickFilter('category','패션')">👗 패션</button>
     <button class="chip" data-key="category" data-val="푸드" onclick="quickFilter('category','푸드')">🍽 푸드</button>
     <button class="chip" data-key="category" data-val="육아" onclick="quickFilter('category','육아')">👶 육아</button>
     <button class="chip" data-key="category" data-val="여행" onclick="quickFilter('category','여행')">✈️ 여행</button>
+    <div style="width:1px;height:18px;background:#e2e8f0;flex-shrink:0;"></div>
     <button class="chip" data-key="min_f" data-val="10000" onclick="quickFilter('min_f','10000')">1만+</button>
     <button class="chip" data-key="min_f" data-val="100000" onclick="quickFilter('min_f','100000')">10만+</button>
 
@@ -314,7 +319,7 @@
 <script>
 const IS_ADMIN = {{ 'true' if user else 'false' }};
 let currentSort = 'follower_count';
-let currentFilters = { q:'', min_f:0, max_f:0, category:'', hashtag:'', public_only:false };
+let currentFilters = { q:'', min_f:0, max_f:0, category:'', hashtag:'', public_only:false, no_biz:false, biz_only:false, verified_only:false };
 let _debounceTimer = null;
 let _filterOpen = false;
 
@@ -338,29 +343,7 @@ function fmt(n, type) {
 }
 
 function renderCard(r, idx) {
-  const isLocked = !IS_ADMIN && idx >= 10;
   const rank = idx + 1;
-
-  if (isLocked) {
-    return `<div class="inf-card" style="cursor:default;">
-      <div style="display:flex;align-items:center;gap:18px;flex:1;filter:blur(5px);pointer-events:none;">
-        <div class="profile-ring"><div class="profile-ring-inner"><div class="profile-placeholder" style="background:#e2e8f0;"></div></div></div>
-        <div style="flex:1;">
-          <div style="height:15px;background:#e2e8f0;border-radius:8px;width:130px;margin-bottom:8px;"></div>
-          <div style="height:11px;background:#f1f5f9;border-radius:6px;width:190px;margin-bottom:6px;"></div>
-          <div style="height:11px;background:#f1f5f9;border-radius:6px;width:100px;"></div>
-        </div>
-        <div class="stat-groups">
-          ${[0,1,2].map(()=>`<div class="stat-group" style="min-width:88px;"><div style="height:25px;background:#e2e8f0;"></div><div style="display:flex;"><div class="stat-cell" style="flex:1;"><div style="height:13px;background:#f1f5f9;border-radius:4px;"></div></div><div class="stat-cell" style="flex:1;border-left:1px solid #e8eaf0;"><div style="height:13px;background:#f1f5f9;border-radius:4px;"></div></div></div></div>`).join('')}
-        </div>
-      </div>
-      <div class="lock-overlay">
-        <svg style="width:18px;height:18px;color:#a5b4fc;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-        <a href="/advertiser/login" style="background:#6366f1;color:#fff;font-weight:700;font-size:12px;padding:8px 18px;border-radius:12px;">로그인 후 열람</a>
-      </div>
-    </div>`;
-  }
-
   const dest = IS_ADMIN ? `/influencers/${r.pk}` : '/advertiser/login';
   const initial = (r.username||'?')[0].toUpperCase();
   let imgInner = r.profile_pic_local
@@ -453,6 +436,9 @@ async function loadList(page, sort, filters={}) {
     if (filters.category) p.set('category', filters.category);
     if (filters.hashtag) p.set('hashtag', filters.hashtag);
     if (filters.public_only) p.set('public_only', 'true');
+    if (filters.no_biz) p.set('no_biz', 'true');
+    if (filters.biz_only) p.set('biz_only', 'true');
+    if (filters.verified_only) p.set('verified_only', 'true');
     const res = await fetch(`/api/public?${p}`);
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
@@ -461,8 +447,8 @@ async function loadList(page, sort, filters={}) {
     data.rows.forEach((r,i) => { html += renderCard(r,(page-1)*30+i); });
     list.innerHTML = html || '<div style="text-align:center;padding:80px 0;color:#94a3b8;font-size:14px;">검색 결과가 없습니다</div>';
     const lb = document.getElementById('lockBanner');
-    if (!IS_ADMIN && data.total>10 && !filters.q && !filters.category && !filters.hashtag) {
-      document.getElementById('lockCount').textContent = (data.total-10)+'명이 더 있습니다';
+    if (!IS_ADMIN && data.total > data.rows.length) {
+      document.getElementById('lockCount').textContent = (data.total - data.rows.length)+'명이 더 있습니다';
       lb.classList.remove('hidden');
     } else { lb.classList.add('hidden'); }
     if (IS_ADMIN && data.total_pages>1) renderPagination(page, data.total_pages, sort);
@@ -480,6 +466,9 @@ function applyFilters() {
     category: document.getElementById('categoryFilter').value,
     hashtag: document.getElementById('hashtagFilter').value.trim(),
     public_only: document.querySelector('.chip[data-key="public_only"]')?.classList.contains('active') || false,
+    no_biz: document.querySelector('.chip[data-key="acct_type"][data-val="no_biz"]')?.classList.contains('active') || false,
+    biz_only: document.querySelector('.chip[data-key="acct_type"][data-val="biz_only"]')?.classList.contains('active') || false,
+    verified_only: document.querySelector('.chip[data-key="verified_only"]')?.classList.contains('active') || false,
   };
   updateFilterDot();
   loadList(1, currentSort, currentFilters);
@@ -507,7 +496,7 @@ function resetFilters() {
   document.getElementById('categoryFilter').value='';
   document.getElementById('hashtagFilter').value='';
   document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
-  currentFilters={q:'',min_f:0,max_f:0,category:'',hashtag:'',public_only:false};
+  currentFilters={q:'',min_f:0,max_f:0,category:'',hashtag:'',public_only:false,no_biz:false,biz_only:false,verified_only:false};
   updateFilterDot();
   loadList(1,currentSort,currentFilters);
 }

@@ -261,6 +261,7 @@
 <!-- ══════════════════════════════════
      피드 / 릴스 통계 그룹
 ══════════════════════════════════ -->
+{% if inf.avg_feed_likes or inf.avg_reel_views or inf.avg_reel_likes or fdc > 0 or rc > 0 %}
 <div class="grid grid-cols-2 gap-3 mb-5">
   <div style="background:#eff6ff;border-radius:14px;padding:14px 18px;border:1.5px solid #c7d7fd;">
     <div class="flex items-center gap-2 mb-3">
@@ -301,6 +302,7 @@
     </div>
   </div>
 </div>
+{% endif %}{# /피드·릴스 통계 조건부 #}
 
 <!-- ══════════════════════════════════
      비공개 계정 경고
@@ -318,6 +320,7 @@
 <!-- ══════════════════════════════════
      예상 캠페인 효과
 ══════════════════════════════════ -->
+{% if est_feed_engage > 0 or est_reel_engage > 0 or manual.feed_price or manual.reel_price %}
 <div class="card p-4 mb-5" style="border-left:3px solid #6366f1;">
   <div class="section-title">🎯 예상 캠페인 효과 <span class="text-xs font-normal text-gray-400 ml-1">— 추정치 (참고용)</span></div>
   <div class="grid grid-cols-2 gap-4">
@@ -373,6 +376,7 @@
     </div>
   </div>
 </div>
+{% endif %}{# /예상 캠페인 효과 조건부 #}
 
 <!-- ══════════════════════════════════
      메인 2컬럼 레이아웃
@@ -383,6 +387,7 @@
   <div class="space-y-3">
 
     <!-- 협업 정보 -->
+    {% if manual.collab_types or manual.can_live or manual.main_category or manual.target_gender or manual.target_age or manual.target_region or manual.quality_score or manual.past_brands or inf.category %}
     <div class="card p-4">
       <div class="section-title">🤝 협업 정보</div>
       {% if manual.collab_types %}
@@ -416,6 +421,11 @@
       <a href="/influencers/{{ inf.pk }}/edit" class="block mt-3 text-center text-xs text-indigo-500 hover:underline">협업 정보 편집 →</a>
       {% endif %}
     </div>
+    {% elif not is_advertiser_view %}
+    <div class="card p-3 text-center">
+      <a href="/influencers/{{ inf.pk }}/edit" class="text-xs text-indigo-500 hover:underline">+ 협업 정보 입력하기</a>
+    </div>
+    {% endif %}
 
     <!-- 단가표 -->
     <div class="card p-4" style="border-left:3px solid #6366f1;">

@@ -307,14 +307,21 @@ def api_public(
     category: str = "",
     hashtag: str = "",
     public_only: bool = False,
-    session_id: Optional[str] = Cookie(default=None)
+    no_biz: bool = False,       # 비즈니스 계정 제외
+    biz_only: bool = False,     # 비즈니스 계정만
+    verified_only: bool = False, # 인증 계정만
+    session_id: Optional[str] = Cookie(default=None),
+    adv_session_id: Optional[str] = Cookie(default=None),
 ):
     """공개 인플루언서 목록 JSON API - JS 렌더링용"""
-    total, rows = get_public_influencers(page=page, per_page=30, sort=sort,
+    is_authorized = bool(get_user(session_id) or get_adv_user(adv_session_id))
+    per_page = 30 if is_authorized else 10
+    total, rows = get_public_influencers(page=page, per_page=per_page, sort=sort,
                                          q=q, min_f=min_f, max_f=max_f,
                                          category=category, hashtag=hashtag,
-                                         public_only=public_only)
-    total_pages = max(1, (total + 29) // 30)
+                                         public_only=public_only, no_biz=no_biz,
+                                         biz_only=biz_only, verified_only=verified_only)
+    total_pages = max(1, (total + per_page - 1) // per_page)
     def _g(r, k, d=0):
         return r[k] if isinstance(r, dict) else getattr(r, k, d)
     result = []
