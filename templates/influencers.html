@@ -162,7 +162,10 @@
 
 <!-- 액션 바 -->
 <div class="flex items-center justify-between mb-3">
-  <span class="text-sm text-gray-500">총 <strong class="text-gray-900">{{ total | comma }}</strong>명</span>
+  <div class="flex items-center gap-2">
+    <input type="checkbox" id="selectAll" class="rounded">
+    <span class="text-sm text-gray-500">총 <strong class="text-gray-900">{{ total | comma }}</strong>명</span>
+  </div>
   <div class="flex items-center gap-2">
     <!-- 갱신 버튼 -->
     <button onclick="startRefresh()" id="refreshBtn" class="btn btn-ghost btn-sm">
@@ -212,160 +215,119 @@
   </div>
 </div>
 
-<!-- 테이블 -->
-<div class="card overflow-hidden">
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
-        <tr>
-          {% set cols = [
-            ('username',       '계정',    '인스타그램 사용자명 및 표시 이름'),
-            ('hashtags',       '해시태그', '수집에 사용된 해시태그 카테고리'),
-            ('follower_count', '팔로워',  '인스타그램 팔로워 수'),
-            ('engagement_rate','참여율',  '(평균 좋아요+댓글) ÷ 팔로워 × 100. 3% 이상이면 우수'),
-            ('avg_reel_views', '릴스뷰',  '릴스 게시물의 평균 조회수. 높을수록 탐색 탭 노출이 많음'),
-            ('avg_likes',      '평균좋아요','전체 게시물(피드+릴스) 평균 좋아요 수'),
-            ('media_count',    '게시물',  '총 게시물 수'),
-            ('is_verified',    '상태',    '인증 계정 여부, 비즈니스 계정, 라이브 가능, 배포승인 등'),
-            ('upload_frequency','업로드', '평균 업로드 빈도 (주 N회 등)'),
-            ('last_post_date', '최근게시','가장 최근 게시물 날짜. 최신성 확인용'),
-            ('updated_at',     '갱신',    '데이터 마지막 수집/갱신 시각')
-          ] %}
-          <th class="px-2 py-2.5 text-left"><input type="checkbox" id="selectAll" class="rounded"></th>
-          {% for key, name, tip in cols %}
-          <th class="px-2 py-2.5 text-left whitespace-nowrap">
-            <div class="flex items-center gap-1">
-              <a href="/influencers?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ key }}&order={{ 'asc' if sort==key and order=='desc' else 'desc' }}&page=1&per_page={{ per_page }}"
-                 class="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-indigo-600 uppercase tracking-wide">
-                {{ name }}
-                {% if sort == key %}<svg class="w-3 h-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">{% if order=='asc' %}<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>{% else %}<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>{% endif %}</svg>{% endif %}
-              </a>
-              <span style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;background:#e2e8f0;color:#94a3b8;font-size:8px;font-weight:700;cursor:help;flex-shrink:0;" class="col-tip" data-tip="{{ tip }}">?</span>
-            </div>
-          </th>
-          {% endfor %}
-          <th class="px-2 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">
-            <div class="flex items-center gap-1">액션
-              <span style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;background:#e2e8f0;color:#94a3b8;font-size:8px;font-weight:700;cursor:help;flex-shrink:0;" class="col-tip" data-tip="상세보기·수동편집 등 바로가기">?</span>
-            </div>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if rows %}
-        {% for r in rows %}
-        <tr class="border-b border-gray-50 hover:bg-indigo-50 transition-colors">
-          <td class="px-2 py-2"><input type="checkbox" class="row-check rounded" value="{{ r.pk }}"></td>
-          <!-- 계정 -->
-          <td class="px-2 py-2">
-            <a href="/influencers/{{ r.pk }}" class="flex items-center gap-2 group">
-              {% if r.profile_pic_local %}
-              <img src="/data/{{ r.profile_pic_local }}" class="w-8 h-8 rounded-full object-cover flex-shrink-0">
-              {% else %}
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                   style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">{{ r.username[0].upper() if r.username else '?' }}</div>
-              {% endif %}
-              <div>
-                <div class="font-medium text-gray-900 group-hover:text-indigo-600 text-xs">@{{ r.username }}</div>
-                <div class="text-gray-400 text-xs truncate max-w-24">{{ r.full_name }}</div>
-              </div>
-            </a>
-          </td>
-          <!-- 해시태그 -->
-          <td class="px-2 py-2">
-            <div class="flex flex-wrap gap-1 max-w-28">
-              {% for tag in (r.hashtags or '').split(',')[:2] if tag.strip() %}
-              <span class="badge text-indigo-600" style="background:rgba(99,102,241,.09);">#{{ tag.strip() }}</span>
-              {% endfor %}
-            </div>
-          </td>
-          <!-- 팔로워 -->
-          <td class="px-2 py-2 text-right">
-            <span class="font-semibold text-gray-900 text-xs">{{ r.follower_count | fmtn }}</span>
-          </td>
-          <!-- 참여율 -->
-          <td class="px-2 py-2 text-right text-xs">
-            {% if r.engagement_rate %}
-            <span class="font-semibold {% if r.engagement_rate >= 5 %}text-green-600{% elif r.engagement_rate >= 2 %}text-blue-600{% else %}text-gray-400{% endif %}">
-              {{ '%.2f'|format(r.engagement_rate) }}%
-            </span>
-            {% else %}<span class="text-gray-300">-</span>{% endif %}
-          </td>
-          <!-- 릴스뷰 -->
-          <td class="px-2 py-2 text-right text-xs">
-            {% if r.avg_reel_views %}
-            <span class="text-purple-600 font-medium">{{ r.avg_reel_views | fmtn }}</span>
-            {% else %}<span class="text-gray-300">-</span>{% endif %}
-          </td>
-          <!-- 평균좋아요 -->
-          <td class="px-2 py-2 text-right text-xs text-gray-500">
-            {{ r.avg_likes | fmtn if r.avg_likes else '-' }}
-          </td>
-          <!-- 게시물 -->
-          <td class="px-2 py-2 text-right text-xs text-gray-400">{{ r.media_count | comma }}</td>
-          <!-- 상태 뱃지 -->
-          <td class="px-2 py-2">
-            <div class="flex flex-wrap gap-1">
-              {% if r.is_verified %}<span class="badge text-blue-700" style="background:rgba(59,130,246,.1);">✓</span>{% endif %}
-              {% if r.is_business %}<span class="badge text-emerald-700" style="background:rgba(16,185,129,.1);">Biz</span>{% endif %}
-              {% if r.can_live %}<span class="badge text-orange-700" style="background:rgba(245,158,11,.1);">📡</span>{% endif %}
-              {% if r.is_approved %}<span class="badge text-green-700" style="background:rgba(16,185,129,.1);">승인</span>{% endif %}
-            </div>
-          </td>
-          <!-- 업로드 빈도 -->
-          <td class="px-2 py-2 text-xs text-gray-500 whitespace-nowrap">{{ r.upload_frequency or '-' }}</td>
-          <!-- 최근 게시 -->
-          <td class="px-2 py-2 text-xs text-gray-400 whitespace-nowrap">{{ r.last_post_date or '-' }}</td>
-          <!-- 갱신 -->
-          <td class="px-2 py-2 text-xs text-gray-400 whitespace-nowrap">{{ r.updated_at | dt }}</td>
-          <!-- 액션 -->
-          <td class="px-2 py-2">
-            <div class="flex gap-1">
-              <a href="/influencers/{{ r.pk }}" class="px-2 py-1 rounded text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-medium">상세</a>
-              <a href="/influencers/{{ r.pk }}/edit" class="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600 hover:bg-gray-200">편집</a>
-            </div>
-          </td>
-        </tr>
+<!-- 리스트 -->
+<div class="space-y-2" id="infList">
+  {% if rows %}
+  {% for r in rows %}
+  <div class="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-3 hover:border-indigo-200 hover:shadow-sm transition-all">
+    <!-- 체크박스 -->
+    <input type="checkbox" class="row-check rounded flex-shrink-0" value="{{ r.pk }}">
+
+    <!-- 프로필 이미지 -->
+    <a href="/influencers/{{ r.pk }}" class="flex-shrink-0">
+      {% if r.profile_pic_local %}
+      <img src="/data/{{ r.profile_pic_local }}" class="w-12 h-12 rounded-full object-cover border border-gray-100"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="w-12 h-12 rounded-full hidden items-center justify-center text-white text-sm font-bold flex-shrink-0" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">{{ (r.username or '?')[0].upper() }}</div>
+      {% else %}
+      <div class="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">{{ (r.username or '?')[0].upper() }}</div>
+      {% endif %}
+    </a>
+
+    <!-- 계정 정보 -->
+    <a href="/influencers/{{ r.pk }}" class="flex-1 min-w-0 group">
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="font-semibold text-gray-900 text-sm group-hover:text-indigo-600">@{{ r.username }}</span>
+        {% if r.is_verified %}<svg class="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>{% endif %}
+        {% if r.is_business %}<span class="badge text-emerald-700" style="background:rgba(16,185,129,.1);font-size:9px;">Biz</span>{% endif %}
+        {% if r.can_live %}<span class="badge text-orange-700" style="background:rgba(245,158,11,.1);font-size:9px;">📡 라이브</span>{% endif %}
+        {% if r.is_approved %}<span class="badge text-green-700" style="background:rgba(16,185,129,.1);font-size:9px;">✅ 승인</span>{% endif %}
+      </div>
+      <div class="flex items-center gap-2 mt-0.5">
+        {% if r.full_name %}<span class="text-xs text-gray-400 truncate max-w-32">{{ r.full_name }}</span>{% endif %}
+        {% for tag in (r.hashtags or '').split(',')[:2] if tag.strip() %}
+        <span class="text-xs text-indigo-400">#{{ tag.strip() }}</span>
         {% endfor %}
-        {% else %}
-        <tr><td colspan="13" class="px-4 py-16 text-center text-gray-400">
-          <div class="text-4xl mb-3">🔍</div>
-          {% if instant_collect_target %}
-          <div class="font-medium mb-2 text-gray-700">@{{ instant_collect_target }} 계정이 DB에 없습니다</div>
-          <p class="text-sm text-gray-400 mb-4">인스타그램에서 바로 수집할 수 있습니다</p>
-          <button onclick="instantCollect('{{ instant_collect_target }}')"
-                  id="instantBtn"
-                  class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                  style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            @{{ instant_collect_target }} 즉시 수집
-          </button>
-          <div id="instantStatus" class="mt-3 text-sm"></div>
-          {% else %}
-          <div class="font-medium mb-1">수집된 인플루언서가 없습니다</div>
-          <a href="/collect" class="text-indigo-500 text-sm hover:underline">지금 수집 시작 →</a>
-          {% endif %}
-        </td></tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
-  <!-- 페이지네이션 -->
-  {% if total_pages > 1 %}
-  <div class="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-    <span class="text-xs text-gray-400">{{ page }}/{{ total_pages }} 페이지</span>
-    <div class="flex gap-1">
-      {% if page > 1 %}<a href="?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ sort }}&order={{ order }}&page={{ page-1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">이전</a>{% endif %}
-      {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
-      <a href="?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ sort }}&order={{ order }}&page={{ p }}&per_page={{ per_page }}"
-         class="px-3 py-1.5 rounded-lg text-xs {% if p==page %}text-white font-bold{% else %}border border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}"
-         {% if p==page %}style="background:linear-gradient(135deg,#6366f1,#8b5cf6)"{% endif %}>{{ p }}</a>
-      {% endfor %}
-      {% if page < total_pages %}<a href="?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ sort }}&order={{ order }}&page={{ page+1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">다음</a>{% endif %}
+      </div>
+    </a>
+
+    <!-- 스탯 박스들 -->
+    <div class="flex gap-2 flex-shrink-0">
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+        <div class="text-sm font-bold text-gray-900">{{ r.follower_count | fmtn }}</div>
+        <div class="text-xs text-gray-400">팔로워</div>
+      </div>
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+        <div class="text-sm font-bold {% if r.engagement_rate and r.engagement_rate >= 5 %}text-green-600{% elif r.engagement_rate and r.engagement_rate >= 2 %}text-blue-600{% else %}text-gray-400{% endif %}">
+          {{ '%.1f'|format(r.engagement_rate or 0) }}%
+        </div>
+        <div class="text-xs text-gray-400">참여율</div>
+      </div>
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+        <div class="text-sm font-bold text-purple-600">{{ r.avg_reel_views | fmtn if r.avg_reel_views else '-' }}</div>
+        <div class="text-xs text-gray-400">릴스뷰</div>
+      </div>
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+        <div class="text-sm font-bold text-pink-500">{{ r.avg_likes | fmtn if r.avg_likes else '-' }}</div>
+        <div class="text-xs text-gray-400">평균좋아요</div>
+      </div>
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-12">
+        <div class="text-sm font-bold text-gray-500">{{ r.media_count | comma }}</div>
+        <div class="text-xs text-gray-400">게시물</div>
+      </div>
     </div>
+
+    <!-- 업로드 빈도 / 최근게시 -->
+    <div class="hidden lg:block text-right flex-shrink-0 min-w-20">
+      <div class="text-xs text-gray-500">{{ r.upload_frequency or '-' }}</div>
+      <div class="text-xs text-gray-300 mt-0.5">{{ r.last_post_date or '' }}</div>
+    </div>
+
+    <!-- 액션 버튼 -->
+    <div class="flex gap-1 flex-shrink-0">
+      <a href="/influencers/{{ r.pk }}" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 whitespace-nowrap">상세</a>
+      <a href="/influencers/{{ r.pk }}/edit" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap">편집</a>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% else %}
+  <div class="bg-white rounded-2xl px-4 py-16 text-center text-gray-400 border border-gray-100">
+    <div class="text-4xl mb-3">🔍</div>
+    {% if instant_collect_target %}
+    <div class="font-medium mb-2 text-gray-700">@{{ instant_collect_target }} 계정이 DB에 없습니다</div>
+    <p class="text-sm text-gray-400 mb-4">인스타그램에서 바로 수집할 수 있습니다</p>
+    <button onclick="instantCollect('{{ instant_collect_target }}')"
+            id="instantBtn"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
+            style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      @{{ instant_collect_target }} 즉시 수집
+    </button>
+    <div id="instantStatus" class="mt-3 text-sm"></div>
+    {% else %}
+    <div class="font-medium mb-1">수집된 인플루언서가 없습니다</div>
+    <a href="/collect" class="text-indigo-500 text-sm hover:underline">지금 수집 시작 →</a>
+    {% endif %}
   </div>
   {% endif %}
 </div>
+
+<!-- 페이지네이션 -->
+{% if total_pages > 1 %}
+<div class="flex items-center justify-between mt-4">
+  <span class="text-xs text-gray-400">{{ page }}/{{ total_pages }} 페이지</span>
+  <div class="flex gap-1">
+    {% if page > 1 %}<a href="?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ sort }}&order={{ order }}&page={{ page-1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">이전</a>{% endif %}
+    {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
+    <a href="?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ sort }}&order={{ order }}&page={{ p }}&per_page={{ per_page }}"
+       class="px-3 py-1.5 rounded-lg text-xs {% if p==page %}text-white font-bold{% else %}border border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}"
+       {% if p==page %}style="background:linear-gradient(135deg,#6366f1,#8b5cf6)"{% endif %}>{{ p }}</a>
+    {% endfor %}
+    {% if page < total_pages %}<a href="?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ sort }}&order={{ order }}&page={{ page+1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">다음</a>{% endif %}
+  </div>
+</div>
+{% endif %}
 
 <script>
 document.getElementById('ppSel').addEventListener('change', function(){
