@@ -257,13 +257,17 @@ def public_home(
 def api_public(
     page: int = Query(1, gt=0),
     sort: str = "follower_count",
+    q: str = "",
+    min_f: int = 0,
+    max_f: int = 0,
+    category: str = "",
+    hashtag: str = "",
     session_id: Optional[str] = Cookie(default=None)
 ):
     """공개 인플루언서 목록 JSON API - JS 렌더링용"""
-    _allowed = {"follower_count", "engagement_rate", "avg_reel_views", "avg_likes"}
-    if sort not in _allowed:
-        sort = "follower_count"
-    total, rows = get_public_influencers(page=page, per_page=30, sort=sort)
+    total, rows = get_public_influencers(page=page, per_page=30, sort=sort,
+                                         q=q, min_f=min_f, max_f=max_f,
+                                         category=category, hashtag=hashtag)
     total_pages = max(1, (total + 29) // 30)
     def _g(r, k, d=0):
         return r[k] if isinstance(r, dict) else getattr(r, k, d)

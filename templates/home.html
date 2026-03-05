@@ -16,7 +16,26 @@
     .stat-pill { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:999px; padding:6px 18px; font-size:12px; color:#94a3b8; }
 
     /* 필터 바 */
-    .filter-bar { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:16px; padding:10px 16px; }
+    .filter-bar { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:20px; padding:16px 20px; }
+    .filter-input {
+      background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.1); border-radius:10px;
+      padding:8px 12px; font-size:13px; color:#e2e8f0; outline:none;
+      font-family:inherit; transition:border-color .15s;
+    }
+    .filter-input:focus { border-color:#6366f1; }
+    .filter-input::placeholder { color:#334155; }
+    .filter-select {
+      background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.1); border-radius:10px;
+      padding:8px 10px; font-size:13px; color:#e2e8f0; outline:none; cursor:pointer;
+      font-family:inherit; transition:border-color .15s; appearance:none;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23475569'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+      background-repeat:no-repeat; background-position:right 8px center; background-size:14px; padding-right:28px;
+    }
+    .filter-select:focus { border-color:#6366f1; }
+    .filter-label { font-size:10px; color:#475569; font-weight:600; text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; }
+    .filter-chip { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:600; background:rgba(99,102,241,.15); color:#a5b4fc; border:1px solid rgba(99,102,241,.3); cursor:pointer; transition:all .15s; }
+    .filter-chip:hover { background:rgba(99,102,241,.25); }
+    .filter-chip.active { background:#6366f1; color:#fff; border-color:#6366f1; }
 
     /* 정렬 탭 */
     .sort-tab { padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid rgba(255,255,255,.1); color:#475569; transition:all .15s; cursor:pointer; background:none; }
@@ -173,16 +192,82 @@
 <!-- 리스트 영역 -->
 <div class="max-w-4xl mx-auto px-4 pb-24">
 
-  <!-- 필터/정렬 바 -->
-  <div class="filter-bar flex items-center justify-between mb-5 flex-wrap gap-3">
-    <div class="flex gap-2 flex-wrap">
-      <button class="sort-tab active" data-sort="follower_count" onclick="setSort('follower_count')">팔로워순</button>
-      <button class="sort-tab" data-sort="engagement_rate" onclick="setSort('engagement_rate')">참여율순</button>
-      <button class="sort-tab" data-sort="avg_reel_views" onclick="setSort('avg_reel_views')">릴스뷰순</button>
-      <button class="sort-tab" data-sort="avg_likes" onclick="setSort('avg_likes')">좋아요순</button>
+  <!-- 필터 바 -->
+  <div class="filter-bar mb-5">
+    <!-- 검색 -->
+    <div class="flex gap-3 mb-4">
+      <div class="flex-1 relative">
+        <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:#475569;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input id="searchInput" type="text" placeholder="@username, 이름, 키워드 검색..." class="filter-input w-full" style="padding-left:36px;" oninput="onSearch(this.value)">
+      </div>
+      <button onclick="resetFilters()" class="filter-input text-xs text-slate-400 hover:text-white px-4" style="cursor:pointer;white-space:nowrap;">초기화</button>
     </div>
-    <div class="text-xs text-slate-500">
-      총 <strong class="text-indigo-400" id="totalCount">-</strong>명{% if not user %} · 상위 50명 공개{% endif %}
+
+    <!-- 필터 행 -->
+    <div class="flex flex-wrap gap-4 mb-4">
+      <!-- 팔로워 -->
+      <div>
+        <div class="filter-label">팔로워</div>
+        <div class="flex gap-2 items-center">
+          <select id="minFFilter" class="filter-select" onchange="applyFilters()">
+            <option value="">최소</option>
+            <option value="1000">1천+</option>
+            <option value="10000">1만+</option>
+            <option value="50000">5만+</option>
+            <option value="100000">10만+</option>
+            <option value="500000">50만+</option>
+          </select>
+          <span style="color:#334155;font-size:12px;">~</span>
+          <select id="maxFFilter" class="filter-select" onchange="applyFilters()">
+            <option value="">최대</option>
+            <option value="10000">1만</option>
+            <option value="50000">5만</option>
+            <option value="100000">10만</option>
+            <option value="500000">50만</option>
+            <option value="1000000">100만</option>
+          </select>
+        </div>
+      </div>
+      <!-- 카테고리 -->
+      <div>
+        <div class="filter-label">카테고리</div>
+        <select id="categoryFilter" class="filter-select" onchange="applyFilters()">
+          <option value="">전체</option>
+          {% for cat in ['뷰티','패션','푸드','육아','여행','건강','라이프스타일','반려동물','운동','IT'] %}
+          <option value="{{ cat }}">{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 해시태그 -->
+      <div>
+        <div class="filter-label">해시태그</div>
+        <input id="hashtagFilter" type="text" placeholder="예: 뷰티, 먹방..." class="filter-input" style="width:130px;" oninput="debounceFilters()">
+      </div>
+    </div>
+
+    <!-- 빠른 필터 칩 -->
+    <div class="flex flex-wrap gap-2 mb-4">
+      <span class="filter-label" style="display:flex;align-items:center;margin-bottom:0;">빠른 필터:</span>
+      <button class="filter-chip" onclick="quickFilter('min_f','10000')">1만+ 팔로워</button>
+      <button class="filter-chip" onclick="quickFilter('min_f','100000')">10만+ 팔로워</button>
+      <button class="filter-chip" onclick="quickFilter('category','뷰티')">뷰티</button>
+      <button class="filter-chip" onclick="quickFilter('category','패션')">패션</button>
+      <button class="filter-chip" onclick="quickFilter('category','푸드')">푸드</button>
+      <button class="filter-chip" onclick="quickFilter('category','육아')">육아</button>
+      <button class="filter-chip" onclick="quickFilter('category','여행')">여행</button>
+    </div>
+
+    <!-- 정렬 + 결과 수 -->
+    <div class="flex items-center justify-between flex-wrap gap-2">
+      <div class="flex gap-2 flex-wrap">
+        <button class="sort-tab active" data-sort="follower_count" onclick="setSort('follower_count')">팔로워순</button>
+        <button class="sort-tab" data-sort="engagement_rate" onclick="setSort('engagement_rate')">참여율순</button>
+        <button class="sort-tab" data-sort="avg_reel_views" onclick="setSort('avg_reel_views')">릴스뷰순</button>
+        <button class="sort-tab" data-sort="avg_likes" onclick="setSort('avg_likes')">좋아요순</button>
+      </div>
+      <div class="text-xs text-slate-500">
+        총 <strong class="text-indigo-400" id="totalCount">-</strong>명{% if not user %} · 상위 50명 공개{% endif %}
+      </div>
     </div>
   </div>
 
@@ -211,6 +296,8 @@
 <script>
 const IS_ADMIN = {{ 'true' if user else 'false' }};
 let currentSort = 'follower_count';
+let currentFilters = { q:'', min_f:0, max_f:0, category:'', hashtag:'' };
+let _debounceTimer = null;
 
 function fmt(n, type) {
   n = n || 0;
@@ -347,28 +434,79 @@ function renderCard(r, idx) {
   </div>`;
 }
 
-async function loadList(page, sort) {
+async function loadList(page, sort, filters={}) {
   const list = document.getElementById('infList');
   list.innerHTML = `<div class="skeleton" style="height:136px;"></div><div class="skeleton" style="height:136px;opacity:.7;margin-top:12px;"></div><div class="skeleton" style="height:136px;opacity:.4;margin-top:12px;"></div>`;
   try {
-    const res = await fetch(`/api/public?page=${page}&sort=${sort}`);
+    const p = new URLSearchParams({ page, sort });
+    if (filters.q) p.set('q', filters.q);
+    if (filters.min_f) p.set('min_f', filters.min_f);
+    if (filters.max_f) p.set('max_f', filters.max_f);
+    if (filters.category) p.set('category', filters.category);
+    if (filters.hashtag) p.set('hashtag', filters.hashtag);
+    const res = await fetch(`/api/public?${p}`);
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
     document.getElementById('totalCount').textContent = data.total;
     let html = '';
     data.rows.forEach((r, i) => { html += renderCard(r, (page-1)*30+i); });
-    list.innerHTML = html || '<div style="text-align:center;padding:64px 0;color:#475569;">데이터가 없습니다</div>';
-    // 잠금 배너
+    list.innerHTML = html || '<div style="text-align:center;padding:80px 0;color:#475569;font-size:14px;">검색 결과가 없습니다</div>';
     const lb = document.getElementById('lockBanner');
-    if (!IS_ADMIN && data.total > 50) {
+    if (!IS_ADMIN && data.total > 50 && !filters.q && !filters.category && !filters.hashtag) {
       document.getElementById('lockCount').textContent = (data.total - 50) + '명이 더 있습니다';
       lb.classList.remove('hidden');
     } else { lb.classList.add('hidden'); }
-    // 페이지네이션
     if (IS_ADMIN && data.total_pages > 1) renderPagination(page, data.total_pages, sort);
+    else document.getElementById('pagination').classList.add('hidden');
   } catch(e) {
     list.innerHTML = '<div style="text-align:center;padding:64px 0;color:#475569;">데이터를 불러올 수 없습니다</div>';
   }
+}
+
+function applyFilters() {
+  currentFilters = {
+    q: document.getElementById('searchInput').value.trim(),
+    min_f: document.getElementById('minFFilter').value,
+    max_f: document.getElementById('maxFFilter').value,
+    category: document.getElementById('categoryFilter').value,
+    hashtag: document.getElementById('hashtagFilter').value.trim(),
+  };
+  loadList(1, currentSort, currentFilters);
+}
+
+function onSearch(val) {
+  clearTimeout(_debounceTimer);
+  _debounceTimer = setTimeout(() => applyFilters(), 400);
+}
+
+function debounceFilters() {
+  clearTimeout(_debounceTimer);
+  _debounceTimer = setTimeout(() => applyFilters(), 500);
+}
+
+function quickFilter(key, val) {
+  // 칩 토글
+  const chips = document.querySelectorAll('.filter-chip');
+  chips.forEach(c => { if(c.dataset.key===key && c.dataset.val===val) c.classList.toggle('active'); });
+  if (key === 'min_f') {
+    const sel = document.getElementById('minFFilter');
+    sel.value = sel.value === val ? '' : val;
+  } else if (key === 'category') {
+    const sel = document.getElementById('categoryFilter');
+    sel.value = sel.value === val ? '' : val;
+  }
+  applyFilters();
+}
+
+function resetFilters() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('minFFilter').value = '';
+  document.getElementById('maxFFilter').value = '';
+  document.getElementById('categoryFilter').value = '';
+  document.getElementById('hashtagFilter').value = '';
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  currentFilters = { q:'', min_f:0, max_f:0, category:'', hashtag:'' };
+  loadList(1, currentSort, currentFilters);
 }
 
 function renderPagination(page, totalPages, sort) {
@@ -384,15 +522,22 @@ function renderPagination(page, totalPages, sort) {
 function setSort(sort) {
   currentSort = sort;
   document.querySelectorAll('.sort-tab[data-sort]').forEach(b => b.classList.toggle('active', b.dataset.sort===sort));
-  loadList(1, sort);
+  loadList(1, sort, currentFilters);
 }
 
 function goPage(page, sort) {
-  loadList(page, sort);
+  loadList(page, sort, currentFilters);
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-loadList(1, 'follower_count');
+// 빠른 필터 칩에 data 속성 추가
+document.querySelectorAll('.filter-chip').forEach(c => {
+  const onclick = c.getAttribute('onclick') || '';
+  const m = onclick.match(/quickFilter\('(\w+)','([^']+)'\)/);
+  if (m) { c.dataset.key = m[1]; c.dataset.val = m[2]; }
+});
+
+loadList(1, 'follower_count', currentFilters);
 </script>
 </body>
 </html>

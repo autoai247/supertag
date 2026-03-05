@@ -665,28 +665,54 @@ def get_public_stats():
     finally: conn.close()
 
 
-def get_public_influencers(page=1, per_page=30, sort="follower_count"):
+def get_public_influencers(page=1, per_page=30, sort="follower_count",
+                           q="", min_f=0, max_f=0, category="", hashtag=""):
+    _SELECT = """pk,username,full_name,follower_count,is_verified,is_business,
+        category,profile_pic_local,profile_pic_url,engagement_rate,avg_reel_views,avg_likes,avg_comments,
+        avg_feed_likes,avg_feed_comments,avg_reel_likes,avg_reel_comments,hashtags,biography"""
+    _VALID = {"follower_count","engagement_rate","avg_reel_views","avg_likes","avg_comments"}
+    sort = sort if sort in _VALID else "follower_count"
+
     if _USE_SUPABASE:
         headers = _sb_headers()
         headers["Prefer"] = "count=exact"
-        r = _req.get(_sb_url(T_INF), headers=headers, params={
-            "select": "pk,username,full_name,follower_count,is_verified,is_business,category,profile_pic_local,profile_pic_url,engagement_rate,avg_reel_views,avg_likes,avg_comments,avg_feed_likes,avg_feed_comments,avg_reel_likes,avg_reel_comments,hashtags,biography",
+        params = {
+            "select": _SELECT.replace("\n","").replace("    ",""),
             "order": f"{sort}.desc",
             "limit": str(per_page),
             "offset": str((page-1)*per_page),
-        })
+        }
+        if q:
+            params["or"] = f"(username.ilike.*{q}*,full_name.ilike.*{q}*,biography.ilike.*{q}*)"
+        if min_f: params["follower_count"] = f"gte.{min_f}"
+        if max_f: params["follower_count"] = f"lte.{max_f}"
+        if category: params["category"] = f"eq.{category}"
+        if hashtag: params["hashtags"] = f"ilike.*{hashtag}*"
+        r = _req.get(_sb_url(T_INF), headers=headers, params=params)
         rows = r.json() if isinstance(r.json(), list) else []
         s = r.headers.get("Content-Range","0/0").split("/")[-1]
         total = int(s) if s.isdigit() else len(rows)
         return total, rows
+
     conn = get_conn()
     offset = (page-1)*per_page
+    conditions, params = [], []
+    if q:
+        conditions.append("(username LIKE ? OR full_name LIKE ? OR biography LIKE ?)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+    if min_f:
+        conditions.append("follower_count >= ?"); params.append(min_f)
+    if max_f:
+        conditions.append("follower_count <= ?"); params.append(max_f)
+    if category:
+        conditions.append("category = ?"); params.append(category)
+    if hashtag:
+        conditions.append("hashtags LIKE ?"); params.append(f"%{hashtag}%")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     try:
-        total = conn.execute(f"SELECT COUNT(*) FROM {T_INF}").fetchone()[0]
-        rows = conn.execute(f"""SELECT pk,username,full_name,follower_count,is_verified,is_business,
-            category,profile_pic_local,profile_pic_url,engagement_rate,avg_reel_views,avg_likes,avg_comments,
-            avg_feed_likes,avg_feed_comments,avg_reel_likes,avg_reel_comments,hashtags,biography
-            FROM {T_INF} ORDER BY {sort} DESC LIMIT ? OFFSET ?""", [per_page, offset]).fetchall()
+        total = conn.execute(f"SELECT COUNT(*) FROM {T_INF} {where}", params).fetchone()[0]
+        rows = conn.execute(f"""SELECT {_SELECT} FROM {T_INF} {where}
+            ORDER BY {sort} DESC LIMIT ? OFFSET ?""", params + [per_page, offset]).fetchall()
         return total, [dict(r) for r in rows]
     finally: conn.close()
 
