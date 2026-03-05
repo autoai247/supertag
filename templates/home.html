@@ -8,62 +8,32 @@
   <style>
     * { font-family:"Pretendard Variable",sans-serif; }
     body { background:#0a0a14; color:#e2e8f0; }
-
-    /* 네비 */
     .nav { background:rgba(10,10,20,.9); backdrop-filter:blur(20px); border-bottom:1px solid #1e293b; }
-
-    /* 통계 바 */
     .stat-pill { background:#111827; border:1px solid #1e293b; border-radius:999px; padding:6px 16px; font-size:12px; }
-
-    /* 필터 바 */
     .filter-bar { background:#111827; border:1px solid #1e293b; border-radius:16px; padding:12px 16px; }
-
-    /* 인플루언서 행 */
     .inf-row {
-      background:#111827;
-      border:1px solid #1e293b;
-      border-radius:16px;
-      padding:16px 20px;
-      display:flex;
-      align-items:center;
-      gap:16px;
-      transition:all .2s;
-      cursor:pointer;
-      position:relative;
-      overflow:hidden;
+      background:#111827; border:1px solid #1e293b; border-radius:16px;
+      padding:16px 20px; display:flex; align-items:center; gap:16px;
+      transition:all .2s; cursor:pointer; position:relative; overflow:hidden;
     }
     .inf-row:hover { border-color:#6366f1; background:#12122a; transform:translateY(-1px); box-shadow:0 8px 32px rgba(99,102,241,.15); }
-
-    /* 프로필 이미지 */
     .profile-img { width:72px; height:72px; border-radius:50%; object-fit:cover; flex-shrink:0; border:2px solid #2d2d5e; }
     .profile-placeholder { width:72px; height:72px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:800; color:#fff; background:linear-gradient(135deg,#6366f1,#8b5cf6); border:2px solid #4338ca; }
-
-    /* 배지 */
     .badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:700; }
     .badge-blue { background:rgba(59,130,246,.15); color:#60a5fa; border:1px solid rgba(59,130,246,.25); }
     .badge-purple { background:rgba(99,102,241,.15); color:#a5b4fc; border:1px solid rgba(99,102,241,.25); }
     .badge-orange { background:rgba(249,115,22,.15); color:#fb923c; border:1px solid rgba(249,115,22,.25); }
     .badge-green { background:rgba(16,185,129,.15); color:#34d399; border:1px solid rgba(16,185,129,.25); }
-
-    /* 스탯 박스 */
     .stat-box { background:#0a0a14; border:1px solid #1e293b; border-radius:10px; padding:8px 12px; text-align:center; min-width:72px; flex-shrink:0; }
     .stat-val { font-size:16px; font-weight:800; line-height:1.2; }
     .stat-lbl { font-size:10px; color:#475569; margin-top:2px; }
-
-    /* 잠금 */
     .locked-row { filter:blur(4px); pointer-events:none; }
     .lock-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:12px; z-index:10; background:rgba(10,10,20,.7); border-radius:16px; }
-
-    /* 정렬 탭 */
-    .sort-tab { padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #1e293b; color:#64748b; transition:all .15s; }
+    .sort-tab { padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #1e293b; color:#64748b; transition:all .15s; cursor:pointer; background:none; }
     .sort-tab.active { background:#6366f1; color:#fff; border-color:#6366f1; }
     .sort-tab:hover:not(.active) { border-color:#6366f1; color:#a5b4fc; }
-
-    /* 검색 */
-    .search-input { background:#0a0a14; border:1px solid #1e293b; border-radius:10px; padding:8px 14px; font-size:13px; color:#e2e8f0; outline:none; width:220px; }
-    .search-input:focus { border-color:#6366f1; }
-    .search-input::placeholder { color:#334155; }
-
+    .skeleton { background:#1e293b; border-radius:8px; animation:pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
     ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#1e293b;border-radius:4px}
   </style>
 </head>
@@ -88,16 +58,14 @@
   </div>
 </nav>
 
-<!-- 히어로 (간결) -->
+<!-- 히어로 -->
 <div class="px-6 pt-10 pb-6 text-center" style="background:radial-gradient(ellipse at top,#1a1040 0%,#0a0a14 55%);">
   <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4 text-xs font-semibold" style="background:#1e1b4b;color:#a5b4fc;border:1px solid #4338ca;">
     <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
     실시간 업데이트
   </div>
-  <h1 class="text-4xl font-black text-white mb-2">인플루언서 <span style="background:linear-gradient(135deg,#a5b4fc,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">{{ stats.total | int | string }}명</span> DB</h1>
+  <h1 class="text-4xl font-black text-white mb-2">인플루언서 <span id="heroTotal" style="background:linear-gradient(135deg,#a5b4fc,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">{{ stats.total | int }}명</span> DB</h1>
   <p class="text-gray-500 text-sm mb-6">체험단 · 공동구매 · 라이브커머스 전문 플랫폼</p>
-
-  <!-- 통계 알약 -->
   <div class="flex justify-center gap-3 flex-wrap">
     <div class="stat-pill"><span style="color:#a5b4fc;font-weight:700;">{{ stats.total | int }}</span> 인플루언서</div>
     <div class="stat-pill"><span style="color:#34d399;font-weight:700;">{{ stats.verified | int }}</span> 인증 계정</div>
@@ -113,161 +81,196 @@
 
 <!-- 리스트 영역 -->
 <div class="max-w-5xl mx-auto px-4 pb-20">
-
   <!-- 필터/정렬 바 -->
   <div class="filter-bar flex items-center justify-between mb-4 flex-wrap gap-3">
-    <div class="flex gap-2 flex-wrap">
-      <a href="/?sort=follower_count" class="sort-tab {% if sort=='follower_count' %}active{% endif %}">팔로워순</a>
-      <a href="/?sort=engagement_rate" class="sort-tab {% if sort=='engagement_rate' %}active{% endif %}">참여율순</a>
-      <a href="/?sort=avg_reel_views" class="sort-tab {% if sort=='avg_reel_views' %}active{% endif %}">릴스뷰순</a>
-      <a href="/?sort=avg_likes" class="sort-tab {% if sort=='avg_likes' %}active{% endif %}">좋아요순</a>
+    <div class="flex gap-2 flex-wrap" id="sortTabs">
+      <button class="sort-tab active" data-sort="follower_count" onclick="setSort('follower_count')">팔로워순</button>
+      <button class="sort-tab" data-sort="engagement_rate" onclick="setSort('engagement_rate')">참여율순</button>
+      <button class="sort-tab" data-sort="avg_reel_views" onclick="setSort('avg_reel_views')">릴스뷰순</button>
+      <button class="sort-tab" data-sort="avg_likes" onclick="setSort('avg_likes')">좋아요순</button>
     </div>
     <div class="text-xs text-gray-500">
-      총 <strong class="text-indigo-400">{{ total | int }}</strong>명
+      총 <strong class="text-indigo-400" id="totalCount">-</strong>명
       {% if not user %} · 상위 50명 공개{% endif %}
     </div>
   </div>
 
   <!-- 인플루언서 리스트 -->
   <div class="space-y-3" id="infList">
-    {% for r in rows %}
-    {% set global_idx = (page - 1) * 30 + loop.index0 %}
-    {% set is_locked = (not user) and (global_idx >= 50) %}
-
-    {% if is_locked %}
-    <div class="inf-row" style="cursor:default;">
-      <div class="locked-row flex items-center gap-4 flex-1">
-        <div class="profile-placeholder" style="background:#1e293b;color:#334155;">?</div>
-        <div class="flex-1">
-          <div class="h-4 rounded bg-gray-800 w-32 mb-2"></div>
-          <div class="h-3 rounded bg-gray-900 w-48"></div>
-        </div>
-        <div class="flex gap-3">
-          <div class="stat-box"><div class="h-4 rounded bg-gray-800 w-12 mb-1"></div><div class="h-2 rounded bg-gray-900 w-8 mx-auto"></div></div>
-          <div class="stat-box"><div class="h-4 rounded bg-gray-800 w-12 mb-1"></div><div class="h-2 rounded bg-gray-900 w-8 mx-auto"></div></div>
-        </div>
-      </div>
-      <div class="lock-overlay">
-        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-        <a href="/advertiser/login" class="text-xs font-bold text-white px-4 py-2 rounded-xl" style="background:#6366f1;">로그인 후 열람</a>
-      </div>
-    </div>
-
-    {% else %}
-    <div class="inf-row" onclick="location.href='{{ '/influencers/' + r.pk if user else '/advertiser/login' }}'">
-
-      <!-- 프로필 이미지 -->
-      {% if r.profile_pic_local %}
-      <img src="/data/{{ r.profile_pic_local }}" alt="@{{ r.username }}" class="profile-img"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-      <div class="profile-placeholder" style="display:none;">{{ (r.username or '?')[0].upper() }}</div>
-      {% elif r.profile_pic_url %}
-      <img src="{{ r.profile_pic_url }}" alt="@{{ r.username }}" class="profile-img"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-      <div class="profile-placeholder" style="display:none;">{{ (r.username or '?')[0].upper() }}</div>
-      {% else %}
-      <div class="profile-placeholder">{{ (r.username or '?')[0].upper() }}</div>
-      {% endif %}
-
-      <!-- 메인 정보 -->
-      <div class="flex-1 min-w-0">
-        <!-- 이름 + 배지 -->
-        <div class="flex items-center gap-2 flex-wrap mb-1">
-          <span class="font-bold text-white text-base">@{{ r.username }}</span>
-          {% if r.is_verified %}
-          <svg class="w-4 h-4 flex-shrink-0" fill="#3b82f6" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0114 0z"/></svg>
-          {% endif %}
-          {% if r.is_business %}<span class="badge badge-orange">🏢 비즈니스</span>{% endif %}
-          {% if r.category %}<span class="badge badge-purple">{{ r.category }}</span>{% endif %}
-        </div>
-
-        <!-- 이름 + 바이오 -->
-        {% if r.full_name %}
-        <div class="text-gray-400 text-sm mb-1 truncate">{{ r.full_name }}</div>
-        {% endif %}
-        {% if r.biography %}
-        <div class="text-gray-600 text-xs truncate" style="max-width:400px;">{{ r.biography[:80] }}{% if r.biography|length > 80 %}...{% endif %}</div>
-        {% endif %}
-
-        <!-- 해시태그 -->
-        {% if r.hashtags %}
-        <div class="flex flex-wrap gap-1 mt-1.5">
-          {% for tag in (r.hashtags or '').split(',')[:4] if tag.strip() %}
-          <span class="badge badge-purple">#{{ tag.strip() }}</span>
-          {% endfor %}
-        </div>
-        {% endif %}
-      </div>
-
-      <!-- 스탯 박스들 -->
-      <div class="flex gap-2 flex-shrink-0">
-        <!-- 팔로워 -->
-        <div class="stat-box">
-          {% set f = r.follower_count | int %}
-          <div class="stat-val" style="color:#a5b4fc;">
-            {% if f >= 10000000 %}{{ f // 10000000 }}백만
-            {% elif f >= 10000 %}{{ f // 10000 }}만{% if (f%10000)//1000 > 0 %}{{ (f%10000)//1000 }}천{% endif %}
-            {% else %}{{ "{:,}".format(f) }}{% endif %}
-          </div>
-          <div class="stat-lbl">팔로워</div>
-        </div>
-
-        <!-- 참여율 -->
-        <div class="stat-box">
-          <div class="stat-val" style="color:#34d399;">{{ '%.1f'|format(r.engagement_rate or 0) }}%</div>
-          <div class="stat-lbl">참여율</div>
-        </div>
-
-        <!-- 평균 좋아요 -->
-        <div class="stat-box">
-          {% set al = r.avg_likes | int %}
-          <div class="stat-val" style="color:#f472b6;">
-            {% if al >= 10000 %}{{ al // 10000 }}만{% elif al >= 1000 %}{{ al // 1000 }}k{% else %}{{ al }}{% endif %}
-          </div>
-          <div class="stat-lbl">평균 좋아요</div>
-        </div>
-
-        <!-- 릴스 뷰 -->
-        <div class="stat-box">
-          {% set rv = r.avg_reel_views | int %}
-          <div class="stat-val" style="color:#c4b5fd;">
-            {% if rv >= 10000 %}{{ rv // 10000 }}만{% elif rv >= 1000 %}{{ rv // 1000 }}k{% else %}{{ rv if rv > 0 else '-' }}{% endif %}
-          </div>
-          <div class="stat-lbl">릴스뷰</div>
-        </div>
-      </div>
-
-      <!-- 화살표 -->
-      <svg class="w-5 h-5 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-    </div>
-    {% endfor %}
+    <!-- 로딩 스켈레톤 -->
+    <div class="skeleton" style="height:104px;border-radius:16px;"></div>
+    <div class="skeleton" style="height:104px;border-radius:16px;opacity:.8;"></div>
+    <div class="skeleton" style="height:104px;border-radius:16px;opacity:.6;"></div>
   </div>
 
-  <!-- 50명 이후 로그인 유도 -->
-  {% if not user and total > 50 %}
-  <div class="mt-6 rounded-2xl p-8 text-center" style="background:linear-gradient(135deg,#1a1040,#0f0a2e);border:1px solid #312e81;">
+  <!-- 50명 이후 로그인 유도 (JS로 표시) -->
+  <div id="lockBanner" class="hidden mt-6 rounded-2xl p-8 text-center" style="background:linear-gradient(135deg,#1a1040,#0f0a2e);border:1px solid #312e81;">
     <div class="text-4xl mb-3">🔒</div>
-    <h3 class="text-xl font-black text-white mb-2">{{ total - 50 }}명이 더 있습니다</h3>
+    <h3 class="text-xl font-black text-white mb-2" id="lockCount"></h3>
     <p class="text-indigo-300 text-sm mb-6">연락처 · 단가 · 라이브 여부 · 전체 목록은 로그인 후 공개</p>
     <div class="flex justify-center gap-3">
       <a href="/advertiser/login" class="px-6 py-3 rounded-xl font-bold text-white text-sm" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">광고주 로그인</a>
       <a href="/login" class="px-6 py-3 rounded-xl font-medium text-indigo-300 border border-indigo-700 hover:bg-indigo-900 transition text-sm">관리자 로그인</a>
     </div>
   </div>
-  {% endif %}
 
   <!-- 페이지네이션 -->
-  {% if user and total_pages > 1 %}
-  <div class="flex justify-center gap-2 mt-8">
-    {% if page > 1 %}<a href="/?sort={{ sort }}&page={{ page-1 }}" class="sort-tab">이전</a>{% endif %}
-    {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
-    <a href="/?sort={{ sort }}&page={{ p }}" class="sort-tab {% if p==page %}active{% endif %}">{{ p }}</a>
-    {% endfor %}
-    {% if page < total_pages %}<a href="/?sort={{ sort }}&page={{ page+1 }}" class="sort-tab">다음</a>{% endif %}
-  </div>
-  {% endif %}
-
+  <div id="pagination" class="hidden flex justify-center gap-2 mt-8"></div>
 </div>
+
+<script>
+const IS_ADMIN = {{ 'true' if user else 'false' }};
+let currentSort = 'follower_count';
+let currentPage = 1;
+
+function fmtFollower(n) {
+  n = n || 0;
+  if (n >= 10000000) return (n/10000000).toFixed(1).replace('.0','') + '백만';
+  if (n >= 10000) { const m = Math.floor(n/10000); const k = Math.floor((n%10000)/1000); return m + '만' + (k>0 ? k+'천':''); }
+  return n.toLocaleString();
+}
+function fmtNum(n) {
+  n = n || 0;
+  if (n >= 10000) return Math.floor(n/10000) + '만';
+  if (n >= 1000) return Math.floor(n/1000) + 'k';
+  return n || '-';
+}
+
+function renderRow(r, idx) {
+  const isLocked = !IS_ADMIN && idx >= 50;
+  if (isLocked) {
+    return `<div class="inf-row" style="cursor:default;">
+      <div class="locked-row flex items-center gap-4 flex-1">
+        <div class="profile-placeholder" style="background:#1e293b;color:#334155;">?</div>
+        <div class="flex-1">
+          <div class="skeleton h-4 w-32 mb-2"></div>
+          <div class="skeleton h-3 w-48 mt-1"></div>
+        </div>
+        <div class="flex gap-3">
+          <div class="stat-box"><div class="skeleton h-4 w-12 mb-1"></div><div class="skeleton h-2 w-8 mx-auto mt-1"></div></div>
+          <div class="stat-box"><div class="skeleton h-4 w-12 mb-1"></div><div class="skeleton h-2 w-8 mx-auto mt-1"></div></div>
+        </div>
+      </div>
+      <div class="lock-overlay">
+        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        <a href="/advertiser/login" class="text-xs font-bold text-white px-4 py-2 rounded-xl" style="background:#6366f1;">로그인 후 열람</a>
+      </div>
+    </div>`;
+  }
+
+  const detailUrl = IS_ADMIN ? '/influencers/' + r.pk : '/advertiser/login';
+  let imgHtml = '';
+  if (r.profile_pic_local) {
+    imgHtml = `<img src="/data/${r.profile_pic_local}" alt="@${r.username}" class="profile-img" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="profile-placeholder" style="display:none;">${(r.username||'?')[0].toUpperCase()}</div>`;
+  } else if (r.profile_pic_url) {
+    imgHtml = `<img src="${r.profile_pic_url}" alt="@${r.username}" class="profile-img" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="profile-placeholder" style="display:none;">${(r.username||'?')[0].toUpperCase()}</div>`;
+  } else {
+    imgHtml = `<div class="profile-placeholder">${(r.username||'?')[0].toUpperCase()}</div>`;
+  }
+
+  const badges = [
+    r.is_business ? '<span class="badge badge-orange">🏢 비즈니스</span>' : '',
+    r.category ? `<span class="badge badge-purple">${r.category}</span>` : '',
+  ].filter(Boolean).join('');
+
+  const verifiedIcon = r.is_verified ? '<svg class="w-4 h-4 flex-shrink-0" fill="#3b82f6" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0114 0z"/></svg>' : '';
+
+  const hashtagBadges = (r.hashtags||'').split(',').slice(0,4).filter(t=>t.trim()).map(t=>`<span class="badge badge-purple">#${t.trim()}</span>`).join('');
+
+  const bioHtml = r.biography ? `<div class="text-gray-600 text-xs truncate" style="max-width:400px;">${r.biography.substring(0,80)}${r.biography.length>80?'...':''}</div>` : '';
+  const nameHtml = r.full_name ? `<div class="text-gray-400 text-sm mb-1 truncate">${r.full_name}</div>` : '';
+  const hashtagsHtml = hashtagBadges ? `<div class="flex flex-wrap gap-1 mt-1.5">${hashtagBadges}</div>` : '';
+
+  const engRate = (r.engagement_rate||0).toFixed(1);
+  const rvVal = (r.avg_reel_views||0) > 0 ? fmtNum(r.avg_reel_views) : '-';
+
+  return `<div class="inf-row" onclick="location.href='${detailUrl}'">
+    ${imgHtml}
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2 flex-wrap mb-1">
+        <span class="font-bold text-white text-base">@${r.username}</span>
+        ${verifiedIcon}${badges}
+      </div>
+      ${nameHtml}${bioHtml}${hashtagsHtml}
+    </div>
+    <div class="flex gap-2 flex-shrink-0">
+      <div class="stat-box"><div class="stat-val" style="color:#a5b4fc;">${fmtFollower(r.follower_count)}</div><div class="stat-lbl">팔로워</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#34d399;">${engRate}%</div><div class="stat-lbl">참여율</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#f472b6;">${fmtNum(r.avg_likes)}</div><div class="stat-lbl">평균 좋아요</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#c4b5fd;">${rvVal}</div><div class="stat-lbl">릴스뷰</div></div>
+    </div>
+    <svg class="w-5 h-5 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  </div>`;
+}
+
+async function loadList(page, sort) {
+  const list = document.getElementById('infList');
+  list.innerHTML = '<div class="skeleton" style="height:104px;border-radius:16px;"></div><div class="skeleton" style="height:104px;border-radius:16px;opacity:.8;margin-top:12px;"></div><div class="skeleton" style="height:104px;border-radius:16px;opacity:.6;margin-top:12px;"></div>';
+
+  try {
+    const res = await fetch(`/api/public?page=${page}&sort=${sort}`);
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+
+    document.getElementById('totalCount').textContent = data.total;
+
+    let html = '';
+    data.rows.forEach((r, i) => {
+      const globalIdx = (page - 1) * 30 + i;
+      html += renderRow(r, globalIdx);
+    });
+    list.innerHTML = html || '<div class="text-center text-gray-600 py-16">데이터가 없습니다</div>';
+
+    // 잠금 배너
+    const lockBanner = document.getElementById('lockBanner');
+    if (!IS_ADMIN && data.total > 50) {
+      document.getElementById('lockCount').textContent = (data.total - 50) + '명이 더 있습니다';
+      lockBanner.classList.remove('hidden');
+    } else {
+      lockBanner.classList.add('hidden');
+    }
+
+    // 페이지네이션 (관리자만)
+    if (IS_ADMIN && data.total_pages > 1) {
+      renderPagination(page, data.total_pages, sort);
+    }
+  } catch(e) {
+    list.innerHTML = '<div class="text-center text-gray-600 py-16">데이터를 불러올 수 없습니다</div>';
+  }
+}
+
+function renderPagination(page, totalPages, sort) {
+  const el = document.getElementById('pagination');
+  const start = Math.max(1, page - 2);
+  const end = Math.min(totalPages + 1, page + 3);
+  let html = '';
+  if (page > 1) html += `<button class="sort-tab" onclick="goPage(${page-1},'${sort}')">이전</button>`;
+  for (let p = start; p < end; p++) {
+    html += `<button class="sort-tab ${p===page?'active':''}" onclick="goPage(${p},'${sort}')">${p}</button>`;
+  }
+  if (page < totalPages) html += `<button class="sort-tab" onclick="goPage(${page+1},'${sort}')">다음</button>`;
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+}
+
+function setSort(sort) {
+  currentSort = sort;
+  currentPage = 1;
+  document.querySelectorAll('.sort-tab[data-sort]').forEach(b => {
+    b.classList.toggle('active', b.dataset.sort === sort);
+  });
+  loadList(1, sort);
+}
+
+function goPage(page, sort) {
+  currentPage = page;
+  loadList(page, sort);
+  window.scrollTo({top: 0, behavior:'smooth'});
+}
+
+// 초기 로드
+loadList(1, 'follower_count');
+</script>
 
 </body>
 </html>

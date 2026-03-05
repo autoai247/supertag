@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
-import uuid, time, json, os, bcrypt, logging
+import uuid, time, json, os, bcrypt, logging, collections
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -34,6 +34,87 @@ app.add_middleware(CORSMiddleware,
     allow_methods=["GET","POST"],
     allow_headers=["*"]
 )
+
+# ─── 봇 차단 / Rate Limiting ───────────────────────────────────────
+_BOT_UA = [
+    "bot","crawler","spider","scraper","wget","curl","python-requests",
+    "httpx","aiohttp","scrapy","mechanize","selenium","playwright",
+    "headlesschrome","phantomjs","slurp","baiduspider","yandex",
+    "googlebot","bingbot","facebookexternalhit","twitterbot",
+    "gptbot","chatgpt","claudebot","anthropic","ccbot","semrush",
+    "ahrefsbot","mj12bot","dotbot","petalbot","bytespider",
+]
+
+# IP당 분당 요청 기록 (최근 60초 타임스탬프 큐)
+_rate_store: dict = collections.defaultdict(collections.deque)
+_honeypot_ips: set = set()  # 허니팟 걸린 IP 영구 차단
+_RATE_LIMIT = 40  # 분당 최대 요청 수
+_WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico"}
+
+@app.middleware("http")
+async def bot_protection(request: Request, call_next):
+    path = request.url.path
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "").split(",")[0].strip()
+    ua = request.headers.get("user-agent", "").lower()
+
+    # 허니팟에 걸린 IP 영구 차단
+    if ip in _honeypot_ips:
+        return Response("Forbidden", status_code=403)
+
+    # 정적파일은 통과
+    if any(path.startswith(p) for p in _WHITELIST_PATHS):
+        return await call_next(request)
+
+    # User-Agent 봇 차단
+    if any(b in ua for b in _BOT_UA):
+        log.warning(f"봇 차단: {ip} UA={ua[:60]}")
+        return Response("Forbidden", status_code=403)
+
+    # Rate limiting (관리자/광고주 세션은 제외)
+    if not request.cookies.get("session_id") and not request.cookies.get("adv_session_id"):
+        now = time.time()
+        dq = _rate_store[ip]
+        # 60초 이전 기록 제거
+        while dq and dq[0] < now - 60:
+            dq.popleft()
+        if len(dq) >= _RATE_LIMIT:
+            log.warning(f"Rate limit 초과: {ip} ({len(dq)}req/min)")
+            return JSONResponse({"error": "Too many requests"}, status_code=429,
+                headers={"Retry-After": "60", "X-RateLimit-Limit": str(_RATE_LIMIT)})
+        dq.append(now)
+
+    return await call_next(request)
+
+
+@app.get("/trap/data-feed")  # 허니팟: robots.txt에 Disallow되어 있지만 봇은 방문함
+async def honeypot(request: Request):
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "").split(",")[0].strip()
+    _honeypot_ips.add(ip)
+    log.warning(f"허니팟 감지! IP 영구 차단: {ip}")
+    return Response("Not Found", status_code=404)
+
+
+@app.get("/robots.txt")
+async def robots():
+    content = """User-agent: *
+Disallow: /
+Disallow: /api/
+Disallow: /influencers/
+Disallow: /trap/
+
+# 크롤링 금지
+User-agent: GPTBot
+Disallow: /
+User-agent: ChatGPT-User
+Disallow: /
+User-agent: CCBot
+Disallow: /
+User-agent: anthropic-ai
+Disallow: /
+User-agent: ClaudeBot
+Disallow: /
+"""
+    return Response(content, media_type="text/plain")
 
 # Supabase 모드(프로덕션)이면 /tmp 사용 (Vercel 읽기전용 FS)
 _IS_PROD = bool(os.environ.get("SUPABASE_KEY"))
@@ -163,19 +244,46 @@ def startup():
 @app.get("/", response_class=HTMLResponse)
 def public_home(
     request: Request,
+    session_id: Optional[str] = Cookie(default=None)
+):
+    stats = get_public_stats()
+    user = get_user(session_id)
+    return templates.TemplateResponse("home.html", {
+        "request": request, "stats": stats, "user": user,
+    })
+
+
+@app.get("/api/public")
+def api_public(
     page: int = Query(1, gt=0),
     sort: str = "follower_count",
     session_id: Optional[str] = Cookie(default=None)
 ):
-    stats = get_public_stats()
+    """공개 인플루언서 목록 JSON API - JS 렌더링용"""
+    _allowed = {"follower_count", "engagement_rate", "avg_reel_views", "avg_likes"}
+    if sort not in _allowed:
+        sort = "follower_count"
     total, rows = get_public_influencers(page=page, per_page=30, sort=sort)
     total_pages = max(1, (total + 29) // 30)
-    user = get_user(session_id)
-    return templates.TemplateResponse("home.html", {
-        "request": request, "stats": stats, "rows": rows,
-        "total": total, "total_pages": total_pages, "page": page,
-        "sort": sort, "user": user,
-    })
+    result = []
+    for r in rows:
+        result.append({
+            "pk": r.pk if hasattr(r, "pk") else r["pk"],
+            "username": r.username if hasattr(r, "username") else r["username"],
+            "full_name": r.full_name if hasattr(r, "full_name") else r.get("full_name",""),
+            "biography": r.biography if hasattr(r, "biography") else r.get("biography",""),
+            "follower_count": r.follower_count if hasattr(r, "follower_count") else r.get("follower_count",0),
+            "engagement_rate": r.engagement_rate if hasattr(r, "engagement_rate") else r.get("engagement_rate",0),
+            "avg_likes": r.avg_likes if hasattr(r, "avg_likes") else r.get("avg_likes",0),
+            "avg_reel_views": r.avg_reel_views if hasattr(r, "avg_reel_views") else r.get("avg_reel_views",0),
+            "is_verified": r.is_verified if hasattr(r, "is_verified") else r.get("is_verified",False),
+            "is_business": r.is_business if hasattr(r, "is_business") else r.get("is_business",False),
+            "category": r.category if hasattr(r, "category") else r.get("category",""),
+            "hashtags": r.hashtags if hasattr(r, "hashtags") else r.get("hashtags",""),
+            "profile_pic_url": r.profile_pic_url if hasattr(r, "profile_pic_url") else r.get("profile_pic_url",""),
+            "profile_pic_local": r.profile_pic_local if hasattr(r, "profile_pic_local") else r.get("profile_pic_local",""),
+        })
+    return {"total": total, "total_pages": total_pages, "page": page, "rows": result}
 
 
 # ═══════════════════════════════════════════════════════
