@@ -684,7 +684,7 @@ def get_public_influencers(page=1, per_page=30, sort="follower_count"):
     try:
         total = conn.execute(f"SELECT COUNT(*) FROM {T_INF}").fetchone()[0]
         rows = conn.execute(f"""SELECT pk,username,full_name,follower_count,is_verified,is_business,
-            category,profile_pic_local,engagement_rate,avg_reel_views,hashtags
+            category,profile_pic_local,profile_pic_url,engagement_rate,avg_reel_views,avg_likes,hashtags,biography
             FROM {T_INF} ORDER BY {sort} DESC LIMIT ? OFFSET ?""", [per_page, offset]).fetchall()
         return total, [dict(r) for r in rows]
     finally: conn.close()
