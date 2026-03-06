@@ -425,6 +425,42 @@ function renderCard(r, idx) {
   </div>`;
 }
 
+function renderBlurCards(count) {
+  // 점점 더 흐려지는 블러 카드 (opacity + blur 증가)
+  const opacities = [0.55, 0.35, 0.18];
+  const blurs = [3, 6, 10];
+  let html = `<div style="position:relative;">`;
+  for (let i = 0; i < count; i++) {
+    const op = opacities[i] ?? 0.15;
+    const bl = blurs[i] ?? 12;
+    html += `<div class="inf-card" style="opacity:${op};filter:blur(${bl}px);pointer-events:none;user-select:none;margin-bottom:12px;">
+      <div class="profile-ring" style="width:88px;height:88px;flex-shrink:0;"><div class="profile-ring-inner"><div class="profile-placeholder" style="background:linear-gradient(135deg,#a5b4fc,#c4b5fd);font-size:22px;">?</div></div></div>
+      <div class="inf-info">
+        <div class="inf-name-row" style="margin-bottom:5px;">
+          <div style="height:14px;background:#e2e8f0;border-radius:6px;width:120px;"></div>
+          <div style="height:18px;background:#ede9fe;border-radius:999px;width:40px;margin-left:6px;"></div>
+        </div>
+        <div style="height:11px;background:#f1f5f9;border-radius:5px;width:200px;margin-bottom:5px;"></div>
+        <div style="height:18px;background:#dbeafe;border-radius:999px;width:60px;display:inline-block;"></div>
+      </div>
+      <div class="stat-groups">
+        ${['#ede9fe','#fff7ed','#f5f3ff'].map(bg=>`<div class="stat-group" style="min-width:88px;">
+          <div class="stat-group-title" style="background:${bg};"></div>
+          <div class="stat-group-body">
+            <div class="stat-cell"><div style="height:16px;background:#e2e8f0;border-radius:4px;margin:2px 0;"></div><div style="height:9px;background:#f1f5f9;border-radius:3px;margin-top:2px;"></div></div>
+            <div class="stat-cell" style="border-left:1px solid #e8eaf0;"><div style="height:16px;background:#e2e8f0;border-radius:4px;margin:2px 0;"></div><div style="height:9px;background:#f1f5f9;border-radius:3px;margin-top:2px;"></div></div>
+          </div>
+        </div>`).join('')}
+      </div>
+      <svg style="width:16px;height:16px;color:#cbd5e1;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </div>`;
+  }
+  // 그라디언트 페이드 오버레이
+  html += `<div style="position:absolute;bottom:0;left:0;right:0;height:160px;background:linear-gradient(to bottom,transparent,#f5f6fa);pointer-events:none;"></div>`;
+  html += `</div>`;
+  return html;
+}
+
 async function loadList(page, sort, filters={}) {
   const list = document.getElementById('infList');
   list.innerHTML = `<div class="skeleton" style="height:124px;"></div><div class="skeleton" style="height:124px;opacity:.7;margin-top:12px;"></div><div class="skeleton" style="height:124px;opacity:.4;margin-top:12px;"></div>`;
@@ -445,12 +481,16 @@ async function loadList(page, sort, filters={}) {
     document.getElementById('totalCount').textContent = data.total;
     let html = '';
     data.rows.forEach((r,i) => { html += renderCard(r,(page-1)*30+i); });
-    list.innerHTML = html || '<div style="text-align:center;padding:80px 0;color:#94a3b8;font-size:14px;">검색 결과가 없습니다</div>';
+
+    // 비로그인: 뒤에 흐릿한 카드 3개 + 그라디언트 페이드
     const lb = document.getElementById('lockBanner');
     if (!IS_ADMIN && data.total > data.rows.length) {
-      document.getElementById('lockCount').textContent = (data.total - data.rows.length)+'명이 더 있습니다';
+      html += renderBlurCards(3);
       lb.classList.remove('hidden');
+      document.getElementById('lockCount').textContent = (data.total - data.rows.length)+'명이 더 있습니다';
     } else { lb.classList.add('hidden'); }
+
+    list.innerHTML = html || '<div style="text-align:center;padding:80px 0;color:#94a3b8;font-size:14px;">검색 결과가 없습니다</div>';
     if (IS_ADMIN && data.total_pages>1) renderPagination(page, data.total_pages, sort);
     else document.getElementById('pagination').classList.add('hidden');
   } catch(e) {
