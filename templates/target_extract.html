@@ -28,7 +28,11 @@
             </label>
             <label class="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
               <input type="radio" name="extractType" value="commenters" class="accent-indigo-500">
-              <div><div class="text-xs font-bold text-gray-700">댓글 작성자</div><div class="text-xs text-gray-400">게시물 댓글러 추출</div></div>
+              <div><div class="text-xs font-bold text-gray-700">댓글 작성자</div><div class="text-xs text-gray-400">게시물 1개 댓글러</div></div>
+            </label>
+            <label class="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+              <input type="radio" name="extractType" value="all_commenters" class="accent-indigo-500">
+              <div><div class="text-xs font-bold text-gray-700">전체 댓글 작성자</div><div class="text-xs text-gray-400">계정 모든 게시물 댓글러</div></div>
             </label>
             <label class="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
               <input type="radio" name="extractType" value="likers" class="accent-indigo-500">
@@ -154,6 +158,7 @@
 document.querySelectorAll('input[name="extractType"]').forEach(r => {
   r.addEventListener('change', function() {
     const isMedia = this.value === 'commenters' || this.value === 'likers';
+    // all_commenters uses account input (username)
     document.getElementById('accountInput').classList.toggle('hidden', isMedia);
     document.getElementById('mediaInput').classList.toggle('hidden', !isMedia);
   });

@@ -1447,6 +1447,113 @@ def target_extract_stream(
                     if not cursor: break
                     time.sleep(0.5)
 
+            # 계정 전체 게시물 댓글 작성자
+            elif type == "all_commenters":
+                p["status"] = f"@{target} 계정 정보 조회 중"
+                p["label"] = f"@{target} 전체 댓글 작성자 추출 중..."
+                yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+                info_r = req.get("https://api.hikerapi.com/v1/user/by/username",
+                                 params={"username": target, "access_key": token}, timeout=15)
+                info = info_r.json()
+                user_id = str(info.get("pk", ""))
+                if not user_id:
+                    p.update({"done": True, "error": True, "status": f"@{target} 계정을 찾을 수 없습니다"})
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                    return
+
+                # 게시물 목록 가져오기
+                medias_r = req.get("https://api.hikerapi.com/v1/user/medias/chunk",
+                                   params={"user_id": user_id, "access_key": token}, timeout=15)
+                medias_data = medias_r.json()
+                media_items = []
+                if isinstance(medias_data, list) and len(medias_data) >= 1:
+                    media_items = medias_data[0] if isinstance(medias_data[0], list) else medias_data
+
+                if not media_items:
+                    p.update({"done": True, "error": True, "status": "게시물을 찾을 수 없습니다"})
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                    return
+
+                seen_pks = set()
+                from database import upsert_influencer, get_influencer
+
+                for mi, media in enumerate(media_items):
+                    if extracted >= max_count:
+                        break
+                    if not isinstance(media, dict):
+                        continue
+                    media_id = str(media.get("pk", ""))
+                    if not media_id:
+                        continue
+
+                    p["status"] = f"게시물 {mi+1}/{len(media_items)} 댓글 추출 중 — {extracted}명"
+                    p["users"] = []
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+                    comment_cursor = None
+                    while extracted < max_count:
+                        cparams = {"id": media_id, "access_key": token}
+                        if comment_cursor:
+                            cparams["max_id"] = comment_cursor
+
+                        cr = req.get("https://api.hikerapi.com/v1/media/comments/chunk",
+                                     params=cparams, timeout=15)
+                        cdata = cr.json()
+
+                        comments = []
+                        next_c = None
+                        if isinstance(cdata, list) and len(cdata) >= 2:
+                            comments = cdata[0] if isinstance(cdata[0], list) else []
+                            next_c = cdata[1] if len(cdata) > 1 else None
+                        elif isinstance(cdata, dict):
+                            comments = cdata.get("comments", [])
+                            next_c = cdata.get("next_min_id")
+
+                        if not comments:
+                            break
+
+                        page_users = []
+                        for c in comments:
+                            if not isinstance(c, dict): continue
+                            u = c.get("user", {})
+                            if not isinstance(u, dict): continue
+                            pk = str(u.get("pk", ""))
+                            if not pk or pk in seen_pks: continue
+                            seen_pks.add(pk)
+                            if extracted >= max_count: break
+
+                            uname = u.get("username", "")
+                            fname = u.get("full_name", "")
+                            pic = u.get("profile_pic_url", "")
+
+                            existing = get_influencer(pk)
+                            is_new = not existing
+
+                            if save:
+                                try:
+                                    upsert_influencer({"pk": pk, "username": uname,
+                                                       "full_name": fname, "profile_pic_url": pic})
+                                except Exception: pass
+
+                            if is_new: new_cnt += 1
+                            else: dup_cnt += 1
+                            extracted += 1
+                            page_users.append({"username": uname, "full_name": fname,
+                                              "pic": pic, "is_new": is_new})
+
+                        comment_cursor = next_c
+                        if page_users:
+                            p.update({"extracted": extracted, "new_cnt": new_cnt, "dup_cnt": dup_cnt,
+                                      "users": page_users,
+                                      "status": f"게시물 {mi+1}/{len(media_items)} — {extracted}명"})
+                            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+                        if not comment_cursor: break
+                        time.sleep(0.3)
+
+                    time.sleep(0.3)
+
             # 좋아요 누른 사람
             elif type == "likers":
                 code = target.split("/p/")[-1].split("/")[0] if "/p/" in target else target.split("/reel/")[-1].split("/")[0] if "/reel/" in target else target
