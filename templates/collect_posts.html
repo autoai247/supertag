@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% set active = "collect_posts" %}
+{% block title %}게시물 수집 - SuperTag{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <h1 class="text-xl font-bold text-gray-900">게시물 수집</h1>
+  <p class="text-sm text-gray-500 mt-0.5">DB에 등록된 인플루언서의 최근 게시물을 일괄 수집합니다. 통계/TOP5/해시태그 분석에 사용됩니다.</p>
+</div>
+
+<div class="grid grid-cols-5 gap-5">
+  <!-- 수집 폼 -->
+  <div class="col-span-2 card p-5">
+    <h2 class="font-semibold text-gray-800 mb-4">게시물 수집 요청</h2>
+    <div class="space-y-4">
+      <div class="p-3 rounded-lg text-xs text-gray-600 space-y-1.5" style="background:#f8fafc;">
+        <div>DB에 등록된 인플루언서를 순서대로 방문하여</div>
+        <div>최근 게시물(최대 50개)을 수집하고 통계를 계산합니다.</div>
+        <div class="pt-1.5 text-gray-400">수집 항목: 좋아요, 댓글, 조회수, 해시태그, 협찬 여부 등</div>
+      </div>
+
+      <button id="startBtn" onclick="startRefresh()"
+        class="w-full py-2.5 rounded-lg font-semibold text-white text-sm hover:opacity-90 transition"
+        style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+        게시물 수집 시작
+      </button>
+
+      <button id="stopBtn" onclick="location.reload()" style="display:none;"
+        class="w-full py-2.5 rounded-lg font-semibold text-sm border border-gray-300 text-gray-600 hover:bg-gray-50 transition">
+        새로고침
+      </button>
+    </div>
+  </div>
+
+  <!-- 진행 상황 -->
+  <div class="col-span-3 card p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold text-gray-800">진행 상황</h2>
+      <span id="statusBadge" class="text-xs px-2.5 py-1 rounded-full font-bold" style="background:#f1f5f9;color:#64748b;">대기 중</span>
+    </div>
+
+    <!-- 카운터 -->
+    <div class="grid grid-cols-4 gap-3 mb-4">
+      <div class="text-center py-3 rounded-lg" style="background:#f8fafc;">
+        <div id="cntTotal" class="text-2xl font-bold text-gray-900">-</div>
+        <div class="text-xs text-gray-400 mt-0.5">전체 대상</div>
+      </div>
+      <div class="text-center py-3 rounded-lg" style="background:#eef2ff;">
+        <div id="cntDone" class="text-2xl font-bold text-indigo-600">0</div>
+        <div class="text-xs text-gray-400 mt-0.5">완료</div>
+      </div>
+      <div class="text-center py-3 rounded-lg" style="background:#f0fdf4;">
+        <div id="cntSuccess" class="text-2xl font-bold text-emerald-600">0</div>
+        <div class="text-xs text-gray-400 mt-0.5">성공</div>
+      </div>
+      <div class="text-center py-3 rounded-lg" style="background:#fef2f2;">
+        <div id="cntFail" class="text-2xl font-bold text-red-500">0</div>
+        <div class="text-xs text-gray-400 mt-0.5">실패</div>
+      </div>
+    </div>
+
+    <!-- 진행률 -->
+    <div id="progressArea" style="display:none;">
+      <div class="flex justify-between text-xs text-gray-500 mb-1">
+        <span id="progressLabel">수집 중...</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="w-full h-2 rounded-full mb-3" style="background:#e2e8f0;">
+        <div id="progressBar" class="h-2 rounded-full transition-all duration-500"
+             style="background:linear-gradient(90deg,#6366f1,#8b5cf6);width:0%"></div>
+      </div>
+      <div id="currentUser" class="text-xs text-gray-500 mb-3"></div>
+    </div>
+
+    <!-- 상태 표시줄 -->
+    <div class="rounded-lg px-4 py-3 font-mono text-xs flex items-center gap-3" style="background:#0f172a;min-height:48px;">
+      <span id="statusDot" class="w-2 h-2 rounded-full flex-shrink-0" style="background:#475569;"></span>
+      <span id="statusLine" class="text-gray-500">게시물 수집 준비 완료. 시작 버튼을 누르세요.</span>
+    </div>
+  </div>
+</div>
+
+<script>
+let pollTimer = null;
+
+function setStatus(msg, type) {
+  document.getElementById('statusLine').textContent = msg;
+  const dot = document.getElementById('statusDot');
+  if (type === 'running') { dot.style.background = '#6366f1'; dot.style.boxShadow = '0 0 6px #6366f1'; }
+  else if (type === 'done') { dot.style.background = '#10b981'; dot.style.boxShadow = '0 0 6px #10b981'; }
+  else if (type === 'error') { dot.style.background = '#ef4444'; dot.style.boxShadow = '0 0 6px #ef4444'; }
+  else { dot.style.background = '#475569'; dot.style.boxShadow = 'none'; }
+}
+
+async function startRefresh() {
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true; btn.textContent = '시작 중...';
+
+  try {
+    const r = await fetch('/refresh/start', { method: 'POST' });
+    const d = await r.json();
+    if (d.error) {
+      setStatus(d.error, 'error');
+      btn.disabled = false; btn.textContent = '게시물 수집 시작';
+      return;
+    }
+    btn.style.display = 'none';
+    document.getElementById('stopBtn').style.display = '';
+    document.getElementById('progressArea').style.display = '';
+    document.getElementById('statusBadge').textContent = '수집 중';
+    document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706;';
+    setStatus('게시물 수집 시작됨...', 'running');
+    pollTimer = setInterval(pollStatus, 2000);
+  } catch(e) {
+    setStatus('연결 오류: ' + e, 'error');
+    btn.disabled = false; btn.textContent = '게시물 수집 시작';
+  }
+}
+
+async function pollStatus() {
+  try {
+    const r = await fetch('/refresh/status');
+    const p = await r.json();
+    if (!p || !p.running) {
+      // 완료 또는 미실행
+      if (p.total > 0) {
+        clearInterval(pollTimer);
+        document.getElementById('cntTotal').textContent = p.total || '-';
+        document.getElementById('cntDone').textContent = p.done || 0;
+        document.getElementById('cntSuccess').textContent = p.success || 0;
+        document.getElementById('cntFail').textContent = p.fail || 0;
+        document.getElementById('progressBar').style.width = '100%';
+        document.getElementById('progressPct').textContent = '100%';
+        document.getElementById('progressLabel').textContent = '완료';
+        document.getElementById('currentUser').textContent = '';
+        document.getElementById('statusBadge').textContent = '완료';
+        document.getElementById('statusBadge').style.cssText = 'background:rgba(16,185,129,.1);color:#10b981;';
+        setStatus(`완료 - 성공 ${p.success || 0}명, 실패 ${p.fail || 0}명`, 'done');
+      }
+      return;
+    }
+
+    const total = p.total || 1;
+    const done = p.done || 0;
+    const pct = Math.round((done / total) * 100);
+
+    document.getElementById('cntTotal').textContent = total;
+    document.getElementById('cntDone').textContent = done;
+    document.getElementById('cntSuccess').textContent = p.success || 0;
+    document.getElementById('cntFail').textContent = p.fail || 0;
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressPct').textContent = pct + '%';
+    document.getElementById('progressLabel').textContent = `${done} / ${total}`;
+
+    if (p.current_username) {
+      document.getElementById('currentUser').textContent = `현재: @${p.current_username}`;
+    }
+    setStatus(`게시물 수집 중 (${done}/${total})`, 'running');
+  } catch(e) {}
+}
+
+// 페이지 로드 시 이미 실행 중인지 확인
+(async function() {
+  try {
+    const r = await fetch('/refresh/status');
+    const p = await r.json();
+    if (p && p.running) {
+      document.getElementById('startBtn').style.display = 'none';
+      document.getElementById('stopBtn').style.display = '';
+      document.getElementById('progressArea').style.display = '';
+      document.getElementById('statusBadge').textContent = '수집 중';
+      document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706;';
+      setStatus('게시물 수집 진행 중...', 'running');
+      pollTimer = setInterval(pollStatus, 2000);
+    }
+  } catch(e) {}
+})();
+</script>
+{% endblock %}

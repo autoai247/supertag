@@ -1165,8 +1165,16 @@ def export_excel(
 
 
 # ═══════════════════════════════════════════════════════
-# 전체 갱신 (관리자)
+# 게시물 수집 (전체 갱신)
 # ═══════════════════════════════════════════════════════
+
+@app.get("/collect/posts", response_class=HTMLResponse)
+def collect_posts_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    return templates.TemplateResponse("collect_posts.html", {
+        "request": request, "user": user,
+    })
 
 @app.post("/refresh/start")
 def refresh_start(background_tasks: BackgroundTasks,
