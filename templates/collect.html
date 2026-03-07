@@ -405,8 +405,8 @@ function renderHistory(jobsList) {
     container.innerHTML = '<div class="py-6 text-center text-gray-400 text-sm">수집 이력이 없습니다</div>';
     return;
   }
-  // 캐시 업데이트
-  jobsList.forEach(j => { _historyJobs[j.id] = j; });
+  // 캐시 업데이트 (키를 문자열로 통일)
+  jobsList.forEach(j => { _historyJobs[String(j.id)] = j; });
 
   container.innerHTML = jobsList.map(j => {
     const isTop = j.search_type === 'top';

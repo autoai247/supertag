@@ -975,6 +975,11 @@ def get_public_influencers(page=1, per_page=30, sort="follower_count",
     _VALID = {"follower_count","engagement_rate","avg_reel_views","avg_likes","avg_comments"}
     sort = sort if sort in _VALID else "follower_count"
 
+    # 숨김/밴 제외 pk 목록
+    banned_pks = get_banned_pks()
+    hidden_pks = get_hidden_pks()
+    excluded_pks = banned_pks | hidden_pks
+
     if _USE_SUPABASE:
         headers = _sb_headers()
         headers["Prefer"] = "count=exact"
@@ -998,11 +1003,19 @@ def get_public_influencers(page=1, per_page=30, sort="follower_count",
         rows = r.json() if isinstance(r.json(), list) else []
         s = r.headers.get("Content-Range","0/0").split("/")[-1]
         total = int(s) if s.isdigit() else len(rows)
+        if excluded_pks:
+            rows = [r for r in rows if r.get("pk") not in excluded_pks]
+            total = max(0, total - len(excluded_pks))
         return total, rows
 
     conn = get_conn()
     offset = (page-1)*per_page
     conditions, params = [], []
+    # 숨김/밴 제외
+    if excluded_pks:
+        placeholders = ",".join(["?"] * len(excluded_pks))
+        conditions.append(f"pk NOT IN ({placeholders})")
+        params += list(excluded_pks)
     if q:
         conditions.append("(username LIKE ? OR full_name LIKE ? OR biography LIKE ?)")
         params += [f"%{q}%", f"%{q}%", f"%{q}%"]
