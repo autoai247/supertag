@@ -534,6 +534,7 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
     if exclude_private: inf_params["is_private"] = "eq.0"
 
     if need_manual_filter:
+        man_params["limit"] = "5000"
         man_rows = _sb_get(T_MAN, man_params)
         pks = [r["pk"] for r in man_rows] if man_rows else []
         if not pks:
@@ -587,10 +588,10 @@ def get_influencer_by_username(username: str) -> dict:
     return _sq_one(f"SELECT * FROM {T_INF} WHERE username=?", (username,)) or {}
 
 
-def get_influencer_posts(pk: str) -> list:
+def get_influencer_posts(pk: str, limit: int = 5000) -> list:
     if _USE_SUPABASE:
-        return _sb_get(T_POST, {"influencer_pk": f"eq.{pk}", "order": "taken_at.desc"}) or []
-    return _sq_all(f"SELECT * FROM {T_POST} WHERE influencer_pk=? ORDER BY taken_at DESC", (pk,))
+        return _sb_get(T_POST, {"influencer_pk": f"eq.{pk}", "order": "taken_at.desc", "limit": str(limit)}) or []
+    return _sq_all(f"SELECT * FROM {T_POST} WHERE influencer_pk=? ORDER BY taken_at DESC LIMIT {limit}", (pk,))
 
 
 def get_influencer_reels(pk: str, sort: str = "recent", limit: int = 20) -> list:
