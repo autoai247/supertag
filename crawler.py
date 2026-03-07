@@ -871,6 +871,7 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                   username: str = None, password: str = None, totp_secret: str = None,
                   job_id: str = None,
                   proxy_host: str = "", proxy_port: str = "",
+                  target_users: int = 0,
                   proxy_user: str = "", proxy_pass: str = ""):
     """해시태그 크롤링 - HikerAPI 우선, instagrapi 폴백"""
     import time as _time
@@ -880,10 +881,16 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         import uuid
         job_id = str(uuid.uuid4())
 
+    # target_users 모드: 목표 인원 달성까지 게시물 검색 (최대 게시물 10000개)
+    user_mode = target_users > 0
+    if user_mode:
+        requested_count = 10000  # 충분히 큰 값으로 설정
+
     progress[job_id] = {
         "status": "수집 준비 중", "hashtag": hashtag,
         "posts": 0, "new": 0, "updated": 0,
-        "requested": requested_count, "done": False, "error": None
+        "requested": requested_count, "target_users": target_users,
+        "done": False, "error": None
     }
 
     try:
@@ -907,8 +914,10 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                 if pk:
                     all_pks.add(str(pk))
                 collected_posts += 1
+                if user_mode and len(all_pks) >= target_users:
+                    break
             progress[job_id].update({"posts": collected_posts,
-                                      "status": f"게시물 수집 완료 ({collected_posts}개)"})
+                                      "status": f"게시물 수집 완료 ({collected_posts}개, {len(all_pks)}명)"})
             log.info(f"[{hashtag}] HikerAPI 게시물 {collected_posts}개 수집, 유저 {len(all_pks)}명")
 
         # ② instagrapi 폴백
@@ -957,7 +966,14 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                 all_pks.update(page_pks)
                 collected_posts += page_posts
                 next_page = resp.get("next_max_id")
-                progress[job_id].update({"posts": collected_posts, "status": f"게시물 수집 중 ({collected_posts}/{requested_count})"})
+                if user_mode:
+                    progress[job_id].update({"posts": collected_posts,
+                        "status": f"게시물 수집 중 — {len(all_pks)}명 발견 (목표 {target_users}명)"})
+                    if len(all_pks) >= target_users:
+                        break
+                else:
+                    progress[job_id].update({"posts": collected_posts,
+                        "status": f"게시물 수집 중 ({collected_posts}/{requested_count})"})
                 if not next_page or page_posts == 0:
                     break
                 time.sleep(1)
