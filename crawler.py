@@ -60,12 +60,23 @@ def _hiker_user_info(username: str) -> dict | None:
 
 
 def _hiker_user_info_by_id(user_id: str) -> dict | None:
-    """HikerAPI로 pk 기반 유저 프로필 조회."""
-    hk = _get_hiker()
-    if not hk:
+    """HikerAPI로 pk 기반 유저 프로필 조회 (직접 REST API)."""
+    token = os.environ.get("HIKERAPI_TOKEN", "").strip()
+    if not token:
         return None
     try:
-        data = hk.user_by_id_v1(str(user_id))
+        r = req_lib.get(
+            "https://api.hikerapi.com/v1/user/by/id",
+            params={"id": str(user_id)},
+            headers={"x-access-key": token, "accept": "application/json"},
+            timeout=30,
+        )
+        if r.status_code == 402:
+            log.warning("[HikerAPI] 크레딧 소진")
+            return None
+        if r.status_code != 200:
+            return None
+        data = r.json()
         if isinstance(data, dict) and data.get("pk"):
             return data
     except Exception as e:
@@ -108,24 +119,32 @@ def _hiker_user_medias(user_id: str, amount: int = 50) -> list | None:
 
 
 def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "recent") -> list | None:
-    """HikerAPI로 해시태그 게시물 조회. 실패 시 None."""
-    hk = _get_hiker()
-    if not hk:
+    """HikerAPI로 해시태그 게시물 조회 (직접 REST API). 실패 시 None."""
+    token = os.environ.get("HIKERAPI_TOKEN", "").strip()
+    if not token:
         return None
     try:
-        if search_type == "top":
-            medias = hk.hashtag_medias_top(hashtag, count=amount)
-        else:
-            medias = hk.hashtag_medias_recent(hashtag, count=amount)
-        # 응답: list of dicts (paging은 라이브러리가 처리)
-        if isinstance(medias, list):
-            # [items, next_page_id] 형태일 수도 있음
-            if len(medias) == 2 and isinstance(medias[0], list):
-                return medias[0][:amount]
-            return medias[:amount]
+        endpoint = "top" if search_type == "top" else "recent"
+        r = req_lib.get(
+            f"https://api.hikerapi.com/v1/hashtag/medias/{endpoint}",
+            params={"name": hashtag, "count": amount},
+            headers={"x-access-key": token, "accept": "application/json"},
+            timeout=30,
+        )
+        if r.status_code == 402:
+            raise Exception("HikerAPI 크레딧 소진 — https://hikerapi.com/billing 에서 충전하세요")
+        if r.status_code != 200:
+            raise Exception(f"HikerAPI 응답 오류 ({r.status_code}): {r.text[:200]}")
+        data = r.json()
+        if isinstance(data, list):
+            return data[:amount]
+        return None
+    except req_lib.RequestException as e:
+        log.warning(f"[HikerAPI] 해시태그 조회 실패 {hashtag}: {e}")
+        raise
     except Exception as e:
         log.warning(f"[HikerAPI] 해시태그 조회 실패 {hashtag}: {e}")
-    return None
+        raise
 
 
 def _media_get(m, key, default=0):
