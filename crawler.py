@@ -107,13 +107,16 @@ def _hiker_user_medias(user_id: str, amount: int = 50) -> list | None:
     return None
 
 
-def _hiker_hashtag_medias(hashtag: str, amount: int = 100) -> list | None:
+def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "recent") -> list | None:
     """HikerAPI로 해시태그 게시물 조회. 실패 시 None."""
     hk = _get_hiker()
     if not hk:
         return None
     try:
-        medias = hk.hashtag_medias_recent(hashtag, count=amount)
+        if search_type == "top":
+            medias = hk.hashtag_medias_top(hashtag, count=amount)
+        else:
+            medias = hk.hashtag_medias_recent(hashtag, count=amount)
         # 응답: list of dicts (paging은 라이브러리가 처리)
         if isinstance(medias, list):
             # [items, next_page_id] 형태일 수도 있음
@@ -871,7 +874,7 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                   username: str = None, password: str = None, totp_secret: str = None,
                   job_id: str = None,
                   proxy_host: str = "", proxy_port: str = "",
-                  target_users: int = 0,
+                  target_users: int = 0, search_type: str = "recent",
                   proxy_user: str = "", proxy_pass: str = ""):
     """해시태그 크롤링 - HikerAPI 우선, instagrapi 폴백"""
     import time as _time
@@ -904,7 +907,7 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         use_hiker = False
 
         # ① HikerAPI로 해시태그 게시물 수집
-        hiker_medias = _hiker_hashtag_medias(hashtag, amount=requested_count)
+        hiker_medias = _hiker_hashtag_medias(hashtag, amount=requested_count, search_type=search_type)
         if hiker_medias:
             use_hiker = True
             progress[job_id]["status"] = "게시물 수집 중 (HikerAPI)"
@@ -938,9 +941,12 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                         data={"max_id": next_page or "", "page": 1, "surface": "grid", "count": 18, "_uuid": cl.uuid}
                     )
                 except Exception as e:
-                    log.warning(f"fallback to hashtag_medias_recent: {e}")
+                    log.warning(f"fallback to hashtag_medias: {e}")
                     try:
-                        medias = cl.hashtag_medias_recent(hashtag, amount=min(requested_count - collected_posts, 50))
+                        if search_type == "top":
+                            medias = cl.hashtag_medias_top(hashtag, amount=min(requested_count - collected_posts, 50))
+                        else:
+                            medias = cl.hashtag_medias_recent(hashtag, amount=min(requested_count - collected_posts, 50))
                         for m in medias:
                             all_pks.add(str(m.user.pk))
                         collected_posts += len(medias)

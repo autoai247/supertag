@@ -26,38 +26,28 @@
         </div>
       </div>
       <div>
-        <div class="text-xs text-gray-500 mb-1">수집 모드</div>
-        <div class="flex gap-2 mb-2">
-          <button id="modePost" onclick="setMode('post')" class="flex-1 px-3 py-2 text-xs font-bold rounded-lg border-2 transition" style="border-color:#6366f1;background:#eef2ff;color:#6366f1;">게시물 수 기준</button>
-          <button id="modeUser" onclick="setMode('user')" class="flex-1 px-3 py-2 text-xs font-bold rounded-lg border-2 transition" style="border-color:#e2e8f0;color:#94a3b8;">목표 인원 기준</button>
+        <div class="text-xs text-gray-500 mb-1">검색 대상</div>
+        <div class="flex gap-2 mb-3">
+          <label class="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+            <input type="radio" name="searchType" value="recent" checked class="accent-indigo-500"> <span class="text-xs font-bold text-gray-700">최근 게시물</span>
+          </label>
+          <label class="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+            <input type="radio" name="searchType" value="top" class="accent-indigo-500"> <span class="text-xs font-bold text-gray-700">인기 게시물</span>
+          </label>
         </div>
-        <div id="postModeArea">
-          <div class="text-xs text-gray-500 mb-1">수집 게시물 수</div>
-          <div class="flex gap-2 items-center">
-            <input id="countInput" type="number" value="200" min="10" max="10000"
-              class="w-28 px-3 py-2 text-sm rounded-lg border border-gray-200">
-            <div class="flex gap-1">
-              {% for n in [100, 300, 500, 1000] %}
-              <button onclick="document.getElementById('countInput').value={{n}}"
-                class="px-2 py-1.5 text-xs rounded border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition">{{ n }}</button>
-              {% endfor %}
-            </div>
+        <div class="text-xs text-gray-500 mb-1">찾을 인플루언서 수</div>
+        <div class="flex gap-2 items-center">
+          <input id="targetUsersInput" type="number" value="30" min="1" max="5000"
+            class="w-28 px-3 py-2 text-sm rounded-lg border border-gray-200">
+          <span class="text-sm text-gray-500">명</span>
+          <div class="flex gap-1">
+            {% for n in [10, 30, 50, 100, 300] %}
+            <button onclick="document.getElementById('targetUsersInput').value={{n}}"
+              class="px-2 py-1.5 text-xs rounded border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition">{{ n }}</button>
+            {% endfor %}
           </div>
         </div>
-        <div id="userModeArea" style="display:none;">
-          <div class="text-xs text-gray-500 mb-1">찾을 인플루언서 수</div>
-          <div class="flex gap-2 items-center">
-            <input id="targetUsersInput" type="number" value="10" min="1" max="5000"
-              class="w-28 px-3 py-2 text-sm rounded-lg border border-gray-200">
-            <div class="flex gap-1">
-              {% for n in [10, 30, 50, 100] %}
-              <button onclick="document.getElementById('targetUsersInput').value={{n}}"
-                class="px-2 py-1.5 text-xs rounded border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition">{{ n }}</button>
-              {% endfor %}
-            </div>
-          </div>
-          <div class="text-xs text-gray-400 mt-1">목표 인원에 도달할 때까지 게시물을 자동 검색합니다</div>
-        </div>
+        <div class="text-xs text-gray-400 mt-1">목표 인원에 도달할 때까지 게시물을 자동 검색합니다</div>
       </div>
       <button id="startBtn" onclick="startCollect()"
         class="w-full py-2.5 rounded-lg font-semibold text-white text-sm hover:opacity-90 transition mt-1"
@@ -69,14 +59,12 @@
     <!-- 안내 -->
     <div class="mt-5 p-3 rounded-lg text-xs text-gray-500 space-y-1" style="background:#f8fafc;">
       <div class="font-semibold text-gray-600 mb-2">수집 흐름</div>
-      <div>① 해시태그 게시물 검색</div>
-      <div>② 게시물에서 유저 ID 추출 (중복 제거)</div>
-      <div>③ 유저 상세 프로필 조회</div>
-      <div>④ DB 저장 (중복 시 정보 갱신)</div>
+      <div>① 해시태그 게시물 자동 검색</div>
+      <div>② 게시물에서 인플루언서 추출 (중복 제거)</div>
+      <div>③ 목표 인원 도달 시 자동 중단</div>
+      <div>④ 인플루언서 상세 프로필 조회 → DB 저장</div>
       <div class="pt-2 text-gray-400 border-t mt-2">
-        <b>게시물 수 기준:</b> 지정한 수만큼 게시물 검색<br>
-        <b>목표 인원 기준:</b> N명 찾을 때까지 자동 검색<br>
-        (같은 유저 중복 게시물은 1명으로 카운트)
+        한 사람이 여러 게시물을 올려도 1명으로 카운트합니다
       </div>
     </div>
   </div>
@@ -140,24 +128,6 @@
 let sse = null;
 let dotTimer = null;
 let dotCount = 0;
-let collectMode = 'post'; // 'post' or 'user'
-
-function setMode(mode) {
-  collectMode = mode;
-  const modePost = document.getElementById('modePost');
-  const modeUser = document.getElementById('modeUser');
-  if (mode === 'post') {
-    modePost.style.cssText = 'border-color:#6366f1;background:#eef2ff;color:#6366f1;';
-    modeUser.style.cssText = 'border-color:#e2e8f0;color:#94a3b8;';
-    document.getElementById('postModeArea').style.display = '';
-    document.getElementById('userModeArea').style.display = 'none';
-  } else {
-    modeUser.style.cssText = 'border-color:#6366f1;background:#eef2ff;color:#6366f1;';
-    modePost.style.cssText = 'border-color:#e2e8f0;color:#94a3b8;';
-    document.getElementById('postModeArea').style.display = 'none';
-    document.getElementById('userModeArea').style.display = '';
-  }
-}
 
 // IP 블랙리스트 / 이메일 인증 에러 감지
 const ERROR_HINTS = [
@@ -236,8 +206,9 @@ function startCollect() {
   const hashtag = document.getElementById('hashtagInput').value.trim().replace(/^#/,'');
   if (!hashtag) { alert('해시태그를 입력해주세요'); return; }
 
-  const count = collectMode === 'post' ? document.getElementById('countInput').value : '500';
-  const targetUsers = collectMode === 'user' ? document.getElementById('targetUsersInput').value : '0';
+  const count = '500';
+  const targetUsers = document.getElementById('targetUsersInput').value;
+  const searchType = document.querySelector('input[name="searchType"]:checked').value;
 
   document.getElementById('startBtn').disabled = true;
   document.getElementById('startBtn').textContent = '수집 중...';
@@ -247,20 +218,19 @@ function startCollect() {
   hideError();
   setStatus(`#${hashtag} 로그인 중`, 'running');
 
-  const form = new URLSearchParams({ hashtag, requested_count: count, target_users: targetUsers });
+  const form = new URLSearchParams({ hashtag, requested_count: count, target_users: targetUsers, search_type: searchType });
   fetch('/collect/start', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     .then(r => r.text())
     .then(jobId => {
       setStatus(`#${hashtag} 수집 중`, 'running');
-      listenProgress(jobId, parseInt(count), parseInt(targetUsers));
+      listenProgress(jobId, parseInt(targetUsers));
     })
     .catch(e => { setStatus(`연결 오류: ${e}`, 'error'); showError(String(e)); });
 }
 
-function listenProgress(jobId, totalRequested, targetUsers) {
+function listenProgress(jobId, targetUsers) {
   if (sse) sse.close();
   sse = new EventSource(`/collect/progress/${jobId}`);
-  const isUserMode = targetUsers > 0;
 
   sse.onmessage = function(e) {
     const p = JSON.parse(e.data);
@@ -270,15 +240,9 @@ function listenProgress(jobId, totalRequested, targetUsers) {
     document.getElementById('cntNew').textContent = p.new || 0;
     document.getElementById('cntUpdated').textContent = p.updated || 0;
 
-    let pct;
-    if (isUserMode) {
-      const found = (p.new || 0) + (p.updated || 0);
-      pct = Math.min(100, Math.round((found / targetUsers) * 100));
-      document.getElementById('progressNum').textContent = `${found}명 / ${targetUsers}명`;
-    } else {
-      pct = Math.min(100, Math.round(((p.posts||0) / totalRequested) * 100));
-      document.getElementById('progressNum').textContent = `${p.posts||0} / ${totalRequested}`;
-    }
+    const found = (p.new || 0) + (p.updated || 0);
+    const pct = Math.min(100, Math.round((found / targetUsers) * 100));
+    document.getElementById('progressNum').textContent = `${found}명 / ${targetUsers}명`;
     document.getElementById('progressBar').style.width = pct + '%';
     document.getElementById('progressLabel').textContent = p.status || '';
 

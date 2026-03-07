@@ -1260,6 +1260,7 @@ def collect_page(request: Request, session_id: Optional[str] = Cookie(default=No
 @app.post("/collect/start")
 def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=500),
                   target_users: int = Form(default=0),
+                  search_type: str = Form(default="recent"),
                   background_tasks: BackgroundTasks = BackgroundTasks(),
                   session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
@@ -1276,7 +1277,7 @@ def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=
                                INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"], job_id,
                                INSTA_CFG.get("proxy_host",""), INSTA_CFG.get("proxy_port",""),
                                INSTA_CFG.get("proxy_user",""), INSTA_CFG.get("proxy_pass",""),
-                               target_users=target_users)
+                               target_users=target_users, search_type=search_type)
     return HTMLResponse(job_id)
 
 @app.get("/collect/progress/{job_id}")
