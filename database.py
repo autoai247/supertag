@@ -98,8 +98,19 @@ def _ensure_storage_bucket():
         pass
     _bucket_ensured = True
 
-def upload_profile_pic(pk: str, image_url: str) -> str:
-    """인스타 프로필 사진을 다운로드 → Supabase Storage에 업로드. public URL 반환."""
+def _delete_storage_file(path: str):
+    """Supabase Storage 파일 삭제."""
+    try:
+        _req.delete(
+            f"{SUPABASE_URL}/storage/v1/object/{_STORAGE_BUCKET}/{path}",
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+        )
+    except Exception:
+        pass
+
+def upload_profile_pic(pk: str, image_url: str, old_stored_url: str = "") -> str:
+    """인스타 프로필 사진을 다운로드 → Supabase Storage에 업로드. public URL 반환.
+    old_stored_url이 있고 확장자가 바뀌면 이전 파일 삭제."""
     if not _USE_SUPABASE or not image_url:
         return ""
     _ensure_storage_bucket()
@@ -114,6 +125,12 @@ def upload_profile_pic(pk: str, image_url: str) -> str:
         elif "webp" in content_type:
             ext = "webp"
         path = f"{pk}.{ext}"
+        new_public_url = f"{SUPABASE_URL}/storage/v1/object/public/{_STORAGE_BUCKET}/{path}"
+        # 확장자가 바뀌면 이전 파일 삭제
+        if old_stored_url and old_stored_url != new_public_url:
+            old_path = old_stored_url.split(f"/{_STORAGE_BUCKET}/")[-1]
+            if old_path:
+                _delete_storage_file(old_path)
         # upsert 모드 (이미 있으면 덮어쓰기)
         upload_r = _req.post(
             f"{SUPABASE_URL}/storage/v1/object/{_STORAGE_BUCKET}/{path}",

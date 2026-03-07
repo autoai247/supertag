@@ -853,10 +853,12 @@ def _update_profile_from_info(u_info, pk: str, username: str):
         if cat: profile_updates["category"] = cat
         if pic_url:
             profile_updates["profile_pic_url"] = pic_url
-            # Supabase Storage에 프로필 사진 영구 저장
+            # Supabase Storage에 프로필 사진 영구 저장 (기존 파일 자동 교체)
             try:
-                from database import upload_profile_pic
-                stored_url = upload_profile_pic(pk, pic_url)
+                from database import upload_profile_pic, get_influencer
+                old_inf = get_influencer(pk)
+                old_stored = (old_inf or {}).get("profile_pic_local", "") or ""
+                stored_url = upload_profile_pic(pk, pic_url, old_stored)
                 if stored_url:
                     profile_updates["profile_pic_local"] = stored_url
             except Exception:
