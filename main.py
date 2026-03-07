@@ -1280,9 +1280,13 @@ def refresh_page(request: Request, session_id: Optional[str] = Cookie(default=No
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
     cutoff = time.time() - 86400 * 30
+    from database import get_banned_pks
+    banned_pks = get_banned_pks()
     all_infs = get_influencers(per_page=99999, page=1)
     items = all_infs.get("items", [])
-    stale = [r for r in items if not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff]
+    stale = [r for r in items
+             if (not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff)
+             and str(r.get("pk","")) not in banned_pks]
     return templates.TemplateResponse("refresh.html", {
         "request": request, "user": user,
         "total_count": len(items), "stale_count": len(stale),
@@ -1307,9 +1311,12 @@ def refresh_stream(session_id: Optional[str] = Cookie(default=None)):
     def stream():
         try:
             cutoff = time.time() - 86400 * 30  # 30일 이상 지난 것만 갱신
+            from database import get_banned_pks
+            banned_pks = get_banned_pks()
             all_infs = get_influencers(per_page=99999, page=1)
             rows = [r for r in all_infs.get("items", [])
-                    if not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff]
+                    if (not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff)
+                    and str(r.get("pk","")) not in banned_pks]
 
             total = len(rows)
             success = fail = 0
