@@ -396,8 +396,9 @@ function startCollect() {
     .catch(e => { alert('수집 시작 실패: ' + e); });
 }
 
-// ═══ 수집 이력 실시간 폴링 ═══
-const _historyJobs = {};  // id → job data 캐시
+// ═══ 수집 이력 + 실시간 모니터 ═══
+const _historyJobs = {};
+const _monitors = {};  // jobId → { timer, panelId }
 
 function renderHistory(jobsList) {
   const container = document.getElementById('historyList');
@@ -405,9 +406,7 @@ function renderHistory(jobsList) {
     container.innerHTML = '<div class="py-6 text-center text-gray-400 text-sm">수집 이력이 없습니다</div>';
     return;
   }
-  // 캐시 업데이트 (키를 문자열로 통일)
   jobsList.forEach(j => { _historyJobs[String(j.id)] = j; });
-
   container.innerHTML = jobsList.map(j => {
     const isTop = j.search_type === 'top';
     const typeBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-bold ${isTop?'text-amber-600':'text-blue-600'}" style="background:${isTop?'#fef3c7':'#eff6ff'};">${isTop?'인기':'최근'}</span>`;
@@ -442,39 +441,145 @@ function refreshHistory() {
   fetch('/api/collect-jobs')
     .then(r => r.json())
     .then(data => {
-      if (Array.isArray(data)) renderHistory(data);
-      // 깜빡임 효과
+      if (Array.isArray(data)) {
+        renderHistory(data);
+        // 모니터 중인 job이 done으로 바뀌었으면 자동 업데이트
+        Object.keys(_monitors).forEach(mid => {
+          const j = _historyJobs[mid];
+          if (j && j.status !== 'running') {
+            stopMonitor(mid);
+          }
+        });
+      }
       const dot = document.getElementById('historyRefreshDot');
       if (dot) { dot.style.opacity = '0.3'; setTimeout(() => dot.style.opacity = '1', 300); }
     })
     .catch(() => {});
 }
 
-// 초기 로드 + 5초 간격 폴링
-// 첫 로드 시 running job 자동 감지
+// ═══ 모니터 패널 (다중 지원) ═══
+function createMonitorPanel(jobId, job) {
+  const panelId = `monitor-${jobId}`;
+  if (document.getElementById(panelId)) return; // 이미 있음
+  if (_monitors[jobId]) return;
+
+  document.getElementById('emptyState')?.remove();
+
+  const target = job.requested_count || 0;
+  const panel = document.createElement('div');
+  panel.id = panelId;
+  panel.className = 'card overflow-hidden animate-fadeIn';
+  panel.innerHTML = `
+    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="font-bold text-gray-800 text-sm">#${job.hashtag || '?'}</span>
+        <span class="mon-badge px-1.5 py-0.5 rounded text-xs font-bold" style="background:rgba(245,158,11,.1);color:#d97706;">수집 중</span>
+      </div>
+      <button onclick="stopMonitor('${jobId}');this.closest('.card').remove()" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-4">
+      <div class="flex justify-between text-xs text-gray-500 mb-1">
+        <span class="mon-label">다른 탭에서 수집 진행 중...</span>
+        <span class="mon-num">신규 ${job.new_users||0}명 / 중복 ${job.updated_users||0}명</span>
+      </div>
+      <div class="w-full h-2 rounded-full mb-3" style="background:#e2e8f0;">
+        <div class="mon-bar h-2 rounded-full transition-all duration-500" style="background:linear-gradient(90deg,#6366f1,#8b5cf6);width:${target>0?Math.min(100,Math.round(((job.new_users||0)/target)*100)):0}%"></div>
+      </div>
+      <div class="grid grid-cols-4 gap-2 mb-3">
+        <div class="text-center py-2 rounded-lg" style="background:#f8fafc;">
+          <div class="mon-posts text-lg font-bold text-gray-900">${job.collected_posts||0}</div>
+          <div class="text-xs text-gray-400">게시물</div>
+        </div>
+        <div class="text-center py-2 rounded-lg" style="background:#eef2ff;">
+          <div class="mon-new text-lg font-bold text-indigo-600">${job.new_users||0}</div>
+          <div class="text-xs text-gray-400">신규</div>
+        </div>
+        <div class="text-center py-2 rounded-lg" style="background:#fef3c7;">
+          <div class="mon-dup text-lg font-bold text-amber-600">${job.updated_users||0}</div>
+          <div class="text-xs text-gray-400">중복</div>
+        </div>
+        <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;">
+          <div class="text-lg font-bold text-emerald-600">${target||'?'}</div>
+          <div class="text-xs text-gray-400">목표</div>
+        </div>
+      </div>
+      <div class="rounded-lg px-3 py-2 font-mono text-xs flex items-center gap-2" style="background:#0f172a;min-height:36px;">
+        <span class="mon-dot w-2 h-2 rounded-full flex-shrink-0 animate-pulse" style="background:#6366f1;box-shadow:0 0 6px #6366f1;"></span>
+        <span class="mon-status text-gray-400">실시간 모니터링 중 (3초마다 갱신)</span>
+      </div>
+    </div>
+  `;
+  document.getElementById('jobPanels').prepend(panel);
+
+  // 3초 폴링
+  const timer = setInterval(() => {
+    const p = document.getElementById(panelId);
+    if (!p) { stopMonitor(jobId); return; }
+    fetch(`/api/collect-job/${jobId}`)
+      .then(r => r.json())
+      .then(j => {
+        if (!document.getElementById(panelId)) { stopMonitor(jobId); return; }
+        p.querySelector('.mon-posts').textContent = j.collected_posts || 0;
+        p.querySelector('.mon-new').textContent = j.new_users || 0;
+        p.querySelector('.mon-dup').textContent = j.updated_users || 0;
+        p.querySelector('.mon-num').textContent = `신규 ${j.new_users||0}명 / 중복 ${j.updated_users||0}명`;
+        const pct = target > 0 ? Math.min(100, Math.round(((j.new_users||0) / target) * 100)) : 0;
+        p.querySelector('.mon-bar').style.width = pct + '%';
+
+        if (j.status !== 'running') {
+          stopMonitor(jobId);
+          const isDone = j.status === 'done';
+          p.querySelector('.mon-dot').style.background = isDone ? '#10b981' : '#ef4444';
+          p.querySelector('.mon-dot').style.boxShadow = `0 0 6px ${isDone ? '#10b981' : '#ef4444'}`;
+          p.querySelector('.mon-dot').classList.remove('animate-pulse');
+          p.querySelector('.mon-status').textContent = isDone
+            ? `완료 — 신규 ${j.new_users||0}명, 중복 ${j.updated_users||0}명`
+            : '수집 실패';
+          p.querySelector('.mon-label').textContent = isDone ? '수집 완료' : '에러';
+          p.querySelector('.mon-badge').textContent = isDone ? '완료' : '에러';
+          p.querySelector('.mon-badge').style.cssText = isDone
+            ? 'background:rgba(16,185,129,.1);color:#10b981;'
+            : 'background:rgba(239,68,68,.1);color:#ef4444;';
+          if (isDone) p.querySelector('.mon-bar').style.width = '100%';
+        }
+      })
+      .catch(() => {});
+  }, 3000);
+
+  _monitors[jobId] = { timer, panelId };
+}
+
+function stopMonitor(jobId) {
+  const m = _monitors[jobId];
+  if (m) {
+    clearInterval(m.timer);
+    delete _monitors[jobId];
+  }
+}
+
+// ═══ 초기 로드: running job 자동 모니터 표시 ═══
 fetch('/api/collect-jobs')
   .then(r => r.json())
   .then(data => {
-    if (Array.isArray(data)) {
-      renderHistory(data);
-      // 진행중인 작업이 있으면 자동으로 모니터 패널 표시
-      const runningJobs = data.filter(j => j.status === 'running');
-      runningJobs.forEach(j => {
-        if (!document.getElementById('historyPanel')) {
-          showMonitorPanel(String(j.id), j);
-        }
-      });
-    }
+    if (!Array.isArray(data)) return;
+    renderHistory(data);
+    data.filter(j => j.status === 'running').forEach(j => {
+      // 이 탭에서 직접 수집중인 건 제외
+      if (!jobs[String(j.id)]) {
+        createMonitorPanel(String(j.id), j);
+      }
+    });
   })
   .catch(() => {});
 setInterval(refreshHistory, 5000);
 
-// 모니터 폴링 타이머 관리
-let _monitorTimer = null;
-
+// ═══ 이력 클릭 핸들러 ═══
 function loadJobUsers(jobId, el) {
   jobId = String(jobId);
-  // 이 탭에서 진행중인 수집이면 해당 패널로 스크롤
+
+  // 이 탭에서 직접 수집중이면 해당 패널로 스크롤
   if (jobs[jobId]) {
     const activePanel = document.getElementById(`panel-${jobId}`);
     if (activePanel) {
@@ -485,131 +590,50 @@ function loadJobUsers(jobId, el) {
     }
   }
 
+  // 이미 모니터 패널이 있으면 스크롤
+  if (_monitors[jobId]) {
+    const mp = document.getElementById(_monitors[jobId].panelId);
+    if (mp) {
+      mp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      mp.style.boxShadow = '0 0 0 2px #6366f1';
+      setTimeout(() => { mp.style.boxShadow = ''; }, 1500);
+      return;
+    }
+  }
+
   document.querySelectorAll('[data-job-id]').forEach(r => r.classList.remove('bg-indigo-50'));
   if (el) el.classList.add('bg-indigo-50');
 
-  // 기존 패널/모니터 정리
+  // 기존 historyPanel 정리
   document.getElementById('historyPanel')?.remove();
-  if (_monitorTimer) { clearInterval(_monitorTimer); _monitorTimer = null; }
 
-  // 캐시된 job 데이터로 바로 판단
-  const cachedJob = _historyJobs[jobId] || _historyJobs[parseInt(jobId)];
-  console.log('[SuperTag] loadJobUsers', jobId, 'cached:', cachedJob?.status, 'keys:', Object.keys(_historyJobs).slice(0,5));
+  // running이면 모니터 패널 생성
+  const cachedJob = _historyJobs[jobId];
   if (cachedJob && cachedJob.status === 'running') {
-    showMonitorPanel(jobId, cachedJob);
+    createMonitorPanel(jobId, cachedJob);
     return;
   }
-  if (cachedJob) {
-    showCompletedPanel(jobId);
-    return;
-  }
-  // 캐시에 없으면 API로 직접 조회
-  fetch(`/api/collect-job/${jobId}`)
-    .then(r => r.json())
-    .then(job => {
-      console.log('[SuperTag] API fallback', jobId, 'status:', job.status);
-      if (job.status === 'running') {
-        showMonitorPanel(jobId, job);
-      } else {
-        showCompletedPanel(jobId);
-      }
-    })
-    .catch(() => showCompletedPanel(jobId));
-}
 
-function showMonitorPanel(jobId, job) {
-  const panel = document.createElement('div');
-  panel.id = 'historyPanel';
-  panel.className = 'card overflow-hidden animate-fadeIn';
-  const target = job.requested_count || '?';
-  panel.innerHTML = `
-    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="font-bold text-gray-800 text-sm">#${job.hashtag || '?'}</span>
-        <span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:rgba(245,158,11,.1);color:#d97706;">수집 중</span>
-      </div>
-      <button onclick="document.getElementById('historyPanel').remove();if(_monitorTimer){clearInterval(_monitorTimer);_monitorTimer=null;}" class="text-gray-400 hover:text-gray-600">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-      </button>
-    </div>
-    <div class="p-4">
-      <div class="flex justify-between text-xs text-gray-500 mb-1">
-        <span class="m-label">다른 탭에서 수집 진행 중...</span>
-        <span class="m-num">신규 ${job.new_users||0}명 / 중복 ${job.updated_users||0}명</span>
-      </div>
-      <div class="w-full h-2 rounded-full mb-3" style="background:#e2e8f0;">
-        <div class="m-bar h-2 rounded-full transition-all duration-500" style="background:linear-gradient(90deg,#6366f1,#8b5cf6);width:0%"></div>
-      </div>
-      <div class="grid grid-cols-4 gap-2 mb-3">
-        <div class="text-center py-2 rounded-lg" style="background:#f8fafc;">
-          <div class="m-posts text-lg font-bold text-gray-900">${job.collected_posts||0}</div>
-          <div class="text-xs text-gray-400">게시물</div>
-        </div>
-        <div class="text-center py-2 rounded-lg" style="background:#eef2ff;">
-          <div class="m-new text-lg font-bold text-indigo-600">${job.new_users||0}</div>
-          <div class="text-xs text-gray-400">신규</div>
-        </div>
-        <div class="text-center py-2 rounded-lg" style="background:#fef3c7;">
-          <div class="m-dup text-lg font-bold text-amber-600">${job.updated_users||0}</div>
-          <div class="text-xs text-gray-400">중복</div>
-        </div>
-        <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;">
-          <div class="text-lg font-bold text-emerald-600">${target}</div>
-          <div class="text-xs text-gray-400">목표</div>
-        </div>
-      </div>
-      <div class="rounded-lg px-3 py-2 font-mono text-xs flex items-center gap-2" style="background:#0f172a;min-height:36px;">
-        <span class="m-dot w-2 h-2 rounded-full flex-shrink-0 animate-pulse" style="background:#6366f1;box-shadow:0 0 6px #6366f1;"></span>
-        <span class="m-status text-gray-400">실시간 모니터링 중 (3초마다 갱신)</span>
-      </div>
-    </div>
-  `;
-  document.getElementById('emptyState')?.remove();
-  document.getElementById('jobPanels').prepend(panel);
-
-  // 3초 간격 폴링
-  function pollJob() {
-    if (!document.getElementById('historyPanel')) {
-      clearInterval(_monitorTimer); _monitorTimer = null; return;
-    }
+  // API 폴백 (캐시에 없거나 상태 확인)
+  if (!cachedJob) {
     fetch(`/api/collect-job/${jobId}`)
       .then(r => r.json())
-      .then(j => {
-        const p = document.getElementById('historyPanel');
-        if (!p) return;
-        p.querySelector('.m-posts').textContent = j.collected_posts || 0;
-        p.querySelector('.m-new').textContent = j.new_users || 0;
-        p.querySelector('.m-dup').textContent = j.updated_users || 0;
-        p.querySelector('.m-num').textContent = `신규 ${j.new_users||0}명 / 중복 ${j.updated_users||0}명`;
-        const pct = target > 0 ? Math.min(100, Math.round(((j.new_users||0) / target) * 100)) : 0;
-        p.querySelector('.m-bar').style.width = pct + '%';
-
-        if (j.status === 'done') {
-          clearInterval(_monitorTimer); _monitorTimer = null;
-          p.querySelector('.m-dot').style.background = '#10b981';
-          p.querySelector('.m-dot').style.boxShadow = '0 0 6px #10b981';
-          p.querySelector('.m-dot').classList.remove('animate-pulse');
-          p.querySelector('.m-status').textContent = `완료 — 신규 ${j.new_users||0}명, 중복 ${j.updated_users||0}명`;
-          p.querySelector('.m-label').textContent = '수집 완료';
-          p.querySelector('.m-bar').style.width = '100%';
-          // 배지 변경
-          const badge = p.querySelector('.text-xs.font-bold');
-          if (badge) { badge.textContent = '완료'; badge.style.cssText = 'background:rgba(16,185,129,.1);color:#10b981;'; }
-        } else if (j.status === 'error') {
-          clearInterval(_monitorTimer); _monitorTimer = null;
-          p.querySelector('.m-dot').style.background = '#ef4444';
-          p.querySelector('.m-dot').style.boxShadow = '0 0 6px #ef4444';
-          p.querySelector('.m-dot').classList.remove('animate-pulse');
-          p.querySelector('.m-status').textContent = '수집 실패';
-          p.querySelector('.m-label').textContent = '에러';
+      .then(job => {
+        if (job.status === 'running') {
+          createMonitorPanel(jobId, job);
+        } else {
+          showCompletedPanel(jobId);
         }
       })
-      .catch(() => {});
+      .catch(() => showCompletedPanel(jobId));
+    return;
   }
-  _monitorTimer = setInterval(pollJob, 3000);
+
+  showCompletedPanel(jobId);
 }
 
 function showCompletedPanel(jobId) {
+  document.getElementById('historyPanel')?.remove();
   const panel = document.createElement('div');
   panel.id = 'historyPanel';
   panel.className = 'card overflow-hidden';
