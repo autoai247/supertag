@@ -216,7 +216,7 @@ function startCollect() {
   document.getElementById('statusBadge').textContent = '수집 중';
   document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
   hideError();
-  setStatus(`#${hashtag} 로그인 중`, 'running');
+  setStatus(`#${hashtag} 수집 준비 중`, 'running');
 
   const form = new URLSearchParams({ hashtag, requested_count: count, target_users: targetUsers, search_type: searchType });
   fetch('/collect/start', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })

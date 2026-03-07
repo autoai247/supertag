@@ -876,6 +876,7 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                   proxy_host: str = "", proxy_port: str = "",
                   target_users: int = 0, search_type: str = "recent",
                   proxy_user: str = "", proxy_pass: str = ""):
+    # NOTE: username/password/proxy 파라미터는 하위호환용. HikerAPI 전용 모드.
     """해시태그 크롤링 - HikerAPI 우선, instagrapi 폴백"""
     import time as _time
     from database import add_collect_job, update_collect_job
@@ -923,66 +924,9 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                                       "status": f"게시물 수집 완료 ({collected_posts}개, {len(all_pks)}명)"})
             log.info(f"[{hashtag}] HikerAPI 게시물 {collected_posts}개 수집, 유저 {len(all_pks)}명")
 
-        # ② instagrapi 폴백
+        # HikerAPI 실패 시
         if not use_hiker:
-            progress[job_id]["status"] = "로그인 중"
-            if username:
-                cl = get_client(username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass)
-                used_acc_id = None
-            else:
-                cl, used_acc_id = get_client_from_pool()
-            progress[job_id]["status"] = "게시물 수집 중"
-
-            next_page = None
-            while collected_posts < requested_count:
-                try:
-                    resp = cl.private_request(
-                        f"tags/{hashtag}/sections/",
-                        data={"max_id": next_page or "", "page": 1, "surface": "grid", "count": 18, "_uuid": cl.uuid}
-                    )
-                except Exception as e:
-                    log.warning(f"fallback to hashtag_medias: {e}")
-                    try:
-                        if search_type == "top":
-                            medias = cl.hashtag_medias_top(hashtag, amount=min(requested_count - collected_posts, 50))
-                        else:
-                            medias = cl.hashtag_medias_recent(hashtag, amount=min(requested_count - collected_posts, 50))
-                        for m in medias:
-                            all_pks.add(str(m.user.pk))
-                        collected_posts += len(medias)
-                        break
-                    except Exception as e2:
-                        raise Exception(f"게시물 수집 실패: {e2}")
-
-                sections = resp.get("sections", [])
-                page_pks = set()
-                page_posts = 0
-                for sec in sections:
-                    lc = sec.get("layout_content", {})
-                    for item in lc.get("fill_items", []):
-                        pk = item.get("media", {}).get("user", {}).get("pk")
-                        if pk: page_pks.add(str(pk)); page_posts += 1
-                    for item in lc.get("one_by_two_item", {}).get("clips", {}).get("items", []):
-                        pk = item.get("media", {}).get("user", {}).get("pk")
-                        if pk: page_pks.add(str(pk)); page_posts += 1
-                    for item in lc.get("medias", []):
-                        pk = item.get("media", {}).get("user", {}).get("pk")
-                        if pk: page_pks.add(str(pk)); page_posts += 1
-
-                all_pks.update(page_pks)
-                collected_posts += page_posts
-                next_page = resp.get("next_max_id")
-                if user_mode:
-                    progress[job_id].update({"posts": collected_posts,
-                        "status": f"게시물 수집 중 — {len(all_pks)}명 발견 (목표 {target_users}명)"})
-                    if len(all_pks) >= target_users:
-                        break
-                else:
-                    progress[job_id].update({"posts": collected_posts,
-                        "status": f"게시물 수집 중 ({collected_posts}/{requested_count})"})
-                if not next_page or page_posts == 0:
-                    break
-                time.sleep(1)
+            raise Exception("HikerAPI 해시태그 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
 
         # 유저 상세 정보 조회
         total_pks = len(all_pks)
@@ -993,49 +937,27 @@ def crawl_hashtag(hashtag: str, requested_count: int,
             try:
                 # HikerAPI로 유저 정보 조회
                 u_data = _hiker_user_info_by_id(pk)
-                if u_data:
-                    data = {
-                        "pk": str(u_data["pk"]),
-                        "username": u_data.get("username", ""),
-                        "full_name": u_data.get("full_name", ""),
-                        "biography": u_data.get("biography", ""),
-                        "follower_count": u_data.get("follower_count", 0),
-                        "following_count": u_data.get("following_count", 0),
-                        "media_count": u_data.get("media_count", 0),
-                        "is_private": u_data.get("is_private", False),
-                        "is_verified": u_data.get("is_verified", False),
-                        "is_business": u_data.get("is_business", False),
-                        "category": u_data.get("category", ""),
-                        "public_email": u_data.get("public_email", "") or "",
-                        "public_phone": u_data.get("public_phone_number", "") or "",
-                        "external_url": str(u_data.get("external_url", "") or ""),
-                        "profile_pic_url": str(u_data.get("profile_pic_url", "") or ""),
-                        "hashtag": hashtag,
-                    }
-                elif not use_hiker:
-                    # instagrapi 폴백
-                    u = cl.user_info(pk)
-                    data = {
-                        "pk": str(u.pk),
-                        "username": u.username,
-                        "full_name": u.full_name,
-                        "biography": u.biography,
-                        "follower_count": u.follower_count,
-                        "following_count": u.following_count,
-                        "media_count": u.media_count,
-                        "is_private": u.is_private,
-                        "is_verified": u.is_verified,
-                        "is_business": u.is_business,
-                        "category": u.category,
-                        "public_email": getattr(u, "public_email", None) or "",
-                        "public_phone": getattr(u, "public_phone_number", None) or "",
-                        "external_url": str(u.external_url) if u.external_url else "",
-                        "profile_pic_url": str(u.profile_pic_url) if u.profile_pic_url else "",
-                        "hashtag": hashtag,
-                    }
-                else:
-                    log.warning(f"유저 {pk} 정보 조회 실패 (HikerAPI)")
+                if not u_data:
+                    log.warning(f"유저 {pk} 정보 조회 실패")
                     continue
+                data = {
+                    "pk": str(u_data["pk"]),
+                    "username": u_data.get("username", ""),
+                    "full_name": u_data.get("full_name", ""),
+                    "biography": u_data.get("biography", ""),
+                    "follower_count": u_data.get("follower_count", 0),
+                    "following_count": u_data.get("following_count", 0),
+                    "media_count": u_data.get("media_count", 0),
+                    "is_private": u_data.get("is_private", False),
+                    "is_verified": u_data.get("is_verified", False),
+                    "is_business": u_data.get("is_business", False),
+                    "category": u_data.get("category", ""),
+                    "public_email": u_data.get("public_email", "") or "",
+                    "public_phone": u_data.get("public_phone_number", "") or "",
+                    "external_url": str(u_data.get("external_url", "") or ""),
+                    "profile_pic_url": str(u_data.get("profile_pic_url", "") or ""),
+                    "hashtag": hashtag,
+                }
 
                 result = upsert_influencer(data)
                 if result == "new": new_cnt += 1
@@ -1069,18 +991,12 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         progress[job_id].update({"status": "에러", "error": str(e), "done": True})
 
 
-def refresh_all(username: str = None, password: str = None, totp_secret: str = None,
-                proxy_host: str = "", proxy_port: str = "",
-                proxy_user: str = "", proxy_pass: str = "",
-                requests_per_account: int = 10):
-    """
-    전체 인플루언서 상세 갱신.
-    HikerAPI 우선 → instagrapi 폴백 (계정 풀 라운드로빈)
-    """
-    from database import get_influencers, update_collect_job
+def refresh_all(**kwargs):
+    """전체 인플루언서 상세 갱신 (HikerAPI 전용)"""
+    from database import get_influencers
 
-    refresh_progress["current"] = {"done": 0, "total": 0, "current_user": "", "running": True,
-                                   "error": None, "current_account": ""}
+    refresh_progress["current"] = {"done": 0, "total": 0, "success": 0, "fail": 0,
+                                   "current_username": "", "running": True, "error": None}
 
     try:
         cutoff = time.time() - 86400
@@ -1090,55 +1006,31 @@ def refresh_all(username: str = None, password: str = None, totp_secret: str = N
 
         total = len(rows)
         refresh_progress["current"]["total"] = total
+        log.info(f"전체 갱신 시작: {total}명 (HikerAPI)")
 
-        use_hiker = _get_hiker() is not None
-        if use_hiker:
-            refresh_progress["current"]["current_account"] = "HikerAPI"
-            log.info("전체 갱신: HikerAPI 모드")
-
-        request_count = 0
-        cl = None
-        used_acc_id = None
-
+        success = fail = 0
         for i, row in enumerate(rows):
             pk = row.get("pk") or row.get("id")
             uname = row.get("username", "")
             followers = row.get("follower_count", 0)
-            refresh_progress["current"]["current_user"] = uname
-
-            # HikerAPI 사용 시 instagrapi 로그인 불필요
-            if not use_hiker:
-                if cl is None or request_count >= requests_per_account:
-                    try:
-                        if username:
-                            cl = get_client(username, password, totp_secret,
-                                            proxy_host, proxy_port, proxy_user, proxy_pass)
-                            used_acc_id = None
-                        else:
-                            cl, used_acc_id = get_client_from_pool()
-                        request_count = 0
-                        acc_name = username or (cl.account_info().username if cl else "?")
-                        refresh_progress["current"]["current_account"] = acc_name
-                        log.info(f"계정 전환: {acc_name}")
-                    except Exception as e:
-                        log.error(f"계정 로그인 실패: {e}")
-                        refresh_progress["current"]["error"] = str(e)
-                        break
+            refresh_progress["current"]["current_username"] = uname
 
             log.info(f"갱신 중 [{i+1}/{total}]: @{uname}")
             try:
-                crawl_user_detail(cl, str(pk), uname, followers or 0)
-                request_count += 1
+                ok = crawl_user_detail(None, str(pk), uname, followers or 0)
+                if ok:
+                    success += 1
+                else:
+                    fail += 1
             except Exception as e:
                 log.warning(f"갱신 실패 {uname}: {e}")
-                if "rate" in str(e).lower() or "wait" in str(e).lower():
-                    cl = None
+                fail += 1
 
-            refresh_progress["current"]["done"] = i + 1
-            time.sleep(1 if use_hiker else 2)
+            refresh_progress["current"].update({"done": i + 1, "success": success, "fail": fail})
+            time.sleep(1)
 
         refresh_progress["current"]["running"] = False
-        log.info(f"전체 갱신 완료: {total}개")
+        log.info(f"전체 갱신 완료: 성공 {success}, 실패 {fail}")
 
     except Exception as e:
         log.error(f"전체 갱신 에러: {e}")

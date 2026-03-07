@@ -1189,8 +1189,7 @@ def refresh_start(background_tasks: BackgroundTasks,
     from crawler import refresh_all, refresh_progress
     if refresh_progress.get("current", {}).get("running"):
         return JSONResponse({"error": "이미 실행 중"}, 400)
-    background_tasks.add_task(refresh_all,
-                              INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"])
+    background_tasks.add_task(refresh_all)
     return JSONResponse({"ok": True})
 
 @app.get("/refresh/status")
@@ -1374,7 +1373,7 @@ def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=
         except: pass
     from crawler import crawl_hashtag
     background_tasks.add_task(crawl_hashtag, hashtag, requested_count,
-                               INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"], job_id,
+                               job_id=job_id,
                                target_users=target_users, search_type=search_type)
     return HTMLResponse(job_id)
 
