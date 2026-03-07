@@ -481,7 +481,7 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 templates.env.filters["dt"]    = lambda t: datetime.fromtimestamp(float(t)).strftime("%m/%d %H:%M") if t else "-"
 templates.env.filters["comma"] = lambda n: f"{int(n or 0):,}"
-templates.env.filters["fmtn"]  = lambda n: (f"{int(n or 0)//10000}만" if int(n or 0) >= 10000 else f"{int(n or 0):,}") if n else "0"
+templates.env.filters["fmtn"]  = lambda n: (f"{int(n or 0)//10000:,}만" if int(n or 0) >= 10000 else f"{int(n or 0):,}") if n else "0"
 
 def _safe_cd(fname: str) -> str:
     """Content-Disposition 헤더용 RFC 5987 인코딩"""
