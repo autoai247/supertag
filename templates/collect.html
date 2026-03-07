@@ -8,13 +8,52 @@
   <p class="text-sm text-gray-500 mt-0.5">해시태그로 인플루언서를 검색하여 DB에 등록합니다. 여러 해시태그를 동시에 수집할 수 있습니다.</p>
 </div>
 
+<!-- 전체 수집 현황 (항상 맨 위) -->
+<div id="totalStats" class="card px-4 py-3 mb-5 hidden">
+  <div class="flex items-center justify-between mb-2">
+    <span class="text-xs font-semibold text-gray-600">전체 수집 현황</span>
+    <span id="totalRunning" class="text-xs text-amber-600 font-semibold"></span>
+  </div>
+  <div class="grid grid-cols-4 gap-2">
+    <div class="text-center py-2 rounded-lg" style="background:#f8fafc;">
+      <div id="totalPosts" class="text-lg font-bold text-gray-900">0</div>
+      <div class="text-xs text-gray-400">총 게시물</div>
+    </div>
+    <div class="text-center py-2 rounded-lg" style="background:#eef2ff;">
+      <div id="totalNew" class="text-lg font-bold text-indigo-600">0</div>
+      <div class="text-xs text-gray-400">총 신규</div>
+    </div>
+    <div class="text-center py-2 rounded-lg" style="background:#fef3c7;">
+      <div id="totalDup" class="text-lg font-bold text-amber-600">0</div>
+      <div class="text-xs text-gray-400">총 중복</div>
+    </div>
+    <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;">
+      <div id="totalTarget" class="text-lg font-bold text-emerald-600">0</div>
+      <div class="text-xs text-gray-400">총 목표</div>
+    </div>
+  </div>
+</div>
+
 <div class="grid grid-cols-5 gap-5">
   <!-- 수집 폼 -->
   <div class="col-span-2 space-y-5">
     <div class="card p-5">
       <h2 class="font-semibold text-gray-800 mb-4">수집 요청</h2>
       <div class="space-y-3">
+        <!-- 수집 모드 선택 -->
         <div>
+          <div class="text-xs text-gray-500 mb-1">수집 방식</div>
+          <div class="flex gap-2 mb-3">
+            <label class="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+              <input type="radio" name="collectMode" value="hashtag" checked class="accent-indigo-500" onchange="switchCollectMode('hashtag')"> <span class="text-xs font-bold text-gray-700"># 해시태그</span>
+            </label>
+            <label class="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+              <input type="radio" name="collectMode" value="location" class="accent-indigo-500" onchange="switchCollectMode('location')"> <span class="text-xs font-bold text-gray-700">📍 위치</span>
+            </label>
+          </div>
+        </div>
+        <!-- 해시태그 입력 -->
+        <div id="hashtagSection">
           <div class="text-xs text-gray-500 mb-1">해시태그 <span class="text-red-400">*</span></div>
           <div class="flex gap-2">
             <span class="flex items-center px-2.5 py-2 text-sm text-gray-400 rounded-lg border border-gray-200 border-r-0 rounded-r-none">#</span>
@@ -29,6 +68,25 @@
           <div id="relatedTags" class="mt-2 hidden">
             <div class="text-xs text-gray-400 mb-1.5">연관 해시태그</div>
             <div id="relatedTagsList" class="flex flex-wrap gap-1.5"></div>
+          </div>
+        </div>
+        <!-- 위치 입력 -->
+        <div id="locationSection" class="hidden">
+          <div class="text-xs text-gray-500 mb-1">장소 검색 <span class="text-red-400">*</span></div>
+          <input id="locationInput" type="text" placeholder="강남, 홍대, 성수동..."
+            class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200"
+            oninput="onLocationInput(this.value)">
+          <input type="hidden" id="selectedLocationPk" value="">
+          <input type="hidden" id="selectedLocationName" value="">
+          <div id="locationResults" class="mt-2 hidden">
+            <div id="locationResultsList" class="space-y-1"></div>
+          </div>
+          <div id="selectedLocation" class="mt-2 hidden">
+            <div class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold" style="background:#eef2ff;border:1px solid #c7d2fe;">
+              <span>📍</span>
+              <span id="selectedLocationLabel" class="text-indigo-700"></span>
+              <button onclick="clearLocation()" class="ml-auto text-gray-400 hover:text-red-500 text-xs">✕</button>
+            </div>
           </div>
         </div>
         <div>
@@ -87,31 +145,6 @@
 
   <!-- 실시간 진행 패널들 (다중) -->
   <div class="col-span-3 space-y-4" id="jobPanels">
-    <!-- 총합 통계 -->
-    <div id="totalStats" class="card px-4 py-3 hidden">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-semibold text-gray-600">전체 수집 현황</span>
-        <span id="totalRunning" class="text-xs text-amber-600 font-semibold"></span>
-      </div>
-      <div class="grid grid-cols-4 gap-2">
-        <div class="text-center py-2 rounded-lg" style="background:#f8fafc;">
-          <div id="totalPosts" class="text-lg font-bold text-gray-900">0</div>
-          <div class="text-xs text-gray-400">총 게시물</div>
-        </div>
-        <div class="text-center py-2 rounded-lg" style="background:#eef2ff;">
-          <div id="totalNew" class="text-lg font-bold text-indigo-600">0</div>
-          <div class="text-xs text-gray-400">총 신규</div>
-        </div>
-        <div class="text-center py-2 rounded-lg" style="background:#fef3c7;">
-          <div id="totalDup" class="text-lg font-bold text-amber-600">0</div>
-          <div class="text-xs text-gray-400">총 중복</div>
-        </div>
-        <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;">
-          <div id="totalTarget" class="text-lg font-bold text-emerald-600">0</div>
-          <div class="text-xs text-gray-400">총 목표</div>
-        </div>
-      </div>
-    </div>
     <div id="emptyState" class="card p-8 text-center text-gray-400 text-sm">
       <div class="text-3xl mb-2">📡</div>
       해시태그를 입력하고 수집을 시작하세요.<br>
@@ -150,16 +183,68 @@ async function searchHashtags(q) {
   } catch(e) {}
 }
 
+// ═══ 수집 모드 전환 ═══
+function switchCollectMode(mode) {
+  document.getElementById('hashtagSection').classList.toggle('hidden', mode !== 'hashtag');
+  document.getElementById('locationSection').classList.toggle('hidden', mode !== 'location');
+}
+
+let locationTimer = null;
+function onLocationInput(val) {
+  clearTimeout(locationTimer);
+  const q = val.trim();
+  if (q.length < 1) { document.getElementById('locationResults').classList.add('hidden'); return; }
+  locationTimer = setTimeout(() => searchLocations(q), 500);
+}
+
+async function searchLocations(q) {
+  try {
+    const r = await fetch(`/api/location/search?q=${encodeURIComponent(q)}`);
+    const locs = await r.json();
+    const box = document.getElementById('locationResults');
+    const list = document.getElementById('locationResultsList');
+    if (!Array.isArray(locs) || locs.length === 0) { box.classList.add('hidden'); return; }
+    list.innerHTML = locs.map(l => `
+      <div onclick="selectLocation('${l.pk}', '${(l.name||'').replace(/'/g,"\\'")}', '${(l.address||'').replace(/'/g,"\\'")}')"
+        class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-indigo-50 transition border border-gray-100">
+        <span class="text-sm">📍</span>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-semibold text-gray-800 truncate">${l.name}</div>
+          ${l.address ? '<div class="text-xs text-gray-400 truncate">'+l.address+'</div>' : ''}
+        </div>
+      </div>
+    `).join('');
+    box.classList.remove('hidden');
+  } catch(e) {}
+}
+
+function selectLocation(pk, name, addr) {
+  document.getElementById('selectedLocationPk').value = pk;
+  document.getElementById('selectedLocationName').value = name;
+  document.getElementById('selectedLocationLabel').textContent = name + (addr ? ' · ' + addr : '');
+  document.getElementById('selectedLocation').classList.remove('hidden');
+  document.getElementById('locationResults').classList.add('hidden');
+  document.getElementById('locationInput').value = '';
+}
+
+function clearLocation() {
+  document.getElementById('selectedLocationPk').value = '';
+  document.getElementById('selectedLocationName').value = '';
+  document.getElementById('selectedLocation').classList.add('hidden');
+}
+
 // ═══ 다중 수집 관리 ═══
 const MAX_RESUME = 50;
 const jobs = {};  // jobId → job state
 
 class CollectJob {
-  constructor(jobId, hashtag, targetUsers, searchType) {
+  constructor(jobId, hashtag, targetUsers, searchType, collectMode='hashtag', locationPk='') {
     this.jobId = jobId;
     this.hashtag = hashtag;
     this.targetUsers = targetUsers;
     this.searchType = searchType;
+    this.collectMode = collectMode;
+    this.locationPk = locationPk;
     this.sse = null;
     this.stopped = false;
     this.lastNextId = '';
@@ -293,6 +378,7 @@ class CollectJob {
 
     const params = new URLSearchParams({
       hashtag: this.hashtag, target_users: this.targetUsers, search_type: this.searchType,
+      collect_mode: this.collectMode, location_pk: this.locationPk,
       resume_from: this.lastNextId, resume_new: this.lastNew,
       resume_updated: this.lastUpdated, resume_posts: this.lastPosts, resume_page: this.lastPage
     });
@@ -398,24 +484,50 @@ class CollectJob {
 }
 
 function startCollect() {
-  const hashtag = document.getElementById('hashtagInput').value.trim().replace(/^#/,'');
-  if (!hashtag) { alert('해시태그를 입력해주세요'); return; }
-
+  const mode = document.querySelector('input[name="collectMode"]:checked').value;
   const targetUsers = parseInt(document.getElementById('targetUsersInput').value) || 1000;
   const searchType = document.querySelector('input[name="searchType"]:checked').value;
 
-  const form = new URLSearchParams({ hashtag, requested_count: '500', target_users: targetUsers, search_type: searchType });
+  let formData = { requested_count: '500', target_users: targetUsers, search_type: searchType, collect_mode: mode };
+
+  if (mode === 'location') {
+    const locPk = document.getElementById('selectedLocationPk').value;
+    const locName = document.getElementById('selectedLocationName').value;
+    if (!locPk) { alert('위치를 선택해주세요'); return; }
+    formData.location_pk = locPk;
+    formData.location_name = locName;
+    formData.hashtag = locName;
+  } else {
+    const hashtag = document.getElementById('hashtagInput').value.trim().replace(/^#/,'');
+    if (!hashtag) { alert('해시태그를 입력해주세요'); return; }
+    formData.hashtag = hashtag;
+  }
+
+  const form = new URLSearchParams(formData);
   fetch('/collect/start', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     .then(r => r.text())
-    .then(jobId => {
-      jobId = jobId.trim();
-      const job = new CollectJob(jobId, hashtag, targetUsers, searchType);
+    .then(resp => {
+      resp = resp.trim();
+      let jobId, collectMode = 'hashtag', locPk = '';
+      if (resp.includes('|')) {
+        const parts = resp.split('|');
+        jobId = parts[0];
+        collectMode = parts[1];
+        locPk = parts[2] || '';
+      } else {
+        jobId = resp;
+      }
+      const label = mode === 'location' ? formData.location_name : formData.hashtag;
+      const job = new CollectJob(jobId, label, targetUsers, searchType, collectMode, locPk);
       jobs[jobId] = job;
       job.listen();
       // 입력 초기화
-      document.getElementById('hashtagInput').value = '';
-      document.getElementById('relatedTags').classList.add('hidden');
-      // 이력 즉시 갱신
+      if (mode === 'location') {
+        clearLocation();
+      } else {
+        document.getElementById('hashtagInput').value = '';
+        document.getElementById('relatedTags').classList.add('hidden');
+      }
       setTimeout(refreshHistory, 1000);
     })
     .catch(e => { alert('수집 시작 실패: ' + e); });

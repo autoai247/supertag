@@ -1795,6 +1795,16 @@ def hashtag_search_api(q: str = "", session_id: Optional[str] = Cookie(default=N
     return JSONResponse([])
 
 
+@app.get("/api/location/search")
+def api_location_search(q: str = Query(default=""), session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse([], 403)
+    q = q.strip()
+    if not q: return JSONResponse([])
+    from crawler import _hiker_location_search
+    results = _hiker_location_search(q)
+    return JSONResponse(results)
+
 @app.get("/refresh", response_class=HTMLResponse)
 def refresh_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
@@ -2059,22 +2069,32 @@ def collect_page(request: Request, session_id: Optional[str] = Cookie(default=No
     })
 
 @app.post("/collect/start")
-def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=500),
+def collect_start(hashtag: str = Form(default=""), requested_count: int = Form(default=500),
                   target_users: int = Form(default=0),
                   search_type: str = Form(default="recent"),
+                  collect_mode: str = Form(default="hashtag"),
+                  location_pk: str = Form(default=""),
+                  location_name: str = Form(default=""),
                   session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return HTMLResponse("인증 필요", 403)
-    hashtag = hashtag.strip().lstrip("#")
     from database import add_collect_job
-    job_db_id = add_collect_job(hashtag, "running", target_users, search_type)
-    return HTMLResponse(str(job_db_id))
+    if collect_mode == "location" and location_pk:
+        label = location_name or f"위치:{location_pk}"
+        job_db_id = add_collect_job(label, "running", target_users, search_type)
+        return HTMLResponse(f"{job_db_id}|location|{location_pk}")
+    else:
+        hashtag = hashtag.strip().lstrip("#")
+        job_db_id = add_collect_job(hashtag, "running", target_users, search_type)
+        return HTMLResponse(str(job_db_id))
 
 @app.get("/collect/progress/{job_id}")
 def collect_progress(job_id: str,
                      hashtag: str = Query(default=""),
                      target_users: int = Query(default=30),
                      search_type: str = Query(default="recent"),
+                     collect_mode: str = Query(default="hashtag"),
+                     location_pk: str = Query(default=""),
                      resume_from: str = Query(default=""),
                      resume_new: int = Query(default=0),
                      resume_updated: int = Query(default=0),
@@ -2095,15 +2115,18 @@ def collect_progress(job_id: str,
         return JSONResponse({"error": "잘못된 job_id"}, 400)
 
     def stream():
-        if not hashtag:
-            yield f"data: {json.dumps({'done': True, 'error': '해시태그 없음'}, ensure_ascii=False)}\n\n"
+        _is_location = collect_mode == "location" and location_pk
+        _label = hashtag or (f"위치:{location_pk}" if _is_location else "")
+        if not hashtag and not _is_location:
+            yield f"data: {json.dumps({'done': True, 'error': '해시태그 또는 위치를 입력하세요'}, ensure_ascii=False)}\n\n"
             return
 
-        try:
-            update_hashtag_status(hashtag, "running")
-        except Exception:
-            try: db_add_hashtag(hashtag)
-            except: pass
+        if not _is_location:
+            try:
+                update_hashtag_status(hashtag, "running")
+            except Exception:
+                try: db_add_hashtag(hashtag)
+                except: pass
 
         # 기존 job 상태를 running으로 업데이트
         try:
@@ -2111,7 +2134,7 @@ def collect_progress(job_id: str,
         except Exception:
             pass
 
-        p = {"hashtag": hashtag, "posts": resume_posts, "new": resume_new,
+        p = {"hashtag": _label, "posts": resume_posts, "new": resume_new,
              "updated": resume_updated, "done": False, "error": None,
              "status": "게시물 검색 중", "target": target_users}
         yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
@@ -2119,7 +2142,7 @@ def collect_progress(job_id: str,
         BATCH_PAGES = 8  # 배치당 페이지 수 (Vercel 타임아웃 전에 완료)
 
         try:
-            from crawler import _hiker_hashtag_medias_page
+            from crawler import _hiker_hashtag_medias_page, _hiker_location_medias_page
 
             existing_pks = get_existing_pks()
             banned_pks = get_banned_pks()
@@ -2142,21 +2165,28 @@ def collect_progress(job_id: str,
                 batch_done += 1
                 _page_start = time.time()
 
+                def _fetch_page(mid):
+                    if _is_location:
+                        return _hiker_location_medias_page(location_pk, endpoint, mid)
+                    else:
+                        return _hiker_hashtag_medias_page(hashtag, endpoint, mid)
+
                 try:
-                    items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
+                    items, next_id = _fetch_page(max_id)
                 except Exception as api_err:
                     # API 에러 시 1회 재시도
                     time.sleep(2)
                     try:
-                        items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
+                        items, next_id = _fetch_page(max_id)
                     except Exception:
                         raise api_err
 
                 if not items and not max_id:
-                    raise Exception("HikerAPI 해시태그 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
+                    _src = "위치" if _is_location else "해시태그"
+                    raise Exception(f"HikerAPI {_src} 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
                 if not items:
                     time.sleep(1)
-                    items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
+                    items, next_id = _fetch_page(max_id)
                     if not items:
                         no_data = True
                         break

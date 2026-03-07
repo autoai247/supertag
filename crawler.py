@@ -172,6 +172,75 @@ def _hiker_hashtag_medias_page(hashtag: str, endpoint: str = "recent", max_id: s
         raise
 
 
+def _hiker_location_search(query: str) -> list:
+    """HikerAPI 위치 검색. 장소명으로 검색하여 location_pk 목록 반환."""
+    token = os.environ.get("HIKERAPI_TOKEN", "").strip()
+    if not token:
+        return []
+    try:
+        # 장소명 → 좌표 변환 없이, 인스타그램 자체 검색 사용
+        r = req_lib.get(
+            "https://api.hikerapi.com/v1/fbsearch/places",
+            params={"query": query},
+            headers={"x-access-key": token, "accept": "application/json"},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return []
+        data = r.json()
+        results = []
+        items = data if isinstance(data, list) else data.get("items", data.get("results", []))
+        for item in items:
+            loc = item.get("location", item) if isinstance(item, dict) else {}
+            if not isinstance(loc, dict):
+                continue
+            pk = loc.get("pk") or loc.get("location_id") or loc.get("facebook_places_id")
+            name = loc.get("name", "")
+            addr = loc.get("address", "")
+            if pk and name:
+                results.append({"pk": pk, "name": name, "address": addr})
+        return results[:10]
+    except Exception as e:
+        log.warning(f"[HikerAPI] 위치 검색 실패: {e}")
+        return []
+
+
+def _hiker_location_medias_page(location_pk, endpoint: str = "recent", max_id: str = None) -> tuple:
+    """HikerAPI v1 위치 게시물 1페이지 조회. (medias_list, next_max_id) 반환."""
+    token = os.environ.get("HIKERAPI_TOKEN", "").strip()
+    if not token:
+        return [], None
+    params = {"location_pk": location_pk}
+    if max_id:
+        params["max_id"] = max_id
+    try:
+        r = req_lib.get(
+            f"https://api.hikerapi.com/v1/location/medias/{endpoint}/chunk",
+            params=params,
+            headers={"x-access-key": token, "accept": "application/json"},
+            timeout=30,
+        )
+        if r.status_code == 402:
+            raise Exception("HikerAPI 크레딧 소진")
+        if r.status_code != 200:
+            return [], None
+        data = r.json()
+        # chunk 응답: list of medias + next_max_id
+        if isinstance(data, list):
+            return data, None
+        medias = data.get("items", data.get("medias", []))
+        if not isinstance(medias, list):
+            medias = []
+        next_id = data.get("next_max_id") or data.get("next_page_id") or data.get("max_id")
+        if not data.get("more_available", True) and not max_id:
+            next_id = None
+        log.info(f"[HikerAPI] location={location_pk} max_id={max_id} → {len(medias)} medias, next_id={bool(next_id)}")
+        return medias, next_id
+    except Exception as e:
+        log.warning(f"[HikerAPI] 위치 게시물 조회 실패: {e}")
+        raise
+
+
 def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "recent") -> list | None:
     """HikerAPI v2로 해시태그 게시물 조회. 페이징 지원으로 대량 수집 가능."""
     token = os.environ.get("HIKERAPI_TOKEN", "").strip()
