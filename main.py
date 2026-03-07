@@ -759,8 +759,8 @@ def influencers(
     request: Request,
     q: str = "",
     hashtag: str = "",
-    min_f: Optional[int] = None,
-    max_f: Optional[int] = None,
+    min_f: Optional[str] = None,
+    max_f: Optional[str] = None,
     verified: int = 0,
     public_only: int = 0,
     main_category: str = "",
@@ -781,9 +781,12 @@ def influencers(
     if not user:
         return RedirectResponse(f"/login?next=/influencers", 302)
 
+    _min_f = int(min_f) if min_f and min_f.isdigit() else None
+    _max_f = int(max_f) if max_f and max_f.isdigit() else None
+
     total, rows = get_influencers(
         keyword=q, hashtag_filter=hashtag,
-        min_f=min_f, max_f=max_f,
+        min_f=_min_f, max_f=_max_f,
         only_verified=bool(verified), exclude_private=bool(public_only),
         main_category=main_category,
         can_live=bool(can_live), only_approved=bool(only_approved),
