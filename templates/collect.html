@@ -395,12 +395,17 @@ function startCollect() {
 }
 
 // ═══ 수집 이력 실시간 폴링 ═══
+const _historyJobs = {};  // id → job data 캐시
+
 function renderHistory(jobsList) {
   const container = document.getElementById('historyList');
   if (!jobsList || jobsList.length === 0) {
     container.innerHTML = '<div class="py-6 text-center text-gray-400 text-sm">수집 이력이 없습니다</div>';
     return;
   }
+  // 캐시 업데이트
+  jobsList.forEach(j => { _historyJobs[j.id] = j; });
+
   container.innerHTML = jobsList.map(j => {
     const isTop = j.search_type === 'top';
     const typeBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-bold ${isTop?'text-amber-600':'text-blue-600'}" style="background:${isTop?'#fef3c7':'#eff6ff'};">${isTop?'인기':'최근'}</span>`;
@@ -469,17 +474,13 @@ function loadJobUsers(jobId, el) {
   document.getElementById('historyPanel')?.remove();
   if (_monitorTimer) { clearInterval(_monitorTimer); _monitorTimer = null; }
 
-  // 먼저 작업 상태 확인
-  fetch(`/api/collect-job/${jobId}`)
-    .then(r => r.json())
-    .then(job => {
-      if (job.status === 'running') {
-        showMonitorPanel(jobId, job);
-      } else {
-        showCompletedPanel(jobId);
-      }
-    })
-    .catch(() => showCompletedPanel(jobId));
+  // 캐시된 job 데이터로 바로 판단
+  const cachedJob = _historyJobs[jobId];
+  if (cachedJob && cachedJob.status === 'running') {
+    showMonitorPanel(jobId, cachedJob);
+  } else {
+    showCompletedPanel(jobId);
+  }
 }
 
 function showMonitorPanel(jobId, job) {
