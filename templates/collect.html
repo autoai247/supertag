@@ -599,7 +599,10 @@ function renderHistory(jobsList) {
         <span class="text-gray-400 ml-1">${info}</span>
       </div>
       <div class="flex-shrink-0">${statusBadge}</div>
-      <div class="text-gray-400 flex-shrink-0">${j.started_at_fmt || '-'}</div>
+      <div class="text-gray-400 flex-shrink-0 text-right leading-tight">
+        <div>${j.started_at_fmt || '-'}</div>
+        ${j.finished_at_fmt && j.finished_at_fmt !== '-' ? `<div class="text-green-500">${j.finished_at_fmt}</div>` : ''}
+      </div>
       <svg class="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
     </div>`;
   }).join('');

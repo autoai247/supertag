@@ -248,6 +248,7 @@
 
     <!-- 결과 수 -->
     <span class="text-xs text-slate-400">총 <strong class="text-indigo-500" id="totalCount">-</strong>명</span>
+    <span class="text-xs text-slate-300 ml-2" id="lastUpdated"></span>
   </div>
 </div>
 
@@ -313,6 +314,13 @@
   </div>
 
   <div id="pagination" class="hidden flex justify-center gap-2 mt-8"></div>
+  <div id="loadingMore" class="hidden py-8 text-center">
+    <div class="inline-flex items-center gap-2 text-sm text-gray-400">
+      <div class="w-4 h-4 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin"></div>
+      불러오는 중...
+    </div>
+  </div>
+  <div id="noMore" class="hidden py-8 text-center text-sm text-gray-300">모든 인플루언서를 불러왔습니다</div>
 </div>
 
 <script>
@@ -321,6 +329,10 @@ let currentSort = 'follower_count';
 let currentFilters = { q:'', min_f:0, max_f:0, category:'', hashtag:'', public_only:false, no_biz:false, biz_only:false, verified_only:false };
 let _debounceTimer = null;
 let _filterOpen = false;
+let _currentPage = 0;
+let _totalPages = 1;
+let _isLoading = false;
+let _totalItems = 0;
 
 // 카테고리 색상 맵
 const CAT_COLORS = {
@@ -455,9 +467,20 @@ function renderBlurCards(count) {
   return html;
 }
 
-async function loadList(page, sort, filters={}) {
+async function loadList(page, sort, filters={}, append=false) {
+  if (_isLoading) return;
+  _isLoading = true;
   const list = document.getElementById('infList');
-  list.innerHTML = `<div class="skeleton" style="height:124px;"></div><div class="skeleton" style="height:124px;opacity:.7;margin-top:12px;"></div><div class="skeleton" style="height:124px;opacity:.4;margin-top:12px;"></div>`;
+  const loadingEl = document.getElementById('loadingMore');
+  const noMoreEl = document.getElementById('noMore');
+
+  if (!append) {
+    list.innerHTML = `<div class="skeleton" style="height:124px;"></div><div class="skeleton" style="height:124px;opacity:.7;margin-top:12px;"></div><div class="skeleton" style="height:124px;opacity:.4;margin-top:12px;"></div>`;
+    noMoreEl.classList.add('hidden');
+  } else {
+    loadingEl.classList.remove('hidden');
+  }
+
   try {
     const p = new URLSearchParams({page, sort});
     if (filters.q) p.set('q', filters.q);
@@ -473,22 +496,39 @@ async function loadList(page, sort, filters={}) {
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
     document.getElementById('totalCount').textContent = data.total;
+    if (data.last_updated) document.getElementById('lastUpdated').textContent = '업데이트 ' + data.last_updated;
+    _totalPages = data.total_pages || 1;
+    _currentPage = page;
+    _totalItems = data.total;
+
     let html = '';
     data.rows.forEach((r,i) => { html += renderCard(r,(page-1)*30+i); });
 
     // 비로그인: 뒤에 흐릿한 카드 3개 + 그라디언트 페이드
     const lb = document.getElementById('lockBanner');
-    if (!IS_ADMIN && data.total > data.rows.length) {
+    if (!IS_ADMIN && data.total > data.rows.length && page === 1) {
       html += renderBlurCards(3);
       lb.classList.remove('hidden');
       document.getElementById('lockCount').textContent = (data.total - data.rows.length)+'명이 더 있습니다';
-    } else { lb.classList.add('hidden'); }
+    } else if (page === 1) { lb.classList.add('hidden'); }
 
-    list.innerHTML = html || '<div style="text-align:center;padding:80px 0;color:#94a3b8;font-size:14px;">검색 결과가 없습니다</div>';
-    if (IS_ADMIN && data.total_pages>1) renderPagination(page, data.total_pages, sort);
-    else document.getElementById('pagination').classList.add('hidden');
+    if (append) {
+      list.insertAdjacentHTML('beforeend', html);
+    } else {
+      list.innerHTML = html || '<div style="text-align:center;padding:80px 0;color:#94a3b8;font-size:14px;">검색 결과가 없습니다</div>';
+    }
+
+    // 페이지네이션 숨기고 무한스크롤 사용
+    document.getElementById('pagination').classList.add('hidden');
+
+    if (page >= _totalPages) {
+      noMoreEl.classList.remove('hidden');
+    }
   } catch(e) {
-    list.innerHTML = '<div style="text-align:center;padding:64px 0;color:#94a3b8;">데이터를 불러올 수 없습니다</div>';
+    if (!append) list.innerHTML = '<div style="text-align:center;padding:64px 0;color:#94a3b8;">데이터를 불러올 수 없습니다</div>';
+  } finally {
+    _isLoading = false;
+    loadingEl.classList.add('hidden');
   }
 }
 
@@ -505,6 +545,8 @@ function applyFilters() {
     verified_only: document.querySelector('.chip[data-key="verified_only"]')?.classList.contains('active') || false,
   };
   updateFilterDot();
+  _currentPage = 0; _totalPages = 1;
+  document.getElementById('noMore').classList.add('hidden');
   loadList(1, currentSort, currentFilters);
 }
 
@@ -532,6 +574,8 @@ function resetFilters() {
   document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
   currentFilters={q:'',min_f:0,max_f:0,category:'',hashtag:'',public_only:false,no_biz:false,biz_only:false,verified_only:false};
   updateFilterDot();
+  _currentPage = 0; _totalPages = 1;
+  document.getElementById('noMore').classList.add('hidden');
   loadList(1,currentSort,currentFilters);
 }
 
@@ -554,19 +598,25 @@ function toggleFilter() {
 function setSort(sort) {
   currentSort = sort;
   document.getElementById('sortSelect').value = sort;
+  _currentPage = 0; _totalPages = 1;
+  document.getElementById('noMore').classList.add('hidden');
   loadList(1, sort, currentFilters);
 }
 
-function renderPagination(page, totalPages, sort) {
-  const el = document.getElementById('pagination');
-  const s=Math.max(1,page-2), e=Math.min(totalPages+1,page+3);
-  let h = page>1?`<button class="chip" onclick="goPage(${page-1},'${sort}')">이전</button>`:'';
-  for(let p=s;p<e;p++) h+=`<button class="chip ${p===page?'active':''}" onclick="goPage(${p},'${sort}')">${p}</button>`;
-  if(page<totalPages) h+=`<button class="chip" onclick="goPage(${page+1},'${sort}')">다음</button>`;
-  el.innerHTML=h; el.classList.remove('hidden');
+function loadMore() {
+  if (_isLoading || _currentPage >= _totalPages) return;
+  if (!IS_ADMIN) return; // 비로그인은 무한스크롤 안 함
+  loadList(_currentPage + 1, currentSort, currentFilters, true);
 }
 
-function goPage(page, sort) { loadList(page,sort,currentFilters); window.scrollTo({top:0,behavior:'smooth'}); }
+// 무한 스크롤 감지
+window.addEventListener('scroll', () => {
+  if (_isLoading || _currentPage >= _totalPages) return;
+  const scrollBottom = window.innerHeight + window.scrollY;
+  if (scrollBottom >= document.body.offsetHeight - 400) {
+    loadMore();
+  }
+});
 
 loadList(1,'follower_count',currentFilters);
 </script>

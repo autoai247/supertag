@@ -717,7 +717,24 @@ def api_public(
                 "profile_pic_url": _g(r,"profile_pic_url",""),
                 "profile_pic_local": _g(r,"profile_pic_local",""),
             })
-    return {"total": total, "total_pages": total_pages, "page": page, "rows": result}
+    # 마지막 업데이트 날짜
+    last_updated = ""
+    try:
+        from database import get_collect_jobs
+        _recent = get_collect_jobs(limit=1)
+        if _recent:
+            _ft = _recent[0].get("finished_at") or _recent[0].get("started_at")
+            if _ft and isinstance(_ft, str) and "T" in _ft:
+                from datetime import datetime as _dt2
+                _d = _dt2.fromisoformat(_ft)
+                last_updated = _d.strftime("%Y.%m.%d %H:%M")
+            elif _ft:
+                from datetime import datetime as _dt2, timezone as _tz2, timedelta as _td2
+                _d = _dt2.fromtimestamp(float(_ft), tz=_tz2(_td2(hours=9)))
+                last_updated = _d.strftime("%Y.%m.%d %H:%M")
+    except Exception:
+        pass
+    return {"total": total, "total_pages": total_pages, "page": page, "rows": result, "last_updated": last_updated}
 
 
 # ═══════════════════════════════════════════════════════
@@ -1139,7 +1156,7 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
 
 @app.get("/api/debug/version")
 def debug_version():
-    return JSONResponse({"version": "20260308-v8", "deployed": True})
+    return JSONResponse({"version": "20260308-v9", "deployed": True})
 
 @app.get("/api/debug/excluded-pks")
 def debug_excluded_pks(session_id: Optional[str] = Cookie(default=None)):
@@ -1186,6 +1203,21 @@ def api_collect_jobs(session_id: Optional[str] = Cookie(default=None)):
                 j["started_at_fmt"] = datetime.fromtimestamp(float(t), tz=kst).strftime("%m/%d %H:%M")
             except Exception:
                 j["started_at_fmt"] = "-"
+        # finished_at 포맷
+        ft = j.get("finished_at")
+        if not ft:
+            j["finished_at_fmt"] = "-"
+        elif isinstance(ft, str) and "T" in ft:
+            try:
+                dft = datetime.fromisoformat(ft)
+                j["finished_at_fmt"] = dft.strftime("%m/%d %H:%M")
+            except Exception:
+                j["finished_at_fmt"] = ft[:16]
+        else:
+            try:
+                j["finished_at_fmt"] = datetime.fromtimestamp(float(ft), tz=kst).strftime("%m/%d %H:%M")
+            except Exception:
+                j["finished_at_fmt"] = "-"
     return JSONResponse(jobs)
 
 @app.get("/api/collect-job/{job_id}/users")
@@ -2320,6 +2352,8 @@ def collect_progress(job_id: str,
                     new_pks=json.dumps(all_new_pks))
                 if is_truly_done:
                     save_data["status"] = "done"
+                    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                    save_data["finished_at"] = _dt.now(_tz(_td(hours=9))).isoformat()
                 else:
                     save_data["status"] = "running"
                 update_collect_job(job_db_id, **save_data)
@@ -2344,7 +2378,9 @@ def collect_progress(job_id: str,
             log.error(f"[{hashtag}] 수집 에러: {e}")
             try:
                 if job_db_id:
-                    update_collect_job(job_db_id, status="error", error_msg=str(e)[:200], finished_at=time.time())
+                    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                    _now_iso = _dt.now(_tz(_td(hours=9))).isoformat()
+                    update_collect_job(job_db_id, status="error", error_msg=str(e)[:200], finished_at=_now_iso)
                 update_hashtag_status(hashtag, "error")
             except Exception:
                 pass

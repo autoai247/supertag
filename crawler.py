@@ -1,6 +1,6 @@
 import time, logging, pyotp, os, json, re
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import requests as req_lib
 from database import (upsert_influencer, update_influencer_stats, upsert_post,
                       update_hashtag_status, update_collect_job)
@@ -1199,7 +1199,8 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         try:
             update_collect_job(job_db_id,
                 status="done", collected_posts=collected_posts,
-                new_users=new_cnt, updated_users=updated_cnt, finished_at=_time.time())
+                new_users=new_cnt, updated_users=updated_cnt,
+                finished_at=datetime.now(timezone(timedelta(hours=9))).isoformat())
             update_hashtag_status(hashtag, "idle")
         except Exception:
             pass
@@ -1211,7 +1212,8 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         log.error(f"[{hashtag}] 크롤링 에러: {e}")
         try:
             if job_db_id:
-                update_collect_job(job_db_id, status="error", error_msg=str(e)[:200], finished_at=_time.time())
+                update_collect_job(job_db_id, status="error", error_msg=str(e)[:200],
+                    finished_at=datetime.now(timezone(timedelta(hours=9))).isoformat())
             update_hashtag_status(hashtag, "error")
         except Exception:
             pass
@@ -1336,7 +1338,8 @@ def cron_collect_batch(hashtag: str, target_users: int = 10, search_type: str = 
         try:
             update_collect_job(job_db_id, status="done",
                 collected_posts=collected_posts, new_users=new_cnt,
-                updated_users=updated_cnt, finished_at=time.time())
+                updated_users=updated_cnt,
+                finished_at=datetime.now(timezone(timedelta(hours=9))).isoformat())
             update_hashtag_status(hashtag, "idle")
         except Exception:
             pass
@@ -1348,7 +1351,8 @@ def cron_collect_batch(hashtag: str, target_users: int = 10, search_type: str = 
         log.error(f"[cron] #{hashtag} 에러: {e}")
         try:
             if job_db_id:
-                update_collect_job(job_db_id, status="error", error_msg=str(e)[:200], finished_at=time.time())
+                update_collect_job(job_db_id, status="error", error_msg=str(e)[:200],
+                    finished_at=datetime.now(timezone(timedelta(hours=9))).isoformat())
             update_hashtag_status(hashtag, "error")
         except Exception:
             pass
