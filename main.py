@@ -1242,7 +1242,7 @@ def refresh_stream(session_id: Optional[str] = Cookie(default=None)):
 
     def stream():
         try:
-            cutoff = time.time() - 86400
+            cutoff = time.time() - 86400 * 30  # 30일 이상 지난 것만 갱신
             all_infs = get_influencers(per_page=99999, page=1)
             rows = [r for r in all_infs.get("items", [])
                     if not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff]
@@ -1326,7 +1326,7 @@ def cron_auto(request: Request):
 
     # ② 게시물 갱신
     try:
-        r = cron_refresh_batch(batch_size=5, stale_hours=24)
+        r = cron_refresh_batch(batch_size=5, stale_hours=720)
         results["refresh"] = r
         add_cron_log("refresh", "ok", details=r)
     except Exception as e:
@@ -1376,7 +1376,7 @@ def cron_manual_run(session_id: Optional[str] = Cookie(default=None)):
             add_cron_log("collect", "error", hashtag=tag_name, details={"error": str(e)})
 
     try:
-        r = cron_refresh_batch(batch_size=5, stale_hours=24)
+        r = cron_refresh_batch(batch_size=5, stale_hours=720)
         results["refresh"] = r
         add_cron_log("refresh", "ok", details=r)
     except Exception as e:
@@ -1479,8 +1479,13 @@ def collect_progress(job_id: str,
                      hashtag: str = Query(default=""),
                      target_users: int = Query(default=30),
                      search_type: str = Query(default="recent"),
+                     resume_from: str = Query(default=""),
+                     resume_new: int = Query(default=0),
+                     resume_updated: int = Query(default=0),
+                     resume_posts: int = Query(default=0),
+                     resume_page: int = Query(default=0),
                      session_id: Optional[str] = Cookie(default=None)):
-    """SSE 스트림 안에서 직접 수집 실행 (서버리스 호환)"""
+    """SSE 스트림 안에서 직접 수집 실행 (서버리스 호환). resume_from으로 이어서 수집 가능."""
     user = get_user(session_id)
     if not user:
         return JSONResponse({"error": "인증 필요"}, 403)
@@ -1521,13 +1526,14 @@ def collect_progress(job_id: str,
             # ① 해시태그 게시물을 페이지 단위로 스크롤하며 유저 수집
             seen_pks = set()
             collected_pk_list = []  # 수집된 PK 목록 (이력 저장용)
-            posts_count = 0
-            new_cnt = updated_cnt = 0
-            max_id = None
+            posts_count = resume_posts
+            new_cnt = resume_new
+            updated_cnt = resume_updated
+            max_id = resume_from or None
             endpoint = "top" if search_type == "top" else "recent"
-            page_num = 0
+            page_num = resume_page
             no_new_streak = 0
-            max_pages = 200  # 안전 상한
+            max_pages = 500  # 안전 상한
 
             while new_cnt < target_users and page_num < max_pages:
                 page_num += 1
@@ -1586,6 +1592,7 @@ def collect_progress(job_id: str,
                           "status": f"페이지 {page_num} — 신규 {new_cnt}명 / 목표 {target_users}명",
                           "page": page_num, "page_items": len(items),
                           "has_next": bool(next_id),
+                          "next_id": next_id or "",
                           "users": page_users})
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 

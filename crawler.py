@@ -150,10 +150,22 @@ def _hiker_hashtag_medias_page(hashtag: str, endpoint: str = "recent", max_id: s
             next_id = resp.get("next_max_id") or resp.get("max_id")
         medias = []
         for sec in resp.get("sections", []):
-            for row in sec.get("layout_content", {}).get("medias", []):
+            lc = sec.get("layout_content", {})
+            # ① medias 배열
+            for row in lc.get("medias", []):
                 if "media" in row:
                     medias.append(row["media"])
-        log.info(f"[HikerAPI] hashtag={hashtag} page max_id={max_id} → {len(medias)} medias, next_id={next_id}, keys={list(data.keys())}, resp_keys={list(resp.keys())}")
+            # ② one_by_two_item (클립 등)
+            obt = lc.get("one_by_two_item", {})
+            if obt:
+                for ci in obt.get("clips", {}).get("items", []):
+                    if "media" in ci:
+                        medias.append(ci["media"])
+            # ③ fill_items
+            for fi in lc.get("fill_items", []):
+                if "media" in fi:
+                    medias.append(fi["media"])
+        log.info(f"[HikerAPI] hashtag={hashtag} max_id={max_id} → {len(medias)} medias, next_id={bool(next_id)}")
         return medias, next_id
     except Exception as e:
         log.warning(f"[HikerAPI] 해시태그 페이지 조회 실패: {e}")
@@ -184,12 +196,21 @@ def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "r
         data = r.json()
         resp = data.get("response", {})
         next_id = data.get("next_page_id") or resp.get("next_max_id")
-        # sections에서 media 추출
+        # sections에서 media 추출 (medias, one_by_two_item, fill_items)
         medias = []
         for sec in resp.get("sections", []):
-            for row in sec.get("layout_content", {}).get("medias", []):
+            lc = sec.get("layout_content", {})
+            for row in lc.get("medias", []):
                 if "media" in row:
                     medias.append(row["media"])
+            obt = lc.get("one_by_two_item", {})
+            if obt:
+                for ci in obt.get("clips", {}).get("items", []):
+                    if "media" in ci:
+                        medias.append(ci["media"])
+            for fi in lc.get("fill_items", []):
+                if "media" in fi:
+                    medias.append(fi["media"])
         return medias, next_id
 
     def _fetch_v1_top():

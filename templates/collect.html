@@ -180,6 +180,18 @@ let sse = null;
 let dotTimer = null;
 let dotCount = 0;
 let totalUsers = 0;
+// 자동 재연결을 위한 상태
+let lastNextId = '';
+let lastNew = 0;
+let lastUpdated = 0;
+let lastPosts = 0;
+let lastPage = 0;
+let currentJobId = '';
+let currentHashtag = '';
+let currentTargetUsers = 0;
+let currentSearchType = 'recent';
+let resumeCount = 0;
+const MAX_RESUME = 50; // 최대 재연결 횟수
 
 function setStatus(msg, type='idle') {
   const line = document.getElementById('statusLine');
@@ -240,6 +252,8 @@ function startCollect() {
   const targetUsers = document.getElementById('targetUsersInput').value;
   const searchType = document.querySelector('input[name="searchType"]:checked').value;
 
+  // 상태 초기화
+  lastNextId = ''; lastNew = 0; lastUpdated = 0; lastPosts = 0; lastPage = 0; resumeCount = 0;
   document.getElementById('startBtn').disabled = true;
   document.getElementById('startBtn').textContent = '수집 중...';
   document.getElementById('progressArea').classList.remove('hidden');
@@ -263,24 +277,36 @@ function startCollect() {
 
 function listenProgress(jobId, hashtag, targetUsers, searchType) {
   if (sse) sse.close();
-  const params = new URLSearchParams({ hashtag, target_users: targetUsers, search_type: searchType });
+  currentJobId = jobId;
+  currentHashtag = hashtag;
+  currentTargetUsers = targetUsers;
+  currentSearchType = searchType;
+
+  const params = new URLSearchParams({
+    hashtag, target_users: targetUsers, search_type: searchType,
+    resume_from: lastNextId, resume_new: lastNew,
+    resume_updated: lastUpdated, resume_posts: lastPosts, resume_page: lastPage
+  });
   sse = new EventSource(`/collect/progress/${jobId}?${params}`);
 
   sse.onmessage = function(e) {
     const p = JSON.parse(e.data);
     if (!p || !p.hashtag) return;
 
+    // 재연결용 상태 저장
+    if (p.next_id) lastNextId = p.next_id;
+    if (p.new !== undefined) lastNew = p.new;
+    if (p.updated !== undefined) lastUpdated = p.updated;
+    if (p.posts !== undefined) lastPosts = p.posts;
+    if (p.page !== undefined) lastPage = p.page;
+
     // 카운터 업데이트
     document.getElementById('cntPosts').textContent = p.posts || 0;
     document.getElementById('cntNew').textContent = p.new || 0;
     document.getElementById('cntUpdated').textContent = p.updated || 0;
-
-    // 페이지 번호 추출
-    const pageMatch = (p.status || '').match(/페이지\s*(\d+)/);
-    if (pageMatch) document.getElementById('cntPage').textContent = pageMatch[1];
+    if (p.page) document.getElementById('cntPage').textContent = p.page;
 
     // 진행률
-    const found = (p.new || 0) + (p.updated || 0);
     const pct = Math.min(100, Math.round(((p.new || 0) / targetUsers) * 100));
     document.getElementById('progressNum').textContent = `신규 ${p.new||0}명 / 목표 ${targetUsers}명`;
     document.getElementById('progressBar').style.width = pct + '%';
@@ -297,6 +323,7 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
 
     if (p.done) {
       sse.close();
+      resumeCount = 0;
       if (p.error) {
         setStatus('수집 실패', 'error');
         document.getElementById('errorBox').classList.remove('hidden');
@@ -316,14 +343,23 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
   };
 
   sse.onerror = function() {
-    // SSE 연결 끊김 (Vercel 타임아웃 등)
     sse.close();
-    setStatus('연결 끊김 — 수집된 데이터는 저장되었습니다.', 'done');
-    document.getElementById('statusBadge').textContent = '중단';
-    document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
-    document.getElementById('startBtn').disabled = false;
-    document.getElementById('startBtn').textContent = '수집 시작';
-    document.getElementById('doneArea').classList.remove('hidden');
+    // 목표 미달 + next_id 있으면 자동 재연결
+    if (lastNextId && lastNew < targetUsers && resumeCount < MAX_RESUME) {
+      resumeCount++;
+      setStatus(`연결 재시도 (${resumeCount}회)... 신규 ${lastNew}명 / 목표 ${targetUsers}명`, 'running');
+      setTimeout(() => {
+        listenProgress(currentJobId, currentHashtag, currentTargetUsers, currentSearchType);
+      }, 1000);
+    } else {
+      setStatus(`수집 중단 — 신규 ${lastNew}명 저장됨`, 'done');
+      document.getElementById('statusBadge').textContent = resumeCount >= MAX_RESUME ? '완료' : '중단';
+      document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('startBtn').textContent = '수집 시작';
+      document.getElementById('doneArea').classList.remove('hidden');
+      resumeCount = 0;
+    }
   };
 }
 
