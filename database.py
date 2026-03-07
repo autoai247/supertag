@@ -48,6 +48,23 @@ def _sb_get(table, params=None, count=False):
     data = r.json() if not count else (r.json(), int(r.headers.get("Content-Range","0").split("/")[-1] or 0))
     return data
 
+def _sb_get_all(table, params=None, page_size=1000):
+    """Supabase 1000행 제한 우회 — 자동 페이징으로 전체 데이터 조회"""
+    all_rows = []
+    offset = 0
+    p = dict(params or {})
+    while True:
+        p["limit"] = str(page_size)
+        p["offset"] = str(offset)
+        rows = _sb_get(table, p)
+        if not isinstance(rows, list):
+            break
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_rows
+
 def _sb_post(table, data):
     r = _req.post(_sb_url(table), headers=_sb_headers(), json=data)
     return r.json()
@@ -534,8 +551,7 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
     if exclude_private: inf_params["is_private"] = "eq.0"
 
     if need_manual_filter:
-        man_params["limit"] = "50000"
-        man_rows = _sb_get(T_MAN, man_params)
+        man_rows = _sb_get_all(T_MAN, man_params)
         pks = [r["pk"] for r in man_rows] if man_rows else []
         if not pks:
             return 0, []
@@ -588,10 +604,10 @@ def get_influencer_by_username(username: str) -> dict:
     return _sq_one(f"SELECT * FROM {T_INF} WHERE username=?", (username,)) or {}
 
 
-def get_influencer_posts(pk: str, limit: int = 5000) -> list:
+def get_influencer_posts(pk: str) -> list:
     if _USE_SUPABASE:
-        return _sb_get(T_POST, {"influencer_pk": f"eq.{pk}", "order": "taken_at.desc", "limit": str(limit)}) or []
-    return _sq_all(f"SELECT * FROM {T_POST} WHERE influencer_pk=? ORDER BY taken_at DESC LIMIT {limit}", (pk,))
+        return _sb_get_all(T_POST, {"influencer_pk": f"eq.{pk}", "order": "taken_at.desc"})
+    return _sq_all(f"SELECT * FROM {T_POST} WHERE influencer_pk=? ORDER BY taken_at DESC", (pk,))
 
 
 def get_influencer_reels(pk: str, sort: str = "recent", limit: int = 20) -> list:
