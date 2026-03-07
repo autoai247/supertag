@@ -1983,7 +1983,7 @@ def collect_progress(job_id: str,
 
         job_db_id = None
         try:
-            job_db_id = add_collect_job(hashtag, "running", target_users)
+            job_db_id = add_collect_job(hashtag, "running", target_users, search_type)
         except Exception:
             pass
 

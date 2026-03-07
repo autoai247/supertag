@@ -1185,19 +1185,20 @@ def update_hashtag_status(name: str, status: str):
     finally:
         conn.close()
 
-def add_collect_job(hashtag: str, status: str, requested_count: int):
+def add_collect_job(hashtag: str, status: str, requested_count: int, search_type: str = "recent"):
     now = time.time()
     if _USE_SUPABASE:
         rows = _sb_post(T_CJOB, {
             "hashtag": hashtag, "status": status,
             "requested_count": requested_count, "collected_posts": 0,
             "new_users": 0, "updated_users": 0, "started_at": now,
+            "search_type": search_type,
         })
         return rows[0].get("id") if rows and isinstance(rows, list) else None
     conn = get_conn()
     try:
-        cur = conn.execute(f"INSERT INTO {T_CJOB} (hashtag, status, requested_count, started_at) VALUES (?,?,?,?)",
-                           (hashtag, status, requested_count, now))
+        cur = conn.execute(f"INSERT INTO {T_CJOB} (hashtag, status, requested_count, started_at, search_type) VALUES (?,?,?,?,?)",
+                           (hashtag, status, requested_count, now, search_type))
         conn.commit()
         return cur.lastrowid
     finally:

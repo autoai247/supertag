@@ -85,6 +85,7 @@
              onclick="loadJobUsers({{ j.id }}, this)" data-job-id="{{ j.id }}">
           <div class="flex-1">
             <span class="font-bold text-gray-800">#{{ j.hashtag }}</span>
+            <span class="px-1.5 py-0.5 rounded text-xs font-bold {% if j.search_type == 'top' %}text-amber-600{% else %}text-blue-600{% endif %}" style="background:{% if j.search_type == 'top' %}#fef3c7{% else %}#eff6ff{% endif %};">{{ '인기' if j.search_type == 'top' else '최근' }}</span>
             <span class="text-gray-400 ml-1">
               {% if j.status == 'done' %}
               신규 {{ j.new_users or 0 }}명 / 중복 {{ j.updated_users or 0 }}명
