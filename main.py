@@ -493,14 +493,22 @@ templates.env.filters["fromjson"] = _fromjson
 
 def _pic(inf, size=128):
     """프로필 사진 URL: profile_pic_local > profile_pic_url > fallback"""
+    _sb_url = os.environ.get("SUPABASE_URL", "https://ysqnixgdpltguatvjjcb.supabase.co")
+    _SB_STORAGE = f"{_sb_url}/storage/v1/object/public/profile-pics/"
     if isinstance(inf, dict):
-        url = inf.get("profile_pic_local") or inf.get("profile_pic_url") or ""
+        local = inf.get("profile_pic_local") or ""
+        cdn = inf.get("profile_pic_url") or ""
         name = inf.get("username") or inf.get("full_name") or "U"
     else:
-        url = ""
+        local = cdn = ""
         name = str(inf) if inf else "U"
-    if url:
-        return url
+    # profile_pic_local이 상대 경로면 Supabase Storage URL로 변환
+    if local:
+        if local.startswith("http"):
+            return local
+        return _SB_STORAGE + local
+    if cdn:
+        return cdn
     from urllib.parse import quote
     return f"https://ui-avatars.com/api/?name={quote(name[:2])}&background=6366f1&color=fff&size={size}"
 templates.env.filters["pic"] = _pic
@@ -998,6 +1006,15 @@ def edit_save(
 # ═══════════════════════════════════════════════════════
 # 단일 인플루언서 상세 수집 (관리자)
 # ═══════════════════════════════════════════════════════
+
+@app.post("/influencers/{pk}/mark-brand")
+def mark_brand(pk: str, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import save_manual
+    save_manual(pk, {"is_brand": 1})
+    return JSONResponse({"ok": True})
+
 
 @app.post("/influencers/{pk}/ban")
 def ban_one(pk: str, reason: str = Form(default="스팸/광고 계정"),

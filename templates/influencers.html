@@ -283,6 +283,7 @@
     <div class="flex gap-1 flex-shrink-0">
       <a href="/influencers/{{ r.pk }}" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 whitespace-nowrap">상세</a>
       <a href="/influencers/{{ r.pk }}/edit" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap">편집</a>
+      <button onclick="markBrand('{{ r.pk }}','{{ r.username }}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-orange-50 text-orange-500 hover:bg-orange-100 whitespace-nowrap">브랜드</button>
       <button onclick="banUser('{{ r.pk }}','{{ r.username }}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">밴</button>
     </div>
   </div>
@@ -350,6 +351,19 @@ async function startRefresh() {
     }
   } catch(e) {
     btn.textContent = '오류';
+  }
+}
+
+async function markBrand(pk, username) {
+  if (!confirm(`@${username}을(를) 브랜드 계정으로 표시하시겠습니까?`)) return;
+  const r = await fetch(`/influencers/${pk}/mark-brand`, {method:'POST'});
+  const d = await r.json();
+  if (d.ok) {
+    const row = document.querySelector(`input[value="${pk}"]`)?.closest('.bg-white');
+    if (row) { row.style.opacity='0.4'; row.style.pointerEvents='none'; }
+    alert(`@${username} 브랜드 계정으로 표시됨`);
+  } else {
+    alert('실패: ' + (d.error || ''));
   }
 }
 
