@@ -2257,11 +2257,25 @@ def collect_progress(job_id: str,
                           "users": page_users})
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
-                # 페이지마다 DB 통계 실시간 업데이트 (다른 탭 모니터용)
+                # 페이지마다 DB 통계 + collected_pks 실시간 업데이트
                 try:
+                    from database import get_collect_job as _gcj
+                    _prev = _gcj(job_db_id) or {}
+                    _pp = []
+                    _pn = []
+                    try:
+                        _pp = json.loads(_prev.get("collected_pks","[]")) if isinstance(_prev.get("collected_pks"), str) else (_prev.get("collected_pks") or [])
+                    except: pass
+                    try:
+                        _pn = json.loads(_prev.get("new_pks","[]")) if isinstance(_prev.get("new_pks"), str) else (_prev.get("new_pks") or [])
+                    except: pass
+                    _all_pks = list(set(_pp + collected_pk_list))
+                    _all_new = list(set(_pn + new_pk_list))
                     update_collect_job(job_db_id,
                         collected_posts=total_medias, new_users=new_cnt,
-                        updated_users=updated_cnt, status="running")
+                        updated_users=updated_cnt, status="running",
+                        collected_pks=json.dumps(_all_pks),
+                        new_pks=json.dumps(_all_new))
                 except Exception:
                     pass
 
@@ -2306,7 +2320,6 @@ def collect_progress(job_id: str,
                     new_pks=json.dumps(all_new_pks))
                 if is_truly_done:
                     save_data["status"] = "done"
-                    save_data["finished_at"] = time.time()
                 else:
                     save_data["status"] = "running"
                 update_collect_job(job_db_id, **save_data)
