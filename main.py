@@ -819,6 +819,35 @@ def influencers(
     })
 
 
+@app.get("/api/influencers")
+def api_influencers(
+    q: str = "", hashtag: str = "",
+    min_f: Optional[str] = None, max_f: Optional[str] = None,
+    verified: int = 0, public_only: int = 0,
+    main_category: str = "", can_live: int = 0, only_approved: int = 0,
+    has_pet: int = 0, is_married: int = 0, has_kids: int = 0, has_car: int = 0,
+    is_visual: int = 0,
+    sort: str = "follower_count", order: str = "desc",
+    page: int = Query(1, gt=0), per_page: int = Query(50, gt=0),
+    session_id: Optional[str] = Cookie(default=None)
+):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    _min_f = int(min_f) if min_f and min_f.isdigit() else None
+    _max_f = int(max_f) if max_f and max_f.isdigit() else None
+    total, rows = get_influencers(
+        keyword=q, hashtag_filter=hashtag, min_f=_min_f, max_f=_max_f,
+        only_verified=bool(verified), exclude_private=bool(public_only),
+        main_category=main_category, can_live=bool(can_live), only_approved=bool(only_approved),
+        has_pet=bool(has_pet), is_married=bool(is_married),
+        has_kids=bool(has_kids), has_car=bool(has_car), is_visual=bool(is_visual),
+        sort=sort, order=order, page=page, per_page=per_page
+    )
+    for r in rows:
+        r["pic_url"] = _pic(r)
+    return JSONResponse({"total": total, "rows": rows, "page": page, "per_page": per_page})
+
+
 # ═══════════════════════════════════════════════════════
 # 즉시 수집 (계정명으로 실시간 크롤링)
 # ═══════════════════════════════════════════════════════

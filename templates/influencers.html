@@ -165,7 +165,10 @@
 <div class="flex items-center justify-between mb-3">
   <div class="flex items-center gap-2">
     <input type="checkbox" id="selectAll" class="rounded">
-    <span class="text-sm text-gray-500">총 <strong class="text-gray-900">{{ total | comma }}</strong>명 <!-- v3 --></span>
+    <span class="text-sm text-gray-500">총 <strong class="text-gray-900">{{ total | comma }}</strong>명</span>
+    {% if total > per_page %}
+    <button onclick="loadAllAndSelect()" id="selectAllBtn" class="text-xs text-indigo-500 hover:text-indigo-700 ml-2">전체 {{ total }}명 선택</button>
+    {% endif %}
   </div>
   <div class="flex items-center gap-2">
     <!-- 갱신 버튼 -->
@@ -315,18 +318,15 @@
   {% endif %}
 </div>
 
-<!-- 페이지네이션 -->
-{% if total_pages > 1 %}
-<div class="flex items-center justify-between mt-4">
-  <span class="text-xs text-gray-400">{{ page }}/{{ total_pages }} 페이지</span>
-  <div class="flex gap-1">
-    {% if page > 1 %}<a href="?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ sort }}&order={{ order }}&page={{ page-1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">이전</a>{% endif %}
-    {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
-    <a href="?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ sort }}&order={{ order }}&page={{ p }}&per_page={{ per_page }}"
-       class="px-3 py-1.5 rounded-lg text-xs {% if p==page %}text-white font-bold{% else %}border border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}"
-       {% if p==page %}style="background:linear-gradient(135deg,#6366f1,#8b5cf6)"{% endif %}>{{ p }}</a>
-    {% endfor %}
-    {% if page < total_pages %}<a href="?q={{ q }}&hashtag={{ hashtag }}&min_f={{ min_f or '' }}&max_f={{ max_f or '' }}&verified={{ verified }}&public_only={{ public_only }}&main_category={{ main_category }}&can_live={{ can_live }}&only_approved={{ only_approved }}&sort={{ sort }}&order={{ order }}&page={{ page+1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">다음</a>{% endif %}
+<!-- 무한 스크롤 로딩 표시 -->
+{% if total > per_page %}
+<div id="loadMore" class="mt-4 text-center py-4">
+  <div id="loadingSpinner" class="hidden inline-flex items-center gap-2 text-sm text-gray-400">
+    <div class="w-4 h-4 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin"></div>
+    불러오는 중...
+  </div>
+  <div id="loadedInfo" class="text-xs text-gray-400">
+    <span id="loadedCount">{{ rows|length }}</span> / {{ total }}명 표시됨
   </div>
 </div>
 {% endif %}
@@ -340,6 +340,140 @@ document.getElementById('ppSel').addEventListener('change', function(){
 });
 document.getElementById('selectAll').addEventListener('change', function(){
   document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+});
+
+// ═══ 무한 스크롤 ═══
+let scrollPage = 1;
+const scrollPerPage = {{ per_page }};
+const scrollTotal = {{ total }};
+let scrollLoading = false;
+let scrollDone = {{ rows|length }} >= {{ total }} ? true : false;
+
+function fmtn(n) {
+  if (!n) return '-';
+  if (n >= 100000000) return (n/100000000).toFixed(1).replace(/\.0$/,'') + '억';
+  if (n >= 10000) return (n/10000).toFixed(1).replace(/\.0$/,'') + '만';
+  if (n >= 1000) return n.toLocaleString();
+  return n;
+}
+
+function buildRow(r) {
+  const pic = r.pic_url || "https://ui-avatars.com/api/?name="+encodeURIComponent((r.username||'U').slice(0,2))+"&background=6366f1&color=fff&size=128";
+  const badges = [];
+  if (r.is_verified) badges.push('<svg class="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>');
+  if (r.is_private) badges.push('<span class="badge font-bold" style="background:#fff1f2;color:#e11d48;font-size:9px;">🔒 비공개</span>');
+  if (r.is_business) badges.push('<span class="badge text-emerald-700" style="background:rgba(16,185,129,.1);font-size:9px;">🏢 Biz</span>');
+  const er = r.engagement_rate || 0;
+  const erClass = er >= 5 ? 'text-green-600' : er >= 2 ? 'text-blue-600' : 'text-gray-400';
+
+  return `<div class="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-3 hover:border-indigo-200 hover:shadow-sm transition-all">
+    <input type="checkbox" class="row-check rounded flex-shrink-0" value="${r.pk}">
+    <a href="/influencers/${r.pk}" class="flex-shrink-0">
+      <img src="${pic}" class="w-12 h-12 rounded-full object-cover border border-gray-100"
+           onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${r.username||'U'}')+'&background=6366f1&color=fff&size=128'">
+    </a>
+    <a href="/influencers/${r.pk}" class="flex-1 min-w-0 group">
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="font-semibold text-gray-900 text-sm group-hover:text-indigo-600">@${r.username}</span>
+        ${badges.join('')}
+      </div>
+      <div class="flex items-center gap-2 mt-0.5">
+        ${r.full_name ? '<span class="text-xs text-gray-400 truncate max-w-32">'+r.full_name+'</span>' : ''}
+      </div>
+    </a>
+    <div class="flex gap-2 flex-shrink-0">
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+        <div class="text-sm font-bold text-gray-900">${fmtn(r.follower_count)}</div>
+        <div class="text-xs text-gray-400">팔로워</div>
+      </div>
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+        <div class="text-sm font-bold ${erClass}">${er.toFixed(1)}%</div>
+        <div class="text-xs text-gray-400">참여율</div>
+      </div>
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+        <div class="text-sm font-bold text-purple-600">${fmtn(r.avg_reel_views)}</div>
+        <div class="text-xs text-gray-400">릴스뷰</div>
+      </div>
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+        <div class="text-sm font-bold text-pink-500">${fmtn(r.avg_likes)}</div>
+        <div class="text-xs text-gray-400">평균좋아요</div>
+      </div>
+      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-12">
+        <div class="text-sm font-bold text-gray-500">${(r.media_count||0).toLocaleString()}</div>
+        <div class="text-xs text-gray-400">게시물</div>
+      </div>
+    </div>
+    <div class="hidden lg:block text-right flex-shrink-0 min-w-20">
+      <div class="text-xs text-gray-500">${r.upload_frequency || '-'}</div>
+      <div class="text-xs text-gray-300 mt-0.5">${r.last_post_date || ''}</div>
+    </div>
+    <div class="flex gap-1 flex-shrink-0">
+      <a href="https://instagram.com/${r.username}" target="_blank" rel="noopener" class="px-2 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-50 to-pink-50 text-pink-600 hover:from-purple-100 hover:to-pink-100 whitespace-nowrap" title="인스타그램 열기">IG</a>
+      <a href="/influencers/${r.pk}" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 whitespace-nowrap">상세</a>
+      <a href="/influencers/${r.pk}/edit" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap">편집</a>
+      <button onclick="markBrand('${r.pk}','${r.username}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-orange-50 text-orange-500 hover:bg-orange-100 whitespace-nowrap">브랜드</button>
+      <button onclick="hideUser('${r.pk}','${r.username}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-yellow-50 text-yellow-600 hover:bg-yellow-100 whitespace-nowrap">숨김</button>
+      <button onclick="banUser('${r.pk}','${r.username}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">밴</button>
+      <button onclick="deleteUser('${r.pk}','${r.username}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-100 text-red-600 hover:bg-red-200 whitespace-nowrap">삭제</button>
+    </div>
+  </div>`;
+}
+
+async function loadNextPage() {
+  if (scrollLoading || scrollDone) return;
+  scrollLoading = true;
+  const spinner = document.getElementById('loadingSpinner');
+  if (spinner) spinner.classList.remove('hidden');
+
+  scrollPage++;
+  const params = new URLSearchParams(window.location.search);
+  params.set('page', scrollPage);
+  params.set('per_page', scrollPerPage);
+
+  try {
+    const r = await fetch('/api/influencers?' + params.toString());
+    const data = await r.json();
+    if (!data.rows || data.rows.length === 0) {
+      scrollDone = true;
+    } else {
+      const list = document.getElementById('infList');
+      data.rows.forEach(row => {
+        list.insertAdjacentHTML('beforeend', buildRow(row));
+      });
+      const loaded = document.querySelectorAll('.row-check').length;
+      const info = document.getElementById('loadedCount');
+      if (info) info.textContent = loaded;
+      if (loaded >= scrollTotal) scrollDone = true;
+    }
+  } catch(e) {
+    console.error('Load error:', e);
+  }
+  scrollLoading = false;
+  if (spinner) spinner.classList.add('hidden');
+  if (scrollDone) {
+    const lm = document.getElementById('loadMore');
+    if (lm) lm.innerHTML = '<div class="text-xs text-gray-300 py-2">모든 데이터를 불러왔습니다</div>';
+  }
+}
+
+async function loadAllAndSelect() {
+  const btn = document.getElementById('selectAllBtn');
+  if (btn) { btn.textContent = '전체 불러오는 중...'; btn.disabled = true; }
+  while (!scrollDone) {
+    await loadNextPage();
+  }
+  document.getElementById('selectAll').checked = true;
+  document.querySelectorAll('.row-check').forEach(cb => cb.checked = true);
+  if (btn) btn.textContent = '전체 선택됨 ✓';
+}
+
+// 스크롤 감지
+window.addEventListener('scroll', () => {
+  if (scrollDone || scrollLoading) return;
+  const threshold = 300;
+  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - threshold) {
+    loadNextPage();
+  }
 });
 async function startRefresh() {
   const btn = document.getElementById('refreshBtn');
