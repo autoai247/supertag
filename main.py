@@ -1610,11 +1610,12 @@ def collect_progress(job_id: str,
                           "users": page_users})
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
-                # 연속으로 신규가 없으면 중단 (이미 수집 완료된 해시태그)
+                # 연속으로 신규가 없으면 중단 — 50페이지(~1500게시물) 연속 신규 0이면 포기
                 if page_new == 0:
                     no_new_streak += 1
-                    if no_new_streak >= 5:
-                        p["status"] = f"신규 유저 없음 ({no_new_streak}페이지 연속). 다른 해시태그를 시도하세요."
+                    if no_new_streak >= 50:
+                        p["status"] = f"신규 유저 없음 ({no_new_streak}페이지 연속). 해시태그에서 더 이상 신규 유저가 없습니다."
+                        p.update({"done": True, "page": page_num})
                         yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
                         break
                 else:
