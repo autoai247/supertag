@@ -1546,11 +1546,11 @@ def collect_progress(job_id: str,
             max_id = resume_from or None
             endpoint = "top" if search_type == "top" else "recent"
             page_num = resume_page
-            no_new_streak = 0
             max_pages = 500  # 안전 상한
 
             while new_cnt < target_users and page_num < max_pages:
                 page_num += 1
+                _page_start = time.time()
                 items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
 
                 if not items and page_num == 1:
@@ -1615,9 +1615,13 @@ def collect_progress(job_id: str,
                     yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
                     break
                 max_id = next_id
-                # 깊이 스크롤할수록 대기 시간 증가 (API 안정성)
-                wait = min(0.3 + page_num * 0.05, 2.0)
-                time.sleep(wait)
+                # 깊이 스크롤할수록 대기 시간 증가 + API 응답 시간 반영
+                base_wait = min(0.3 + page_num * 0.05, 2.0)
+                # 직전 API 응답이 느렸으면 추가 대기
+                elapsed = time.time() - _page_start
+                if elapsed > 5:
+                    base_wait = max(base_wait, elapsed * 0.5)
+                time.sleep(base_wait)
 
             # 완료
             try:
