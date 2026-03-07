@@ -2013,8 +2013,9 @@ def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=
     user = get_user(session_id)
     if not user: return HTMLResponse("인증 필요", 403)
     hashtag = hashtag.strip().lstrip("#")
-    job_id = str(uuid.uuid4())
-    return HTMLResponse(job_id)
+    from database import add_collect_job
+    job_db_id = add_collect_job(hashtag, "running", target_users, search_type)
+    return HTMLResponse(str(job_db_id))
 
 @app.get("/collect/progress/{job_id}")
 def collect_progress(job_id: str,
@@ -2031,10 +2032,14 @@ def collect_progress(job_id: str,
     user = get_user(session_id)
     if not user:
         return JSONResponse({"error": "인증 필요"}, 403)
-    if not re.match(r'^[a-f0-9\-]{36}$', job_id):
-        return JSONResponse({"error": "잘못된 job_id"}, 400)
 
-    from database import upsert_influencer, add_collect_job, update_collect_job, get_existing_pks, get_banned_pks
+    from database import upsert_influencer, update_collect_job, get_existing_pks, get_banned_pks
+
+    job_db_id = None
+    try:
+        job_db_id = int(job_id)
+    except (ValueError, TypeError):
+        return JSONResponse({"error": "잘못된 job_id"}, 400)
 
     def stream():
         if not hashtag:
@@ -2047,9 +2052,9 @@ def collect_progress(job_id: str,
             try: db_add_hashtag(hashtag)
             except: pass
 
-        job_db_id = None
+        # 기존 job 상태를 running으로 업데이트
         try:
-            job_db_id = add_collect_job(hashtag, "running", target_users, search_type)
+            update_collect_job(job_db_id, status="running")
         except Exception:
             pass
 
@@ -2181,20 +2186,45 @@ def collect_progress(job_id: str,
                     base_wait = max(base_wait, elapsed * 0.5)
                 time.sleep(base_wait)
 
-            # 배치 결과 저장
+            # 목표 달성 or 더 이상 데이터 없음 → 진짜 완료
+            is_truly_done = new_cnt >= target_users or no_data
+
+            # 배치 결과 저장 (진행중이면 running 유지, 완료시만 done)
             try:
-                update_collect_job(job_db_id, status="done",
+                # 기존 collected_pks에 누적
+                from database import get_collect_job
+                prev_job = get_collect_job(job_db_id)
+                prev_pks = []
+                prev_new_pks = []
+                if prev_job:
+                    try:
+                        pp = prev_job.get("collected_pks", "[]")
+                        prev_pks = json.loads(pp) if isinstance(pp, str) else (pp or [])
+                    except: pass
+                    try:
+                        pn = prev_job.get("new_pks", "[]")
+                        prev_new_pks = json.loads(pn) if isinstance(pn, str) else (pn or [])
+                    except: pass
+                all_pks = prev_pks + collected_pk_list
+                all_new_pks = prev_new_pks + new_pk_list
+
+                save_data = dict(
                     collected_posts=total_medias, new_users=new_cnt,
-                    updated_users=updated_cnt, finished_at=time.time(),
-                    collected_pks=json.dumps(collected_pk_list),
-                    new_pks=json.dumps(new_pk_list))
-                update_hashtag_status(hashtag, "idle")
+                    updated_users=updated_cnt,
+                    collected_pks=json.dumps(all_pks),
+                    new_pks=json.dumps(all_new_pks))
+                if is_truly_done:
+                    save_data["status"] = "done"
+                    save_data["finished_at"] = time.time()
+                else:
+                    save_data["status"] = "running"
+                update_collect_job(job_db_id, **save_data)
+                if is_truly_done:
+                    update_hashtag_status(hashtag, "idle")
             except Exception:
                 pass
 
-            # 목표 달성 or 더 이상 데이터 없음 → 진짜 완료
-            # 아직 목표 미달 + 다음 페이지 있음 → continue 이벤트 (클라이언트가 자동 이어서 요청)
-            if new_cnt >= target_users or no_data:
+            if is_truly_done:
                 reason = "목표 달성" if new_cnt >= target_users else f"해시태그 끝 ({page_num}페이지)"
                 p.update({"done": True, "new": new_cnt, "updated": updated_cnt,
                           "status": f"완료 — 신규 {new_cnt}명 / 중복 {updated_cnt}명 ({reason})",

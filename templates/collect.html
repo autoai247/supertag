@@ -390,6 +390,8 @@ function startCollect() {
       // 입력 초기화
       document.getElementById('hashtagInput').value = '';
       document.getElementById('relatedTags').classList.add('hidden');
+      // 이력 즉시 갱신
+      setTimeout(refreshHistory, 1000);
     })
     .catch(e => { alert('수집 시작 실패: ' + e); });
 }
@@ -456,6 +458,7 @@ setInterval(refreshHistory, 5000);
 let _monitorTimer = null;
 
 function loadJobUsers(jobId, el) {
+  jobId = String(jobId);
   // 이 탭에서 진행중인 수집이면 해당 패널로 스크롤
   if (jobs[jobId]) {
     const activePanel = document.getElementById(`panel-${jobId}`);
@@ -475,7 +478,7 @@ function loadJobUsers(jobId, el) {
   if (_monitorTimer) { clearInterval(_monitorTimer); _monitorTimer = null; }
 
   // 캐시된 job 데이터로 바로 판단
-  const cachedJob = _historyJobs[jobId];
+  const cachedJob = _historyJobs[jobId] || _historyJobs[parseInt(jobId)];
   if (cachedJob && cachedJob.status === 'running') {
     showMonitorPanel(jobId, cachedJob);
   } else {
