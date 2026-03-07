@@ -792,23 +792,21 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
             return 0, []
         inf_params["pk"] = f"in.({','.join(pks)})"
     elif excluded_pks:
-        _excl_not_in = True
-    else:
-        _excl_not_in = False
+        extra_fetch = len(excluded_pks) + per_page
+        inf_params["limit"] = str(extra_fetch)
 
     headers = _sb_headers()
     headers["Prefer"] = "count=exact"
-    if _excl_not_in:
-        pk_list = ','.join(str(p) for p in excluded_pks)
-        extra = f"pk=not.in.({pk_list})"
-        qs = "&".join(f"{k}={v}" for k, v in inf_params.items())
-        full_url = f"{_sb_url(T_INF)}?{qs}&{extra}"
-        r = _req.get(full_url, headers=headers)
-    else:
-        r = _req.get(_sb_url(T_INF), headers=headers, params=inf_params)
+    r = _req.get(_sb_url(T_INF), headers=headers, params=inf_params)
     rows = r.json() if isinstance(r.json(), list) else []
     total_str = r.headers.get("Content-Range","0/0").split("/")[-1]
     total = int(total_str) if total_str.isdigit() else len(rows)
+    # 숨김/밴 pk 클라이언트 필터링 (need_manual_filter 없을 때만)
+    if not need_manual_filter and excluded_pks:
+        excluded_str = {str(p) for p in excluded_pks}
+        rows = [row for row in rows if str(row.get("pk","")) not in excluded_str]
+        total = max(0, total - len(excluded_pks))
+        rows = rows[:per_page]
 
     # manual 데이터 병합
     if rows:
@@ -1003,20 +1001,20 @@ def get_public_influencers(page=1, per_page=30, sort="follower_count",
         if no_biz: params["is_business"] = "eq.false"
         if biz_only: params["is_business"] = "eq.true"
         if verified_only: params["is_verified"] = "eq.true"
-        # 숨김/밴 pk를 Supabase 서버에서 직접 제외
-        # requests의 URL 인코딩 문제 우회를 위해 직접 URL 구성
-        url = _sb_url(T_INF)
+        # 숨김/밴 pk 제외: 더 많이 가져와서 클라이언트 필터링
         if excluded_pks:
-            pk_list = ','.join(str(p) for p in excluded_pks)
-            extra = f"pk=not.in.({pk_list})"
-            qs = "&".join(f"{k}={v}" for k, v in params.items())
-            full_url = f"{url}?{qs}&{extra}"
-            r = _req.get(full_url, headers=headers)
-        else:
-            r = _req.get(url, headers=headers, params=params)
+            # 제외 대상만큼 여분을 가져와서 필터링
+            extra_fetch = len(excluded_pks) + per_page
+            params["limit"] = str(extra_fetch)
+        r = _req.get(_sb_url(T_INF), headers=headers, params=params)
         rows = r.json() if isinstance(r.json(), list) else []
         s = r.headers.get("Content-Range","0/0").split("/")[-1]
         total = int(s) if s.isdigit() else len(rows)
+        if excluded_pks:
+            excluded_str = {str(p) for p in excluded_pks}
+            rows = [row for row in rows if str(row.get("pk","")) not in excluded_str]
+            total = max(0, total - len(excluded_pks))
+            rows = rows[:per_page]  # 원래 페이지 크기로 자르기
         return total, rows
 
     conn = get_conn()
