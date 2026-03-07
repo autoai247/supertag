@@ -1236,7 +1236,7 @@ def export_bulk_ppt(
 @app.get("/export")
 def export_excel(
     q: str = "", hashtag: str = "",
-    min_f: Optional[int] = None, max_f: Optional[int] = None,
+    min_f: Optional[str] = None, max_f: Optional[str] = None,
     verified: int = 0, public_only: int = 0,
     main_category: str = "", can_live: int = 0, only_approved: int = 0,
     session_id: Optional[str] = Cookie(default=None)
@@ -1247,8 +1247,10 @@ def export_excel(
     import openpyxl
     from io import BytesIO
 
+    _min_f = int(min_f) if min_f and min_f.isdigit() else None
+    _max_f = int(max_f) if max_f and max_f.isdigit() else None
     _, rows = get_influencers(
-        keyword=q, hashtag_filter=hashtag, min_f=min_f, max_f=max_f,
+        keyword=q, hashtag_filter=hashtag, min_f=_min_f, max_f=_max_f,
         only_verified=bool(verified), exclude_private=bool(public_only),
         main_category=main_category, can_live=bool(can_live), only_approved=bool(only_approved),
         sort="follower_count", order="desc", page=1, per_page=100000
@@ -2364,8 +2366,8 @@ def adv_dashboard(
     request: Request,
     q: str = "",
     hashtag: str = "",
-    min_f: Optional[int] = None,
-    max_f: Optional[int] = None,
+    min_f: Optional[str] = None,
+    max_f: Optional[str] = None,
     main_category: str = "",
     can_live: int = 0,
     sort: str = "follower_count",
@@ -2377,6 +2379,9 @@ def adv_dashboard(
     adv = get_adv_user(adv_session_id)
     if not adv: return RedirectResponse("/advertiser/login", 302)
 
+    _min_f = int(min_f) if min_f and min_f.isdigit() else None
+    _max_f = int(max_f) if max_f and max_f.isdigit() else None
+
     # 광고주 접근 해시태그 필터링
     allowed_hashtags = adv.get("hashtag_access", "")
     effective_hashtag = hashtag
@@ -2384,11 +2389,11 @@ def adv_dashboard(
         effective_hashtag = allowed_hashtags.split(",")[0].strip()
 
     only_approved = bool(adv.get("only_approved", 1))
-    min_f_eff = max(min_f or 0, adv.get("min_followers", 0)) or None
+    min_f_eff = max(_min_f or 0, adv.get("min_followers", 0)) or None
 
     total, rows = get_influencers(
         keyword=q, hashtag_filter=effective_hashtag,
-        min_f=min_f_eff, max_f=max_f,
+        min_f=min_f_eff, max_f=_max_f,
         only_approved=only_approved,
         main_category=main_category, can_live=bool(can_live),
         sort=sort, order=order, page=page, per_page=per_page
