@@ -1120,10 +1120,19 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
 def collect_job_users(job_id: int, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return JSONResponse({"error": "인증 필요"}, 403)
-    from database import get_collect_job_users
+    from database import get_collect_job_users, get_collect_job
+    job = get_collect_job(job_id)
+    new_pks_set = set()
+    if job:
+        try:
+            np = job.get("new_pks", "[]")
+            new_pks_set = set(json.loads(np) if isinstance(np, str) else (np or []))
+        except Exception:
+            pass
     users = get_collect_job_users(job_id)
     for u in users:
         u["profile_pic_resolved"] = _pic(u)
+        u["is_new"] = str(u.get("pk", "")) in new_pks_set
     return JSONResponse(users)
 
 
@@ -2036,6 +2045,7 @@ def collect_progress(job_id: str,
 
             seen_pks = set()
             collected_pk_list = []
+            new_pk_list = []
             total_medias = resume_posts  # 검색한 게시물 총 수
             new_cnt = resume_new
             updated_cnt = resume_updated
@@ -2115,6 +2125,7 @@ def collect_progress(job_id: str,
                         collected_pk_list.append(pk_str)
                         if is_new:
                             new_cnt += 1
+                            new_pk_list.append(pk_str)
                             existing_pks.add(pk_str)
                         else:
                             updated_cnt += 1
@@ -2152,7 +2163,8 @@ def collect_progress(job_id: str,
                 update_collect_job(job_db_id, status="done",
                     collected_posts=total_medias, new_users=new_cnt,
                     updated_users=updated_cnt, finished_at=time.time(),
-                    collected_pks=json.dumps(collected_pk_list))
+                    collected_pks=json.dumps(collected_pk_list),
+                    new_pks=json.dumps(new_pk_list))
                 update_hashtag_status(hashtag, "idle")
             except Exception:
                 pass

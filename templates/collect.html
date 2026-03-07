@@ -426,6 +426,17 @@ function startCollect() {
 }
 
 function loadJobUsers(jobId, el) {
+  // 진행중인 수집이면 해당 패널로 스크롤
+  if (jobs[jobId]) {
+    const activePanel = document.getElementById(`panel-${jobId}`);
+    if (activePanel) {
+      activePanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      activePanel.style.boxShadow = '0 0 0 2px #6366f1';
+      setTimeout(() => { activePanel.style.boxShadow = ''; }, 1500);
+      return;
+    }
+  }
+
   document.querySelectorAll('[data-job-id]').forEach(r => r.classList.remove('bg-indigo-50'));
   if (el) el.classList.add('bg-indigo-50');
 
@@ -451,6 +462,15 @@ function loadJobUsers(jobId, el) {
   `;
   document.getElementById('jobPanels').appendChild(panel);
 
+  // 진행중인 작업인데 활성 패널이 없으면 안내
+  const clickedEl = el;
+  const statusEl = clickedEl?.querySelector('.text-amber-600');
+  if (statusEl && statusEl.textContent.trim() === '진행중') {
+    panel.querySelector('.h-userList').innerHTML = '<div class="py-6 text-center text-gray-400 text-sm">현재 수집이 진행중입니다.<br>수집이 완료되면 여기서 확인할 수 있습니다.</div>';
+    panel.querySelector('.h-userCount').textContent = '';
+    return;
+  }
+
   fetch(`/api/collect-job/${jobId}/users`)
     .then(r => r.json())
     .then(users => {
@@ -467,16 +487,20 @@ function loadJobUsers(jobId, el) {
         div.className = 'flex items-center gap-3 px-4 py-2 hover:bg-gray-50';
         const fc = u.follower_count;
         const fcStr = fc ? (fc >= 1000000 ? (fc/1000000).toFixed(1).replace(/\.0$/,'')+'M' : fc >= 1000 ? (fc/1000).toFixed(1).replace(/\.0$/,'')+'K' : fc) : '';
+        const badge = u.is_new
+          ? '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#eef2ff;color:#4f46e5;">NEW</span>'
+          : '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#f0fdf4;color:#059669;">기존</span>';
         div.innerHTML = `
           <span class="text-xs text-gray-300 w-6 text-right flex-shrink-0">${i+1}</span>
           <img src="${u.profile_pic_resolved || u.profile_pic_url || 'https://ui-avatars.com/api/?name='+encodeURIComponent(u.username||'U')+'&background=6366f1&color=fff&size=32'}"
-               class="w-8 h-8 rounded-full object-cover flex-shrink-0" style="border:2px solid #e5e7eb;"
+               class="w-8 h-8 rounded-full object-cover flex-shrink-0" style="border:2px solid ${u.is_new?'#c7d2fe':'#e5e7eb'};"
                onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${u.username||'U'}')+'&background=6366f1&color=fff&size=32'">
           <div class="flex-1 min-w-0">
             <a href="/influencers/${u.pk}" class="text-sm font-semibold text-gray-800 truncate block hover:text-indigo-600">${'@'+(u.username||'?')}</a>
             ${u.full_name ? '<div class="text-xs text-gray-400 truncate">'+u.full_name+'</div>' : ''}
           </div>
-          ${fcStr ? '<span class="text-xs font-semibold text-gray-500">'+fcStr+'</span>' : '<span class="text-xs text-gray-300">미갱신</span>'}
+          ${badge}
+          ${fcStr ? '<span class="text-xs font-semibold text-gray-500 ml-1">'+fcStr+'</span>' : '<span class="text-xs text-gray-300 ml-1">미갱신</span>'}
         `;
         list.appendChild(div);
       });
