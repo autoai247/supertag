@@ -7,3 +7,4 @@ app.log
 insta_crawler.db
 data/profile_pics/
 data/posts/
+.env*.local

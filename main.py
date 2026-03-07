@@ -479,7 +479,13 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 templates.env.filters["dt"]    = lambda t: datetime.fromtimestamp(float(t)).strftime("%m/%d %H:%M") if t else "-"
 templates.env.filters["comma"] = lambda n: f"{int(n or 0):,}"
-templates.env.filters["fmtn"]  = lambda n: (f"{int(n or 0)//10000:,}만" if int(n or 0) >= 10000 else f"{int(n or 0):,}") if n else "0"
+def _fmtn(n):
+    v = int(n or 0)
+    if v <= 0: return "0"
+    if v >= 1_000_000: return f"{v/1_000_000:.1f}".rstrip('0').rstrip('.') + "M"
+    if v >= 1_000: return f"{v/1_000:.1f}".rstrip('0').rstrip('.') + "K"
+    return str(v)
+templates.env.filters["fmtn"] = _fmtn
 def _fromjson(s):
     try: return json.loads(s) if isinstance(s, str) else s
     except: return {}
@@ -979,6 +985,36 @@ def edit_save(
 # 단일 인플루언서 상세 수집 (관리자)
 # ═══════════════════════════════════════════════════════
 
+@app.post("/influencers/{pk}/ban")
+def ban_one(pk: str, reason: str = Form(default="스팸/광고 계정"),
+            session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import ban_influencer
+    ban_influencer(pk, reason)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/influencers/{pk}/unban")
+def unban_one(pk: str, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import unban_influencer
+    unban_influencer(pk)
+    return JSONResponse({"ok": True})
+
+
+@app.get("/banned", response_class=HTMLResponse)
+def banned_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    from database import get_banned_list
+    banned = get_banned_list()
+    return templates.TemplateResponse("banned.html", {
+        "request": request, "user": user, "banned": banned,
+    })
+
+
 @app.post("/influencers/{pk}/refresh")
 def refresh_one(pk: str, background_tasks: BackgroundTasks,
                 session_id: Optional[str] = Cookie(default=None)):
@@ -1410,10 +1446,13 @@ def delete_hashtag_route(name: str = Form(default=""), hashtag_id: int = Form(de
 def collect_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
+    from database import get_collect_jobs
     htags = get_hashtags()
+    jobs = get_collect_jobs(limit=20)
     return templates.TemplateResponse("collect.html", {
         "request": request, "user": user,
         "hashtags": [r.get("name","") if isinstance(r, dict) else r["name"] for r in htags],
+        "jobs": jobs,
     })
 
 @app.post("/collect/start")
@@ -1440,10 +1479,7 @@ def collect_progress(job_id: str,
     if not re.match(r'^[a-f0-9\-]{36}$', job_id):
         return JSONResponse({"error": "잘못된 job_id"}, 400)
 
-    from crawler import (
-        _hiker_hashtag_medias, _hiker_user_info_by_id,
-    )
-    from database import upsert_influencer, add_collect_job, update_collect_job
+    from database import upsert_influencer, add_collect_job, update_collect_job, get_existing_pks, get_banned_pks
 
     def stream():
         if not hashtag:
@@ -1463,67 +1499,102 @@ def collect_progress(job_id: str,
             pass
 
         p = {"hashtag": hashtag, "posts": 0, "new": 0, "updated": 0,
-             "done": False, "error": None, "status": "게시물 검색 중"}
+             "done": False, "error": None, "status": "게시물 검색 중",
+             "target": target_users}
         yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
         try:
-            # ① 해시태그 게시물에서 유저 PK 추출
-            medias = _hiker_hashtag_medias(hashtag, amount=500, search_type=search_type)
-            if not medias:
-                raise Exception("HikerAPI 해시태그 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
+            from crawler import _hiker_hashtag_medias_page
 
-            all_pks = set()
+            # DB에 이미 있는 PK → 중복 방지, 밴된 PK → 건너뛰기
+            existing_pks = get_existing_pks()
+            banned_pks = get_banned_pks()
+
+            # ① 해시태그 게시물을 페이지 단위로 스크롤하며 유저 수집
+            seen_pks = set()
             posts_count = 0
-            for m in medias:
-                user_data = m.get("user", {})
-                pk = user_data.get("pk")
-                if pk:
-                    all_pks.add(str(pk))
-                posts_count += 1
-                if len(all_pks) >= target_users:
+            new_cnt = updated_cnt = 0
+            max_id = None
+            endpoint = "top" if search_type == "top" else "recent"
+            page_num = 0
+            no_new_streak = 0
+            max_pages = 200  # 안전 상한
+
+            while new_cnt < target_users and page_num < max_pages:
+                page_num += 1
+                items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
+
+                if not items and page_num == 1:
+                    raise Exception("HikerAPI 해시태그 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
+                if not items:
+                    p["status"] = f"더 이상 게시물 없음. 총 {page_num}페이지 스캔."
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
                     break
 
-            p.update({"posts": posts_count,
-                      "status": f"게시물 {posts_count}개에서 {len(all_pks)}명 발견. 프로필 조회 중"})
-            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
-
-            # ② 유저 상세 정보 조회
-            new_cnt = updated_cnt = 0
-            for i, pk in enumerate(all_pks):
-                try:
-                    u_data = _hiker_user_info_by_id(pk)
-                    if not u_data:
+                page_new = 0
+                page_users = []
+                for m in items:
+                    user_data = m.get("user", {})
+                    upk = user_data.get("pk")
+                    if not upk:
                         continue
-                    data = {
-                        "pk": str(u_data["pk"]),
-                        "username": u_data.get("username", ""),
-                        "full_name": u_data.get("full_name", ""),
-                        "biography": u_data.get("biography", ""),
-                        "follower_count": u_data.get("follower_count", 0),
-                        "following_count": u_data.get("following_count", 0),
-                        "media_count": u_data.get("media_count", 0),
-                        "is_private": u_data.get("is_private", False),
-                        "is_verified": u_data.get("is_verified", False),
-                        "is_business": u_data.get("is_business", False),
-                        "category": u_data.get("category", ""),
-                        "public_email": u_data.get("public_email", "") or "",
-                        "public_phone": u_data.get("public_phone_number", "") or "",
-                        "external_url": str(u_data.get("external_url", "") or ""),
-                        "profile_pic_url": str(u_data.get("profile_pic_url", "") or ""),
-                        "hashtag": hashtag,
-                    }
-                    result = upsert_influencer(data)
-                    if result == "new":
-                        new_cnt += 1
-                    else:
-                        updated_cnt += 1
-                except Exception as e:
-                    log.warning(f"유저 {pk} 조회 실패: {e}")
+                    pk_str = str(upk)
+                    if pk_str in seen_pks:
+                        continue
+                    seen_pks.add(pk_str)
+                    if pk_str in banned_pks:
+                        continue  # 밴된 유저 건너뛰기
+                    posts_count += 1
 
-                p.update({"new": new_cnt, "updated": updated_cnt,
-                          "status": f"프로필 조회 중 ({i+1}/{len(all_pks)})"})
+                    uname = user_data.get("username", "")
+                    fname = user_data.get("full_name", "")
+                    pic = str(user_data.get("profile_pic_url", "") or "")
+                    is_new = pk_str not in existing_pks
+
+                    # DB에 즉시 저장
+                    try:
+                        upsert_influencer({
+                            "pk": pk_str, "username": uname,
+                            "full_name": fname, "profile_pic_url": pic,
+                            "hashtag": hashtag,
+                        })
+                        if is_new:
+                            new_cnt += 1
+                            page_new += 1
+                            existing_pks.add(pk_str)
+                        else:
+                            updated_cnt += 1
+                    except Exception:
+                        pass
+
+                    page_users.append({
+                        "username": uname, "full_name": fname,
+                        "pic": pic, "is_new": is_new,
+                    })
+
+                p.update({"posts": posts_count, "new": new_cnt, "updated": updated_cnt,
+                          "status": f"페이지 {page_num} — 신규 {new_cnt}명 / 목표 {target_users}명",
+                          "page": page_num, "page_items": len(items),
+                          "has_next": bool(next_id),
+                          "users": page_users})
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
-                time.sleep(0.2)
+
+                # 연속으로 신규가 없으면 중단 (이미 수집 완료된 해시태그)
+                if page_new == 0:
+                    no_new_streak += 1
+                    if no_new_streak >= 5:
+                        p["status"] = f"신규 유저 없음 ({no_new_streak}페이지 연속). 다른 해시태그를 시도하세요."
+                        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                        break
+                else:
+                    no_new_streak = 0
+
+                if not next_id:
+                    p["status"] = f"페이지 {page_num}에서 다음 페이지 없음 (next_id=None). 종료."
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                    break
+                max_id = next_id
+                time.sleep(0.3)
 
             # 완료
             try:

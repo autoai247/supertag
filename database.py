@@ -129,7 +129,8 @@ def init_db():
         kids_age TEXT DEFAULT '', is_brand INTEGER DEFAULT 0, is_visual INTEGER DEFAULT 0,
         face_exposed INTEGER DEFAULT 0, tiktok_url TEXT DEFAULT '', youtube_url TEXT DEFAULT '',
         facebook_url TEXT DEFAULT '', threads_url TEXT DEFAULT '',
-        tiktok_followers INTEGER DEFAULT 0, youtube_subscribers INTEGER DEFAULT 0
+        tiktok_followers INTEGER DEFAULT 0, youtube_subscribers INTEGER DEFAULT 0,
+        is_banned INTEGER DEFAULT 0, ban_reason TEXT DEFAULT ''
     )""")
     c.execute(f"""CREATE TABLE IF NOT EXISTS {T_POST} (
         id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_pk TEXT, post_id TEXT UNIQUE,
@@ -238,6 +239,7 @@ def _migrate(conn):
         ("youtube_url","TEXT DEFAULT ''"),("facebook_url","TEXT DEFAULT ''"),
         ("threads_url","TEXT DEFAULT ''"),("tiktok_followers","INTEGER DEFAULT 0"),
         ("youtube_subscribers","INTEGER DEFAULT 0"),("bundle_price","INTEGER DEFAULT 0"),
+        ("is_banned","INTEGER DEFAULT 0"),("ban_reason","TEXT DEFAULT ''"),
     ]:
         if col not in manual_existing:
             conn.execute(f"ALTER TABLE {T_MAN} ADD COLUMN {col} {td}")
@@ -385,7 +387,8 @@ def update_influencer_profile(pk: str, fields: dict):
     """팔로워 수, 바이오 등 기본 프로필 정보 갱신 (pk 기반)"""
     if not fields:
         return
-    allowed = {"follower_count", "following_count", "media_count", "bio", "full_name"}
+    allowed = {"follower_count", "following_count", "media_count", "bio", "full_name",
+                "is_business", "category", "profile_pic_url"}
     payload = {k: v for k, v in fields.items() if k in allowed}
     if not payload:
         return
@@ -396,6 +399,29 @@ def update_influencer_profile(pk: str, fields: dict):
         _sq_run(f"UPDATE {T_INF} SET {sets} WHERE pk=?", list(payload.values()) + [pk])
 
 
+def get_existing_pks() -> set:
+    """DB에 이미 있는 인플루언서 pk 목록 반환."""
+    if _USE_SUPABASE:
+        pks = set()
+        offset = 0
+        while True:
+            rows = _sb_get(T_INF, {"select": "pk", "limit": 1000, "offset": offset})
+            if not rows:
+                break
+            pks.update(str(r["pk"]) for r in rows)
+            if len(rows) < 1000:
+                break
+            offset += 1000
+        return pks
+    else:
+        conn = get_conn()
+        try:
+            rows = conn.execute(f"SELECT pk FROM {T_INF}").fetchall()
+            return {str(r["pk"]) for r in rows}
+        finally:
+            conn.close()
+
+
 def upsert_post(data: dict):
     now = time.time()
     if _USE_SUPABASE:
@@ -403,7 +429,8 @@ def upsert_post(data: dict):
         if existing:
             _sb_patch(T_POST, f"?post_id=eq.{data['post_id']}",
                      {"likes": data.get("likes",0), "comments": data.get("comments",0),
-                      "views": data.get("views",0), "crawled_at": now})
+                      "views": data.get("views",0), "thumbnail_url": data.get("thumbnail_url",""),
+                      "crawled_at": now})
         else:
             _sb_post(T_POST, {**{k: data.get(k) for k in [
                 "influencer_pk","post_id","post_url","post_type","likes","comments","views",
@@ -414,8 +441,8 @@ def upsert_post(data: dict):
         try:
             ex = conn.execute(f"SELECT id FROM {T_POST} WHERE post_id=?", (data["post_id"],)).fetchone()
             if ex:
-                conn.execute(f"UPDATE {T_POST} SET likes=?,comments=?,views=?,crawled_at=? WHERE post_id=?",
-                           (data.get("likes",0),data.get("comments",0),data.get("views",0),now,data["post_id"]))
+                conn.execute(f"UPDATE {T_POST} SET likes=?,comments=?,views=?,thumbnail_url=?,crawled_at=? WHERE post_id=?",
+                           (data.get("likes",0),data.get("comments",0),data.get("views",0),data.get("thumbnail_url",""),now,data["post_id"]))
             else:
                 conn.execute(f"""INSERT INTO {T_POST}
                     (influencer_pk,post_id,post_url,post_type,likes,comments,views,
@@ -460,6 +487,49 @@ def save_manual(pk: str, data: dict):
                 conn.execute(f"INSERT INTO {T_MAN} ({cols}) VALUES ({phs})", list(d.values()))
             conn.commit()
         finally: conn.close()
+
+
+def ban_influencer(pk: str, reason: str = ""):
+    save_manual(pk, {"is_banned": 1, "ban_reason": reason})
+
+
+def unban_influencer(pk: str):
+    save_manual(pk, {"is_banned": 0, "ban_reason": ""})
+
+
+def get_banned_pks() -> set:
+    """밴된 인플루언서 pk 목록."""
+    if _USE_SUPABASE:
+        rows = _sb_get(T_MAN, {"is_banned": "eq.1", "select": "pk"})
+        return {r["pk"] for r in rows} if rows else set()
+    else:
+        rows = _sq_all(f"SELECT pk FROM {T_MAN} WHERE is_banned=1")
+        return {r["pk"] for r in rows} if rows else set()
+
+
+def get_banned_list():
+    """밴된 인플루언서 목록 (username 포함)."""
+    if _USE_SUPABASE:
+        banned = _sb_get(T_MAN, {"is_banned": "eq.1", "select": "pk,ban_reason"})
+        if not banned:
+            return []
+        pks = [b["pk"] for b in banned]
+        infs = _sb_get(T_INF, {"pk": f"in.({','.join(pks)})", "select": "pk,username,profile_pic_url"})
+        inf_map = {r["pk"]: r for r in (infs or [])}
+        result = []
+        for b in banned:
+            inf = inf_map.get(b["pk"], {})
+            result.append({
+                "pk": b["pk"], "username": inf.get("username", "?"),
+                "profile_pic_url": inf.get("profile_pic_url", ""),
+                "ban_reason": b.get("ban_reason", ""),
+            })
+        return result
+    else:
+        rows = _sq_all(f"""SELECT m.pk, m.ban_reason, i.username, i.profile_pic_url
+            FROM {T_MAN} m LEFT JOIN {T_INF} i ON m.pk=i.pk
+            WHERE m.is_banned=1""")
+        return rows or []
 
 
 def get_influencers(keyword="", min_f=None, max_f=None,
@@ -539,6 +609,9 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
     need_manual_filter = any([can_live, only_approved, main_category, has_pet,
                                is_married, has_kids, has_car, is_visual])
 
+    # 밴된 유저 제외
+    banned_pks = get_banned_pks()
+
     # Step 2: influencer 필터
     inf_params = {
         "select": "*",
@@ -564,14 +637,27 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
         pks = [r["pk"] for r in man_rows] if man_rows else []
         if not pks:
             return 0, []
+        # 밴된 PK도 제거
+        pks = [p for p in pks if p not in banned_pks]
+        if not pks:
+            return 0, []
         inf_params["pk"] = f"in.({','.join(pks)})"
+    elif banned_pks:
+        # manual 필터 없어도 밴된 유저는 제외
+        # PostgREST: not.in.(val1,val2)은 너무 길어질 수 있으므로 결과에서 필터
+        pass
 
     headers = _sb_headers()
     headers["Prefer"] = "count=exact"
     r = _req.get(_sb_url(T_INF), headers=headers, params=inf_params)
     rows = r.json() if isinstance(r.json(), list) else []
+    # 밴된 유저 제외
+    if banned_pks:
+        rows = [r for r in rows if r.get("pk") not in banned_pks]
     total_str = r.headers.get("Content-Range","0/0").split("/")[-1]
     total = int(total_str) if total_str.isdigit() else len(rows)
+    if banned_pks:
+        total = max(0, total - len(banned_pks))
 
     # manual 데이터 병합
     if rows:

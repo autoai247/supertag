@@ -10,116 +10,165 @@
 
 <div class="grid grid-cols-5 gap-5">
   <!-- 수집 폼 -->
-  <div class="col-span-2 card p-5">
-    <h2 class="font-semibold text-gray-800 mb-4">수집 요청</h2>
-    <div class="space-y-3">
-      <div>
-        <div class="text-xs text-gray-500 mb-1">해시태그 <span class="text-red-400">*</span></div>
-        <div class="flex gap-2">
-          <span class="flex items-center px-2.5 py-2 text-sm text-gray-400 rounded-lg border border-gray-200 border-r-0 rounded-r-none">#</span>
-          <input id="hashtagInput" type="text" placeholder="광고, 협찬, 맛집..."
-            class="flex-1 px-3 py-2 text-sm rounded-lg rounded-l-none border border-gray-200 border-l-0"
-            list="hashtagList">
-          <datalist id="hashtagList">
-            {% for h in hashtags %}<option value="{{ h }}">{% endfor %}
-          </datalist>
-        </div>
-      </div>
-      <div>
-        <div class="text-xs text-gray-500 mb-1">검색 대상</div>
-        <div class="flex gap-2 mb-3">
-          <label class="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
-            <input type="radio" name="searchType" value="recent" checked class="accent-indigo-500"> <span class="text-xs font-bold text-gray-700">최근 게시물</span>
-          </label>
-          <label class="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
-            <input type="radio" name="searchType" value="top" class="accent-indigo-500"> <span class="text-xs font-bold text-gray-700">인기 게시물</span>
-          </label>
-        </div>
-        <div class="text-xs text-gray-500 mb-1">찾을 인플루언서 수</div>
-        <div class="flex gap-2 items-center">
-          <input id="targetUsersInput" type="number" value="30" min="1" max="5000"
-            class="w-28 px-3 py-2 text-sm rounded-lg border border-gray-200">
-          <span class="text-sm text-gray-500">명</span>
-          <div class="flex gap-1">
-            {% for n in [10, 30, 50, 100, 300] %}
-            <button onclick="document.getElementById('targetUsersInput').value={{n}}"
-              class="px-2 py-1.5 text-xs rounded border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition">{{ n }}</button>
-            {% endfor %}
+  <div class="col-span-2 space-y-5">
+    <div class="card p-5">
+      <h2 class="font-semibold text-gray-800 mb-4">수집 요청</h2>
+      <div class="space-y-3">
+        <div>
+          <div class="text-xs text-gray-500 mb-1">해시태그 <span class="text-red-400">*</span></div>
+          <div class="flex gap-2">
+            <span class="flex items-center px-2.5 py-2 text-sm text-gray-400 rounded-lg border border-gray-200 border-r-0 rounded-r-none">#</span>
+            <input id="hashtagInput" type="text" placeholder="광고, 협찬, 맛집..."
+              class="flex-1 px-3 py-2 text-sm rounded-lg rounded-l-none border border-gray-200 border-l-0"
+              list="hashtagList">
+            <datalist id="hashtagList">
+              {% for h in hashtags %}<option value="{{ h }}">{% endfor %}
+            </datalist>
           </div>
         </div>
-        <div class="text-xs text-gray-400 mt-1">목표 인원에 도달할 때까지 게시물을 자동 검색합니다</div>
+        <div>
+          <div class="text-xs text-gray-500 mb-1">검색 대상</div>
+          <div class="flex gap-2 mb-3">
+            <label class="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+              <input type="radio" name="searchType" value="recent" checked class="accent-indigo-500"> <span class="text-xs font-bold text-gray-700">최근 게시물</span>
+            </label>
+            <label class="flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+              <input type="radio" name="searchType" value="top" class="accent-indigo-500"> <span class="text-xs font-bold text-gray-700">인기 게시물</span>
+            </label>
+          </div>
+          <div class="text-xs text-gray-500 mb-1">찾을 인플루언서 수</div>
+          <div class="flex gap-2 items-center">
+            <input id="targetUsersInput" type="number" value="30" min="1" max="5000"
+              class="w-28 px-3 py-2 text-sm rounded-lg border border-gray-200">
+            <span class="text-sm text-gray-500">명</span>
+            <div class="flex gap-1">
+              {% for n in [10, 30, 100, 500, 1000] %}
+              <button onclick="document.getElementById('targetUsersInput').value={{n}}"
+                class="px-2 py-1.5 text-xs rounded border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition">{{ n }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <button id="startBtn" onclick="startCollect()"
+          class="w-full py-2.5 rounded-lg font-semibold text-white text-sm hover:opacity-90 transition mt-1"
+          style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+          수집 시작
+        </button>
       </div>
-      <button id="startBtn" onclick="startCollect()"
-        class="w-full py-2.5 rounded-lg font-semibold text-white text-sm hover:opacity-90 transition mt-1"
-        style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
-        ▶ 수집 시작
-      </button>
+
+      <div class="mt-5 p-3 rounded-lg text-xs text-gray-500 space-y-1" style="background:#f8fafc;">
+        <div class="font-semibold text-gray-600 mb-2">수집 흐름</div>
+        <div>1. 해시태그 게시물을 페이지 단위로 스크롤</div>
+        <div>2. 게시물에서 인플루언서 추출 → 즉시 DB 저장</div>
+        <div>3. 목표 인원 도달 시 자동 중단</div>
+        <div>4. 상세 정보(팔로워 등)는 "게시물 갱신"으로 채움</div>
+        <div class="pt-2 text-gray-400 border-t mt-2">
+          비용: 페이지당 API 1회 (~24명). 유저당 추가 비용 없음.
+        </div>
+      </div>
     </div>
 
-    <!-- 안내 -->
-    <div class="mt-5 p-3 rounded-lg text-xs text-gray-500 space-y-1" style="background:#f8fafc;">
-      <div class="font-semibold text-gray-600 mb-2">수집 흐름</div>
-      <div>① 해시태그 게시물 자동 검색</div>
-      <div>② 게시물에서 인플루언서 추출 (중복 제거)</div>
-      <div>③ 목표 인원 도달 시 자동 중단</div>
-      <div>④ 인플루언서 상세 프로필 조회 → DB 저장</div>
-      <div class="pt-2 text-gray-400 border-t mt-2">
-        한 사람이 여러 게시물을 올려도 1명으로 카운트합니다
+    <!-- 수집 이력 -->
+    <div class="card overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100">
+        <h2 class="font-semibold text-gray-800 text-sm">최근 수집 이력</h2>
       </div>
+      {% if jobs %}
+      <div class="divide-y divide-gray-50" style="max-height:300px;overflow-y:auto;">
+        {% for j in jobs %}
+        <div class="px-4 py-2.5 text-xs flex items-center gap-3">
+          <div class="flex-1">
+            <span class="font-bold text-gray-800">#{{ j.hashtag }}</span>
+            <span class="text-gray-400 ml-1">
+              {% if j.status == 'done' %}
+              신규 {{ j.new_users or 0 }}명
+              {% elif j.status == 'running' %}
+              진행 중
+              {% else %}
+              {{ j.status }}
+              {% endif %}
+            </span>
+          </div>
+          <div class="flex-shrink-0">
+            {% if j.status == 'done' %}
+            <span class="text-emerald-600 font-semibold">완료</span>
+            {% elif j.status == 'running' %}
+            <span class="text-amber-600 font-semibold">진행중</span>
+            {% else %}
+            <span class="text-red-500 font-semibold">에러</span>
+            {% endif %}
+          </div>
+          <div class="text-gray-400 flex-shrink-0">{{ j.created_at | dt }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="py-6 text-center text-gray-400 text-sm">수집 이력이 없습니다</div>
+      {% endif %}
     </div>
   </div>
 
-  <!-- 실시간 진행 -->
-  <div class="col-span-3 card p-5">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="font-semibold text-gray-800">진행 상황</h2>
-      <span id="statusBadge" class="badge text-gray-500" style="background:#f1f5f9;">대기 중</span>
-    </div>
-
-    <!-- 진행률 -->
-    <div id="progressArea" class="hidden">
-      <div class="flex justify-between text-xs text-gray-500 mb-1">
-        <span id="progressLabel">게시물 수집 중...</span>
-        <span id="progressNum">0 / 0</span>
-      </div>
-      <div class="w-full h-2 rounded-full mb-4" style="background:#e2e8f0;">
-        <div id="progressBar" class="h-2 rounded-full transition-all duration-300"
-             style="background:linear-gradient(90deg,#6366f1,#8b5cf6);width:0%"></div>
+  <!-- 실시간 진행 + 유저 리스트 -->
+  <div class="col-span-3 space-y-4">
+    <!-- 진행 상황 -->
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-gray-800">진행 상황</h2>
+        <span id="statusBadge" class="badge text-gray-500" style="background:#f1f5f9;">대기 중</span>
       </div>
 
-      <!-- 카운터 -->
-      <div class="grid grid-cols-3 gap-3 mb-4">
-        <div class="text-center py-3 rounded-lg" style="background:#f8fafc;">
-          <div id="cntPosts" class="text-2xl font-bold text-gray-900">0</div>
-          <div class="text-xs text-gray-400 mt-0.5">수집 게시물</div>
+      <div id="progressArea" class="hidden">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span id="progressLabel">게시물 수집 중...</span>
+          <span id="progressNum">0 / 0</span>
         </div>
-        <div class="text-center py-3 rounded-lg" style="background:#eef2ff;">
-          <div id="cntNew" class="text-2xl font-bold text-indigo-600">0</div>
-          <div class="text-xs text-gray-400 mt-0.5">신규 유저</div>
+        <div class="w-full h-2 rounded-full mb-4" style="background:#e2e8f0;">
+          <div id="progressBar" class="h-2 rounded-full transition-all duration-300"
+               style="background:linear-gradient(90deg,#6366f1,#8b5cf6);width:0%"></div>
         </div>
-        <div class="text-center py-3 rounded-lg" style="background:#f0fdf4;">
-          <div id="cntUpdated" class="text-2xl font-bold text-emerald-600">0</div>
-          <div class="text-xs text-gray-400 mt-0.5">업데이트</div>
+
+        <div class="grid grid-cols-4 gap-3 mb-4">
+          <div class="text-center py-3 rounded-lg" style="background:#f8fafc;">
+            <div id="cntPage" class="text-xl font-bold text-gray-900">0</div>
+            <div class="text-xs text-gray-400 mt-0.5">페이지</div>
+          </div>
+          <div class="text-center py-3 rounded-lg" style="background:#f8fafc;">
+            <div id="cntPosts" class="text-xl font-bold text-gray-900">0</div>
+            <div class="text-xs text-gray-400 mt-0.5">발견 유저</div>
+          </div>
+          <div class="text-center py-3 rounded-lg" style="background:#eef2ff;">
+            <div id="cntNew" class="text-xl font-bold text-indigo-600">0</div>
+            <div class="text-xs text-gray-400 mt-0.5">신규</div>
+          </div>
+          <div class="text-center py-3 rounded-lg" style="background:#f0fdf4;">
+            <div id="cntUpdated" class="text-xl font-bold text-emerald-600">0</div>
+            <div class="text-xs text-gray-400 mt-0.5">기존</div>
+          </div>
         </div>
+      </div>
+
+      <div class="rounded-lg px-4 py-3 font-mono text-xs flex items-center gap-3" style="background:#0f172a;min-height:48px;">
+        <span id="statusDot" class="w-2 h-2 rounded-full flex-shrink-0" style="background:#475569;"></span>
+        <span id="statusLine" class="text-gray-500">수집 준비 완료. 해시태그를 입력하고 시작하세요.</span>
+      </div>
+      <div id="errorBox" class="hidden mt-2 rounded-lg p-3 text-xs" style="background:#1e1b1b;border:1px solid #450a0a;">
+        <div class="text-red-400 font-semibold mb-1">오류</div>
+        <div id="errorMsg" class="text-red-300 leading-relaxed"></div>
+      </div>
+
+      <div id="doneArea" class="hidden mt-4 flex gap-2">
+        <a href="/influencers" class="btn btn-primary text-sm flex-1 justify-center">인플루언서 목록 보기</a>
+        <button onclick="resetForm()" class="btn btn-ghost text-sm">다시 수집</button>
       </div>
     </div>
 
-    <!-- 상태 표시줄 -->
-    <div class="rounded-lg px-4 py-3 font-mono text-xs flex items-center gap-3" style="background:#0f172a;min-height:48px;">
-      <span id="statusDot" class="w-2 h-2 rounded-full flex-shrink-0" style="background:#475569;"></span>
-      <span id="statusLine" class="text-gray-500">수집 준비 완료. 해시태그를 입력하고 시작하세요.</span>
-    </div>
-    <!-- 에러 상세 -->
-    <div id="errorBox" class="hidden mt-2 rounded-lg p-3 text-xs" style="background:#1e1b1b;border:1px solid #450a0a;">
-      <div class="text-red-400 font-semibold mb-1">⚠️ 오류 안내</div>
-      <div id="errorMsg" class="text-red-300 leading-relaxed"></div>
-      <div id="errorHint" class="mt-2 text-orange-400"></div>
-    </div>
-
-    <!-- 완료 후 -->
-    <div id="doneArea" class="hidden mt-4 flex gap-2">
-      <a href="/influencers" class="btn btn-primary text-sm flex-1 justify-center">인플루언서 목록 보기</a>
-      <button onclick="resetForm()" class="btn btn-ghost text-sm">다시 수집</button>
+    <!-- 실시간 유저 리스트 -->
+    <div id="userListCard" class="card overflow-hidden hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="font-semibold text-gray-800 text-sm">수집된 인플루언서</h2>
+        <span id="userCount" class="text-xs text-gray-400">0명</span>
+      </div>
+      <div id="userList" class="divide-y divide-gray-50" style="max-height:500px;overflow-y:auto;"></div>
     </div>
   </div>
 </div>
@@ -128,35 +177,11 @@
 let sse = null;
 let dotTimer = null;
 let dotCount = 0;
-
-// IP 블랙리스트 / 이메일 인증 에러 감지
-const ERROR_HINTS = [
-  {
-    pattern: /email|blacklist|ip|password is correct/i,
-    msg: 'Instagram이 현재 IP를 차단했거나 이메일 인증을 요구하고 있습니다.',
-    hint: '→ 설정에서 프록시(주거용 IP)를 설정하거나, 크롤링 계정의 IP를 변경해 주세요.\n→ 해당 계정으로 직접 로그인해서 이메일 인증을 완료한 후 다시 시도하세요.'
-  },
-  {
-    pattern: /challenge|checkpoint/i,
-    msg: 'Instagram이 보안 인증(체크포인트)을 요구하고 있습니다.',
-    hint: '→ 해당 계정으로 직접 로그인해서 인증을 완료한 후 다시 시도하세요.\n→ 계정 관리에서 해당 계정을 삭제하고 재등록하면 세션이 초기화됩니다.'
-  },
-  {
-    pattern: /rate|wait|please wait/i,
-    msg: '요청이 너무 많아 Instagram이 일시적으로 제한했습니다.',
-    hint: '→ 잠시 후(10~30분) 다시 시도해 주세요.\n→ 계정 풀에 계정을 추가하면 계정을 교체하며 수집할 수 있습니다.'
-  },
-  {
-    pattern: /login|로그인/i,
-    msg: '로그인에 실패했습니다.',
-    hint: '→ 계정 관리에서 해당 계정의 아이디/비밀번호를 확인해 주세요.'
-  },
-];
+let totalUsers = 0;
 
 function setStatus(msg, type='idle') {
   const line = document.getElementById('statusLine');
   const dot = document.getElementById('statusDot');
-  // 점 애니메이션 정리
   if (dotTimer) { clearInterval(dotTimer); dotTimer = null; }
   line.textContent = msg;
   if (type === 'running') {
@@ -180,52 +205,58 @@ function setStatus(msg, type='idle') {
   }
 }
 
-function showError(errMsg) {
-  const box = document.getElementById('errorBox');
-  const msg = document.getElementById('errorMsg');
-  const hint = document.getElementById('errorHint');
-  box.classList.remove('hidden');
-  // 원본 에러 표시
-  msg.textContent = errMsg;
-  // 힌트 매칭
-  const matched = ERROR_HINTS.find(h => h.pattern.test(errMsg));
-  if (matched) {
-    msg.textContent = matched.msg;
-    hint.style.whiteSpace = 'pre-line';
-    hint.textContent = matched.hint;
-  } else {
-    hint.textContent = '';
-  }
-}
-
-function hideError() {
-  document.getElementById('errorBox').classList.add('hidden');
+function addUsers(users) {
+  const list = document.getElementById('userList');
+  users.forEach(u => {
+    totalUsers++;
+    const div = document.createElement('div');
+    div.className = 'flex items-center gap-3 px-4 py-2 hover:bg-gray-50 animate-fadeIn';
+    const badge = u.is_new
+      ? '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#eef2ff;color:#4f46e5;">NEW</span>'
+      : '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#f0fdf4;color:#059669;">기존</span>';
+    div.innerHTML = `
+      <span class="text-xs text-gray-300 w-6 text-right flex-shrink-0">${totalUsers}</span>
+      <img src="${u.pic || 'https://ui-avatars.com/api/?name='+encodeURIComponent(u.username||'U')+'&background=6366f1&color=fff&size=32'}"
+           class="w-8 h-8 rounded-full object-cover flex-shrink-0" style="border:2px solid ${u.is_new?'#c7d2fe':'#e5e7eb'};"
+           onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${u.username||'U'}')+'&background=6366f1&color=fff&size=32'">
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-semibold text-gray-800 truncate">@${u.username || '?'}</div>
+        ${u.full_name ? '<div class="text-xs text-gray-400 truncate">'+u.full_name+'</div>' : ''}
+      </div>
+      ${badge}
+    `;
+    list.prepend(div);
+  });
+  document.getElementById('userCount').textContent = totalUsers + '명';
+  // 자동 스크롤 (최신이 위)
 }
 
 function startCollect() {
   const hashtag = document.getElementById('hashtagInput').value.trim().replace(/^#/,'');
   if (!hashtag) { alert('해시태그를 입력해주세요'); return; }
 
-  const count = '500';
   const targetUsers = document.getElementById('targetUsersInput').value;
   const searchType = document.querySelector('input[name="searchType"]:checked').value;
 
   document.getElementById('startBtn').disabled = true;
   document.getElementById('startBtn').textContent = '수집 중...';
   document.getElementById('progressArea').classList.remove('hidden');
+  document.getElementById('userListCard').classList.remove('hidden');
+  document.getElementById('userList').innerHTML = '';
+  totalUsers = 0;
   document.getElementById('statusBadge').textContent = '수집 중';
   document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
-  hideError();
+  document.getElementById('errorBox').classList.add('hidden');
   setStatus(`#${hashtag} 수집 준비 중`, 'running');
 
-  const form = new URLSearchParams({ hashtag, requested_count: count, target_users: targetUsers, search_type: searchType });
+  const form = new URLSearchParams({ hashtag, requested_count: '500', target_users: targetUsers, search_type: searchType });
   fetch('/collect/start', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     .then(r => r.text())
     .then(jobId => {
       setStatus(`#${hashtag} 수집 중`, 'running');
       listenProgress(jobId.trim(), hashtag, parseInt(targetUsers), searchType);
     })
-    .catch(e => { setStatus(`연결 오류: ${e}`, 'error'); showError(String(e)); });
+    .catch(e => { setStatus(`연결 오류: ${e}`, 'error'); });
 }
 
 function listenProgress(jobId, hashtag, targetUsers, searchType) {
@@ -237,13 +268,19 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
     const p = JSON.parse(e.data);
     if (!p || !p.hashtag) return;
 
+    // 카운터 업데이트
     document.getElementById('cntPosts').textContent = p.posts || 0;
     document.getElementById('cntNew').textContent = p.new || 0;
     document.getElementById('cntUpdated').textContent = p.updated || 0;
 
+    // 페이지 번호 추출
+    const pageMatch = (p.status || '').match(/페이지\s*(\d+)/);
+    if (pageMatch) document.getElementById('cntPage').textContent = pageMatch[1];
+
+    // 진행률
     const found = (p.new || 0) + (p.updated || 0);
-    const pct = Math.min(100, Math.round((found / targetUsers) * 100));
-    document.getElementById('progressNum').textContent = `${found}명 / ${targetUsers}명`;
+    const pct = Math.min(100, Math.round(((p.new || 0) / targetUsers) * 100));
+    document.getElementById('progressNum').textContent = `신규 ${p.new||0}명 / 목표 ${targetUsers}명`;
     document.getElementById('progressBar').style.width = pct + '%';
     document.getElementById('progressLabel').textContent = p.status || '';
 
@@ -251,11 +288,17 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
       setStatus(p.status, p.done ? (p.error ? 'error' : 'done') : 'running');
     }
 
+    // 실시간 유저 리스트
+    if (p.users && p.users.length > 0) {
+      addUsers(p.users);
+    }
+
     if (p.done) {
       sse.close();
       if (p.error) {
         setStatus('수집 실패', 'error');
-        showError(p.error);
+        document.getElementById('errorBox').classList.remove('hidden');
+        document.getElementById('errorMsg').textContent = p.error;
         document.getElementById('statusBadge').textContent = '에러';
         document.getElementById('statusBadge').style.cssText = 'background:rgba(239,68,68,.1);color:#ef4444';
       } else {
@@ -266,8 +309,19 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
         document.getElementById('doneArea').classList.remove('hidden');
       }
       document.getElementById('startBtn').disabled = false;
-      document.getElementById('startBtn').textContent = '▶ 수집 시작';
+      document.getElementById('startBtn').textContent = '수집 시작';
     }
+  };
+
+  sse.onerror = function() {
+    // SSE 연결 끊김 (Vercel 타임아웃 등)
+    sse.close();
+    setStatus('연결 끊김 — 수집된 데이터는 저장되었습니다.', 'done');
+    document.getElementById('statusBadge').textContent = '중단';
+    document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('startBtn').textContent = '수집 시작';
+    document.getElementById('doneArea').classList.remove('hidden');
   };
 }
 
@@ -275,12 +329,20 @@ function resetForm() {
   document.getElementById('hashtagInput').value = '';
   document.getElementById('progressArea').classList.add('hidden');
   document.getElementById('doneArea').classList.add('hidden');
+  document.getElementById('userListCard').classList.add('hidden');
+  document.getElementById('userList').innerHTML = '';
+  totalUsers = 0;
   document.getElementById('statusBadge').textContent = '대기 중';
   document.getElementById('statusBadge').style.cssText = 'background:#f1f5f9;color:#64748b';
-  document.getElementById('cntPosts').textContent = document.getElementById('cntNew').textContent = document.getElementById('cntUpdated').textContent = '0';
+  document.getElementById('cntPosts').textContent = document.getElementById('cntNew').textContent = document.getElementById('cntUpdated').textContent = document.getElementById('cntPage').textContent = '0';
   document.getElementById('progressBar').style.width = '0%';
   setStatus('수집 준비 완료. 해시태그를 입력하고 시작하세요.', 'idle');
-  hideError();
+  document.getElementById('errorBox').classList.add('hidden');
 }
 </script>
+
+<style>
+@keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+.animate-fadeIn { animation: fadeIn .3s ease-out; }
+</style>
 {% endblock %}

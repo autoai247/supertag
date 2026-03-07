@@ -332,14 +332,10 @@ const CAT_COLORS = {
 
 function fmt(n, type) {
   n = n || 0;
-  if (type === 'follower') {
-    if (n >= 10000000) return (n/10000000).toFixed(1).replace('.0','') + '<span style="font-size:10px;font-weight:500;">백만</span>';
-    if (n >= 10000) { const m=Math.floor(n/10000).toLocaleString(); const k=Math.floor((n%10000)/1000); return m+'<span style="font-size:10px;font-weight:500;">만</span>'+(k>0?k+'<span style="font-size:10px;">천</span>':''); }
-    return n.toLocaleString();
-  }
-  if (n >= 10000) return Math.floor(n/10000).toLocaleString()+'<span style="font-size:10px;font-weight:500;">만</span>';
-  if (n >= 1000) return (n/1000).toFixed(1).replace('.0','')+'<span style="font-size:10px;font-weight:500;">k</span>';
-  return n > 0 ? String(n) : '-';
+  if (n <= 0) return '-';
+  if (n >= 1000000) return (n/1000000).toFixed(1).replace('.0','') + '<span style="font-size:10px;font-weight:500;">M</span>';
+  if (n >= 1000) return (n/1000).toFixed(1).replace('.0','') + '<span style="font-size:10px;font-weight:500;">K</span>';
+  return String(n);
 }
 
 function renderCard(r, idx) {

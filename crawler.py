@@ -118,16 +118,62 @@ def _hiker_user_medias(user_id: str, amount: int = 50) -> list | None:
     return None
 
 
+def _hiker_hashtag_medias_page(hashtag: str, endpoint: str = "recent", max_id: str = None) -> tuple:
+    """HikerAPI v2 해시태그 1페이지 조회. (medias_list, next_max_id) 반환."""
+    token = os.environ.get("HIKERAPI_TOKEN", "").strip()
+    if not token:
+        return [], None
+    params = {"name": hashtag}
+    if max_id:
+        params["max_id"] = max_id
+    try:
+        r = req_lib.get(
+            f"https://api.hikerapi.com/v2/hashtag/medias/{endpoint}",
+            params=params,
+            headers={"x-access-key": token, "accept": "application/json"},
+            timeout=30,
+        )
+        if r.status_code == 402:
+            raise Exception("HikerAPI 크레딧 소진")
+        if r.status_code != 200:
+            return [], None
+        data = r.json()
+        resp = data.get("response", {})
+        # next_page_id 위치가 API 버전에 따라 다를 수 있음
+        next_id = (data.get("next_page_id")
+                   or data.get("next_max_id")
+                   or resp.get("next_page_id")
+                   or resp.get("next_max_id")
+                   or resp.get("next_media_ids", {}).get("default"))
+        # more_available 체크
+        if not next_id and resp.get("more_available"):
+            next_id = resp.get("next_max_id") or resp.get("max_id")
+        medias = []
+        for sec in resp.get("sections", []):
+            for row in sec.get("layout_content", {}).get("medias", []):
+                if "media" in row:
+                    medias.append(row["media"])
+        log.info(f"[HikerAPI] hashtag={hashtag} page max_id={max_id} → {len(medias)} medias, next_id={next_id}, keys={list(data.keys())}, resp_keys={list(resp.keys())}")
+        return medias, next_id
+    except Exception as e:
+        log.warning(f"[HikerAPI] 해시태그 페이지 조회 실패: {e}")
+        raise
+
+
 def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "recent") -> list | None:
-    """HikerAPI로 해시태그 게시물 조회 (직접 REST API). recent 빈 결과 시 top 폴백."""
+    """HikerAPI v2로 해시태그 게시물 조회. 페이징 지원으로 대량 수집 가능."""
     token = os.environ.get("HIKERAPI_TOKEN", "").strip()
     if not token:
         return None
 
-    def _fetch(endpoint):
+    def _fetch_v2(endpoint, max_id=None):
+        """v2 API: sections 형식, 페이징 지원."""
+        params = {"name": hashtag}
+        if max_id:
+            params["max_id"] = max_id
         r = req_lib.get(
-            f"https://api.hikerapi.com/v1/hashtag/medias/{endpoint}",
-            params={"name": hashtag, "count": amount},
+            f"https://api.hikerapi.com/v2/hashtag/medias/{endpoint}",
+            params=params,
             headers={"x-access-key": token, "accept": "application/json"},
             timeout=30,
         )
@@ -136,16 +182,68 @@ def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "r
         if r.status_code != 200:
             raise Exception(f"HikerAPI 응답 오류 ({r.status_code}): {r.text[:200]}")
         data = r.json()
+        resp = data.get("response", {})
+        next_id = data.get("next_page_id") or resp.get("next_max_id")
+        # sections에서 media 추출
+        medias = []
+        for sec in resp.get("sections", []):
+            for row in sec.get("layout_content", {}).get("medias", []):
+                if "media" in row:
+                    medias.append(row["media"])
+        return medias, next_id
+
+    def _fetch_v1_top():
+        """v1 top: 페이징 없지만 간단한 list 반환."""
+        r = req_lib.get(
+            "https://api.hikerapi.com/v1/hashtag/medias/top",
+            params={"name": hashtag},
+            headers={"x-access-key": token, "accept": "application/json"},
+            timeout=30,
+        )
+        if r.status_code != 200:
+            return []
+        data = r.json()
         return data if isinstance(data, list) else []
 
     try:
+        all_items = []
+        seen_pks = set()
         endpoint = "top" if search_type == "top" else "recent"
-        results = _fetch(endpoint)
-        # recent가 빈 결과면 top으로 폴백
-        if not results and endpoint == "recent":
-            log.info(f"[HikerAPI] #{hashtag} recent 빈 결과 → top 폴백")
-            results = _fetch("top")
-        return results[:amount] if results else None
+        max_id = None
+        max_pages = max(amount // 20, 5)  # 페이지당 ~24개
+
+        for page in range(max_pages):
+            items, next_id = _fetch_v2(endpoint, max_id)
+            if not items:
+                break
+            for item in items:
+                item_pk = item.get("pk") or item.get("id")
+                if item_pk and item_pk not in seen_pks:
+                    seen_pks.add(item_pk)
+                    all_items.append(item)
+            log.info(f"[HikerAPI] #{hashtag} {endpoint} p{page+1}: +{len(items)}개 (누적 {len(all_items)}개)")
+            if len(all_items) >= amount:
+                break
+            if not next_id:
+                break
+            max_id = next_id
+            time.sleep(0.3)
+
+        # v1 top도 추가 (중복 제거)
+        if search_type != "top":
+            try:
+                top_items = _fetch_v1_top()
+                for item in top_items:
+                    item_pk = item.get("pk") or item.get("id")
+                    if item_pk and item_pk not in seen_pks:
+                        seen_pks.add(item_pk)
+                        all_items.append(item)
+                if top_items:
+                    log.info(f"[HikerAPI] #{hashtag} v1 top +{len(top_items)}개 → 총 {len(all_items)}개")
+            except Exception:
+                pass
+
+        return all_items[:amount] if all_items else None
     except Exception as e:
         log.warning(f"[HikerAPI] 해시태그 조회 실패 {hashtag}: {e}")
         raise
@@ -732,6 +830,7 @@ def _update_profile_from_info(u_info, pk: str, username: str):
         if fn: profile_updates["full_name"] = fn
         profile_updates["is_business"] = is_biz
         if cat: profile_updates["category"] = cat
+        if pic_url: profile_updates["profile_pic_url"] = pic_url
 
         if is_biz:
             from database import save_manual, get_manual
