@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% set active = "target_extract" %}
+{% block title %}타겟 추출 - SuperTag{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <h1 class="text-xl font-bold text-gray-900">타겟 추출</h1>
+  <p class="text-sm text-gray-500 mt-0.5">특정 계정의 팔로워/팔로잉 또는 게시물 댓글 작성자를 추출합니다.</p>
+</div>
+
+<div class="grid grid-cols-5 gap-5">
+  <!-- 좌측: 추출 설정 -->
+  <div class="col-span-2 space-y-5">
+    <div class="card p-5">
+      <h2 class="font-semibold text-gray-800 mb-4">추출 설정</h2>
+      <div class="space-y-3">
+        <!-- 추출 유형 -->
+        <div>
+          <div class="text-xs text-gray-500 mb-1.5">추출 유형</div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+              <input type="radio" name="extractType" value="followers" checked class="accent-indigo-500">
+              <div><div class="text-xs font-bold text-gray-700">팔로워</div><div class="text-xs text-gray-400">계정의 팔로워 목록</div></div>
+            </label>
+            <label class="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+              <input type="radio" name="extractType" value="following" class="accent-indigo-500">
+              <div><div class="text-xs font-bold text-gray-700">팔로잉</div><div class="text-xs text-gray-400">계정이 팔로우하는 목록</div></div>
+            </label>
+            <label class="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+              <input type="radio" name="extractType" value="commenters" class="accent-indigo-500">
+              <div><div class="text-xs font-bold text-gray-700">댓글 작성자</div><div class="text-xs text-gray-400">게시물 댓글러 추출</div></div>
+            </label>
+            <label class="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50" style="border-color:#e2e8f0;">
+              <input type="radio" name="extractType" value="likers" class="accent-indigo-500">
+              <div><div class="text-xs font-bold text-gray-700">좋아요 누른 사람</div><div class="text-xs text-gray-400">게시물 좋아요 추출</div></div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 계정 입력 (팔로워/팔로잉용) -->
+        <div id="accountInput">
+          <div class="text-xs text-gray-500 mb-1">대상 계정 <span class="text-red-400">*</span></div>
+          <div class="flex gap-2">
+            <span class="flex items-center px-2.5 py-2 text-sm text-gray-400 rounded-lg border border-gray-200 border-r-0 rounded-r-none">@</span>
+            <input id="targetUsername" type="text" placeholder="username"
+              class="flex-1 px-3 py-2 text-sm rounded-lg rounded-l-none border border-gray-200 border-l-0">
+          </div>
+        </div>
+
+        <!-- 게시물 URL 입력 (댓글/좋아요용) -->
+        <div id="mediaInput" class="hidden">
+          <div class="text-xs text-gray-500 mb-1">게시물 URL <span class="text-red-400">*</span></div>
+          <input id="mediaUrl" type="text" placeholder="https://www.instagram.com/p/ABC123..."
+            class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200">
+        </div>
+
+        <!-- 최대 추출 수 -->
+        <div>
+          <div class="text-xs text-gray-500 mb-1">최대 추출 수</div>
+          <div class="flex gap-2 items-center">
+            <input id="maxCount" type="number" value="500" min="1" max="10000"
+              class="w-28 px-3 py-2 text-sm rounded-lg border border-gray-200">
+            <span class="text-sm text-gray-500">명</span>
+            <div class="flex gap-1">
+              {% for n in [100, 500, 1000, 5000] %}
+              <button type="button" onclick="document.getElementById('maxCount').value={{n}}"
+                class="px-2 py-1.5 text-xs rounded border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition">{{ n }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <input type="checkbox" id="saveToDb" checked class="rounded accent-indigo-500">
+          DB에 인플루언서로 저장
+        </label>
+
+        <button id="startBtn" onclick="startExtract()"
+          class="w-full py-2.5 rounded-lg font-semibold text-white text-sm hover:opacity-90 transition mt-1"
+          style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+          추출 시작
+        </button>
+      </div>
+
+      <div class="mt-5 p-3 rounded-lg text-xs text-gray-500 space-y-1" style="background:#f8fafc;">
+        <div class="font-semibold text-gray-600 mb-2">비용 안내</div>
+        <div>- 팔로워/팔로잉: 페이지당 API 1회 (~200명/페이지)</div>
+        <div>- 댓글/좋아요: 페이지당 API 1회 (~20명/페이지)</div>
+        <div class="pt-2 text-gray-400 border-t mt-2">
+          추출된 계정은 DB에 저장하여 상세 갱신 후 분석할 수 있습니다.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 우측: 실시간 진행 + 유저 리스트 -->
+  <div class="col-span-3 space-y-4">
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-gray-800">진행 상황</h2>
+        <span id="statusBadge" class="badge text-gray-500" style="background:#f1f5f9;">대기 중</span>
+      </div>
+
+      <div id="progressArea" class="hidden">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span id="progressLabel">추출 중...</span>
+          <span id="progressNum">0명</span>
+        </div>
+        <div class="w-full h-2 rounded-full mb-4" style="background:#e2e8f0;">
+          <div id="progressBar" class="h-2 rounded-full transition-all duration-300"
+               style="background:linear-gradient(90deg,#6366f1,#8b5cf6);width:0%"></div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="text-center py-3 rounded-lg" style="background:#eef2ff;">
+            <div id="cntExtracted" class="text-xl font-bold text-indigo-600">0</div>
+            <div class="text-xs text-gray-400 mt-0.5">추출</div>
+          </div>
+          <div class="text-center py-3 rounded-lg" style="background:#f0fdf4;">
+            <div id="cntNew" class="text-xl font-bold text-green-600">0</div>
+            <div class="text-xs text-gray-400 mt-0.5">신규</div>
+          </div>
+          <div class="text-center py-3 rounded-lg" style="background:#fef3c7;">
+            <div id="cntDup" class="text-xl font-bold text-amber-600">0</div>
+            <div class="text-xs text-gray-400 mt-0.5">중복</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg px-4 py-3 font-mono text-xs flex items-center gap-3" style="background:#0f172a;min-height:48px;">
+        <span id="statusDot" class="w-2 h-2 rounded-full flex-shrink-0" style="background:#475569;"></span>
+        <span id="statusLine" class="text-gray-500">대상 계정 또는 게시물 URL을 입력하고 시작하세요.</span>
+      </div>
+
+      <div id="doneArea" class="hidden mt-4 flex gap-2">
+        <a href="/influencers" class="btn btn-primary text-sm flex-1 justify-center">인플루언서 목록</a>
+        <button onclick="resetPage()" class="btn btn-ghost text-sm">다시 추출</button>
+      </div>
+    </div>
+
+    <!-- 실시간 유저 리스트 -->
+    <div id="userListCard" class="card overflow-hidden hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="font-semibold text-gray-800 text-sm">추출된 계정</h2>
+        <span id="userCount" class="text-xs text-gray-400">0명</span>
+      </div>
+      <div id="userList" class="divide-y divide-gray-50" style="max-height:500px;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 추출 유형에 따라 입력 필드 토글
+document.querySelectorAll('input[name="extractType"]').forEach(r => {
+  r.addEventListener('change', function() {
+    const isMedia = this.value === 'commenters' || this.value === 'likers';
+    document.getElementById('accountInput').classList.toggle('hidden', isMedia);
+    document.getElementById('mediaInput').classList.toggle('hidden', !isMedia);
+  });
+});
+
+let sse = null;
+let dotTimer = null;
+let dotCount = 0;
+let totalUsers = 0;
+
+function setStatus(msg, type='idle') {
+  const line = document.getElementById('statusLine');
+  const dot = document.getElementById('statusDot');
+  if (dotTimer) { clearInterval(dotTimer); dotTimer = null; }
+  line.textContent = msg;
+  if (type === 'running') {
+    dot.style.background = '#6366f1'; dot.style.boxShadow = '0 0 6px #6366f1';
+    dotCount = 0;
+    const base = msg.replace(/\.+$/, '');
+    dotTimer = setInterval(() => { dotCount = (dotCount+1)%4; line.textContent = base + '.'.repeat(dotCount); }, 400);
+  } else if (type === 'done') {
+    dot.style.background = '#10b981'; dot.style.boxShadow = '0 0 6px #10b981';
+  } else if (type === 'error') {
+    dot.style.background = '#ef4444'; dot.style.boxShadow = '0 0 6px #ef4444';
+  } else {
+    dot.style.background = '#475569'; dot.style.boxShadow = 'none';
+  }
+}
+
+function startExtract() {
+  const extractType = document.querySelector('input[name="extractType"]:checked').value;
+  const isMedia = extractType === 'commenters' || extractType === 'likers';
+  const target = isMedia ? document.getElementById('mediaUrl').value.trim() : document.getElementById('targetUsername').value.trim().replace(/^@/,'');
+  const maxCount = document.getElementById('maxCount').value;
+  const saveToDb = document.getElementById('saveToDb').checked;
+
+  if (!target) { alert(isMedia ? '게시물 URL을 입력해주세요' : '계정명을 입력해주세요'); return; }
+
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('startBtn').textContent = '추출 중...';
+  document.getElementById('progressArea').classList.remove('hidden');
+  document.getElementById('userListCard').classList.remove('hidden');
+  document.getElementById('userList').innerHTML = '';
+  totalUsers = 0;
+  document.getElementById('statusBadge').textContent = '추출 중';
+  document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
+  setStatus('추출 준비 중', 'running');
+
+  const params = new URLSearchParams({
+    type: extractType, target, max_count: maxCount, save_to_db: saveToDb ? '1' : '0'
+  });
+
+  if (sse) sse.close();
+  sse = new EventSource(`/api/target-extract/stream?${params}`);
+
+  sse.onmessage = function(e) {
+    const p = JSON.parse(e.data);
+
+    if (p.extracted !== undefined) document.getElementById('cntExtracted').textContent = p.extracted;
+    if (p.new_cnt !== undefined) document.getElementById('cntNew').textContent = p.new_cnt;
+    if (p.dup_cnt !== undefined) document.getElementById('cntDup').textContent = p.dup_cnt;
+
+    const pct = p.max_count ? Math.min(100, Math.round((p.extracted / p.max_count) * 100)) : 0;
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressNum').textContent = `${p.extracted || 0}명`;
+
+    if (p.status) setStatus(p.status, p.done ? (p.error ? 'error' : 'done') : 'running');
+    if (p.label) document.getElementById('progressLabel').textContent = p.label;
+
+    if (p.users && p.users.length > 0) {
+      const list = document.getElementById('userList');
+      p.users.forEach(u => {
+        totalUsers++;
+        const div = document.createElement('div');
+        div.className = 'flex items-center gap-3 px-4 py-2 hover:bg-gray-50';
+        const badge = u.is_new
+          ? '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#eef2ff;color:#4f46e5;">NEW</span>'
+          : '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#f0fdf4;color:#059669;">기존</span>';
+        div.innerHTML = `
+          <span class="text-xs text-gray-300 w-6 text-right flex-shrink-0">${totalUsers}</span>
+          <img src="${u.pic || 'https://ui-avatars.com/api/?name='+encodeURIComponent(u.username||'U')+'&background=6366f1&color=fff&size=32'}"
+               class="w-8 h-8 rounded-full object-cover flex-shrink-0" style="border:2px solid ${u.is_new?'#c7d2fe':'#e5e7eb'};"
+               onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${u.username||'U'}')+'&background=6366f1&color=fff&size=32'">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-gray-800 truncate">@${u.username || '?'}</div>
+            ${u.full_name ? '<div class="text-xs text-gray-400 truncate">'+u.full_name+'</div>' : ''}
+          </div>
+          ${badge}
+        `;
+        list.prepend(div);
+      });
+      document.getElementById('userCount').textContent = totalUsers + '명';
+    }
+
+    if (p.done) {
+      sse.close();
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('startBtn').textContent = '추출 시작';
+      document.getElementById('doneArea').classList.remove('hidden');
+      if (p.error) {
+        document.getElementById('statusBadge').textContent = '에러';
+        document.getElementById('statusBadge').style.cssText = 'background:rgba(239,68,68,.1);color:#ef4444';
+      } else {
+        document.getElementById('statusBadge').textContent = '완료';
+        document.getElementById('statusBadge').style.cssText = 'background:rgba(16,185,129,.1);color:#10b981';
+        document.getElementById('progressBar').style.width = '100%';
+      }
+    }
+  };
+
+  sse.onerror = function() {
+    sse.close();
+    setStatus(`추출 중단 — ${totalUsers}명 추출됨`, 'done');
+    document.getElementById('statusBadge').textContent = '중단';
+    document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('startBtn').textContent = '추출 시작';
+    document.getElementById('doneArea').classList.remove('hidden');
+  };
+}
+
+function resetPage() { location.reload(); }
+</script>
+{% endblock %}

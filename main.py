@@ -106,7 +106,7 @@ _RATE_LIMIT_AUTH = 120  # 분당 최대 요청 수 (인증된 사용자)
 _WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico"}
 # 데이터 페이지 경로 (검색엔진 봇 차단 대상)
 _DATA_PATHS = ["/influencers", "/api/", "/advertiser", "/export", "/collect",
-               "/hashtags", "/settings", "/refresh"]
+               "/hashtags", "/settings", "/refresh", "/target-extract"]
 
 def _get_client_ip(request: Request) -> str:
     """클라이언트 IP 추출 (프록시 지원)"""
@@ -1255,6 +1255,263 @@ def collect_posts_page(request: Request, session_id: Optional[str] = Cookie(defa
     return templates.TemplateResponse("collect_posts.html", {
         "request": request, "user": user,
     })
+
+@app.get("/target-extract", response_class=HTMLResponse)
+def target_extract_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    return templates.TemplateResponse("target_extract.html", {"request": request, "user": user})
+
+
+@app.get("/api/target-extract/stream")
+def target_extract_stream(
+    type: str = "followers", target: str = "",
+    max_count: int = 500, save_to_db: str = "1",
+    session_id: Optional[str] = Cookie(default=None),
+):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    if not target: return JSONResponse({"error": "대상을 입력해주세요"}, 400)
+
+    import requests as req
+    token = os.getenv("HIKERAPI_TOKEN", "")
+    save = save_to_db == "1"
+
+    def stream():
+        extracted = 0
+        new_cnt = 0
+        dup_cnt = 0
+        cursor = None
+        p = {"extracted": 0, "new_cnt": 0, "dup_cnt": 0, "max_count": max_count,
+             "done": False, "users": [], "status": "", "label": ""}
+
+        try:
+            # 팔로워/팔로잉: username → user_id 변환
+            if type in ("followers", "following"):
+                label = "팔로워" if type == "followers" else "팔로잉"
+                p["status"] = f"@{target} 계정 정보 조회 중"
+                p["label"] = f"@{target} {label} 추출 중..."
+                yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+                # username → user_id
+                info_r = req.get("https://api.hikerapi.com/v1/user/by/username",
+                                 params={"username": target, "access_key": token}, timeout=15)
+                info = info_r.json()
+                user_id = str(info.get("pk", ""))
+                if not user_id:
+                    p.update({"done": True, "error": True, "status": f"@{target} 계정을 찾을 수 없습니다"})
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                    return
+
+                endpoint = f"https://api.hikerapi.com/v1/user/{type}/chunk"
+
+                while extracted < max_count:
+                    params = {"user_id": user_id, "access_key": token}
+                    if cursor:
+                        params["max_id"] = cursor
+
+                    r = req.get(endpoint, params=params, timeout=15)
+                    data = r.json()
+
+                    if not isinstance(data, list) or len(data) < 2:
+                        break
+                    users_list = data[0] if isinstance(data[0], list) else []
+                    cursor = data[1] if len(data) > 1 else None
+
+                    if not users_list:
+                        break
+
+                    page_users = []
+                    from database import upsert_influencer, get_influencer
+                    for u in users_list:
+                        if not isinstance(u, dict):
+                            continue
+                        if extracted >= max_count:
+                            break
+                        pk = str(u.get("pk", ""))
+                        uname = u.get("username", "")
+                        fname = u.get("full_name", "")
+                        pic = u.get("profile_pic_url", "")
+                        is_private = u.get("is_private", False)
+
+                        existing = get_influencer(pk)
+                        is_new = not existing
+
+                        if save and not is_private:
+                            try:
+                                from database import upload_profile_pic
+                                pic_local = ""
+                                if pic:
+                                    stored = upload_profile_pic(pk, pic)
+                                    if stored: pic_local = stored
+                                inf_data = {"pk": pk, "username": uname, "full_name": fname,
+                                            "profile_pic_url": pic}
+                                if pic_local: inf_data["profile_pic_local"] = pic_local
+                                upsert_influencer(inf_data)
+                            except Exception:
+                                pass
+
+                        if is_new: new_cnt += 1
+                        else: dup_cnt += 1
+                        extracted += 1
+
+                        page_users.append({"username": uname, "full_name": fname,
+                                          "pic": pic, "is_new": is_new})
+
+                    p.update({"extracted": extracted, "new_cnt": new_cnt, "dup_cnt": dup_cnt,
+                              "users": page_users,
+                              "status": f"@{target} {label} 추출 중 — {extracted}명",
+                              "label": f"@{target} {label} 추출 중..."})
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+                    if not cursor:
+                        break
+                    time.sleep(0.5)
+
+            # 댓글 작성자
+            elif type == "commenters":
+                code = target.split("/p/")[-1].split("/")[0] if "/p/" in target else target.split("/reel/")[-1].split("/")[0] if "/reel/" in target else target
+                p["status"] = f"게시물 정보 조회 중"
+                p["label"] = "댓글 작성자 추출 중..."
+                yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+                # code → media_id
+                media_r = req.get("https://api.hikerapi.com/v1/media/by/code",
+                                  params={"code": code, "access_key": token}, timeout=15)
+                media = media_r.json()
+                media_id = str(media.get("pk", ""))
+                if not media_id:
+                    p.update({"done": True, "error": True, "status": "게시물을 찾을 수 없습니다"})
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                    return
+
+                endpoint = "https://api.hikerapi.com/v1/media/comments/chunk"
+                seen_pks = set()
+
+                while extracted < max_count:
+                    params = {"id": media_id, "access_key": token}
+                    if cursor:
+                        params["max_id"] = cursor
+
+                    r = req.get(endpoint, params=params, timeout=15)
+                    data = r.json()
+
+                    comments = []
+                    next_cursor = None
+                    if isinstance(data, list) and len(data) >= 2:
+                        comments = data[0] if isinstance(data[0], list) else []
+                        next_cursor = data[1] if len(data) > 1 else None
+                    elif isinstance(data, dict):
+                        comments = data.get("comments", [])
+                        next_cursor = data.get("next_min_id")
+
+                    if not comments:
+                        break
+
+                    page_users = []
+                    from database import upsert_influencer, get_influencer
+                    for c in comments:
+                        if not isinstance(c, dict): continue
+                        u = c.get("user", {})
+                        if not isinstance(u, dict): continue
+                        pk = str(u.get("pk", ""))
+                        if not pk or pk in seen_pks: continue
+                        seen_pks.add(pk)
+                        if extracted >= max_count: break
+
+                        uname = u.get("username", "")
+                        fname = u.get("full_name", "")
+                        pic = u.get("profile_pic_url", "")
+
+                        existing = get_influencer(pk)
+                        is_new = not existing
+
+                        if save:
+                            try:
+                                upsert_influencer({"pk": pk, "username": uname,
+                                                   "full_name": fname, "profile_pic_url": pic})
+                            except Exception: pass
+
+                        if is_new: new_cnt += 1
+                        else: dup_cnt += 1
+                        extracted += 1
+                        page_users.append({"username": uname, "full_name": fname,
+                                          "pic": pic, "is_new": is_new})
+
+                    cursor = next_cursor
+                    p.update({"extracted": extracted, "new_cnt": new_cnt, "dup_cnt": dup_cnt,
+                              "users": page_users,
+                              "status": f"댓글 작성자 추출 중 — {extracted}명"})
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+                    if not cursor: break
+                    time.sleep(0.5)
+
+            # 좋아요 누른 사람
+            elif type == "likers":
+                code = target.split("/p/")[-1].split("/")[0] if "/p/" in target else target.split("/reel/")[-1].split("/")[0] if "/reel/" in target else target
+                p["status"] = "게시물 정보 조회 중"
+                p["label"] = "좋아요 누른 사람 추출 중..."
+                yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+                media_r = req.get("https://api.hikerapi.com/v1/media/by/code",
+                                  params={"code": code, "access_key": token}, timeout=15)
+                media = media_r.json()
+                media_id = str(media.get("pk", ""))
+                if not media_id:
+                    p.update({"done": True, "error": True, "status": "게시물을 찾을 수 없습니다"})
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                    return
+
+                likers_r = req.get("https://api.hikerapi.com/v1/media/likers",
+                                   params={"id": media_id, "access_key": token}, timeout=15)
+                likers_data = likers_r.json()
+                users_list = likers_data if isinstance(likers_data, list) else likers_data.get("users", [])
+
+                page_users = []
+                from database import upsert_influencer, get_influencer
+                for u in users_list:
+                    if not isinstance(u, dict): continue
+                    if extracted >= max_count: break
+                    pk = str(u.get("pk", ""))
+                    uname = u.get("username", "")
+                    fname = u.get("full_name", "")
+                    pic = u.get("profile_pic_url", "")
+
+                    existing = get_influencer(pk)
+                    is_new = not existing
+
+                    if save:
+                        try:
+                            upsert_influencer({"pk": pk, "username": uname,
+                                               "full_name": fname, "profile_pic_url": pic})
+                        except Exception: pass
+
+                    if is_new: new_cnt += 1
+                    else: dup_cnt += 1
+                    extracted += 1
+                    page_users.append({"username": uname, "full_name": fname,
+                                      "pic": pic, "is_new": is_new})
+
+                p.update({"extracted": extracted, "new_cnt": new_cnt, "dup_cnt": dup_cnt,
+                          "users": page_users,
+                          "status": f"좋아요 추출 완료 — {extracted}명"})
+                yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+            # 완료
+            p.update({"done": True, "users": [],
+                      "status": f"완료 — 추출 {extracted}명 (신규 {new_cnt} / 중복 {dup_cnt})"})
+            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            log.error(f"타겟 추출 에러: {e}")
+            p.update({"done": True, "error": True, "users": [],
+                      "status": f"오류: {str(e)[:100]}"})
+            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
 
 @app.get("/api/hashtag/search")
 def hashtag_search_api(q: str = "", session_id: Optional[str] = Cookie(default=None)):
