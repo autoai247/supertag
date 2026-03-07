@@ -791,20 +791,15 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
             return 0, []
         inf_params["pk"] = f"in.({','.join(pks)})"
     elif excluded_pks:
-        # manual 필터 없어도 제외 유저는 결과에서 필터
-        pass
+        # 숨김/밴 pk를 Supabase 서버에서 직접 제외
+        inf_params["pk"] = f"not.in.({','.join(str(p) for p in excluded_pks)})"
 
     headers = _sb_headers()
     headers["Prefer"] = "count=exact"
     r = _req.get(_sb_url(T_INF), headers=headers, params=inf_params)
     rows = r.json() if isinstance(r.json(), list) else []
-    # 밴된/숨김 유저 제외
-    if excluded_pks:
-        rows = [r for r in rows if r.get("pk") not in excluded_pks]
     total_str = r.headers.get("Content-Range","0/0").split("/")[-1]
     total = int(total_str) if total_str.isdigit() else len(rows)
-    if excluded_pks:
-        total = max(0, total - len(excluded_pks))
 
     # manual 데이터 병합
     if rows:
@@ -999,13 +994,13 @@ def get_public_influencers(page=1, per_page=30, sort="follower_count",
         if no_biz: params["is_business"] = "eq.false"
         if biz_only: params["is_business"] = "eq.true"
         if verified_only: params["is_verified"] = "eq.true"
+        # 숨김/밴 pk를 Supabase 서버에서 직접 제외
+        if excluded_pks:
+            params["pk"] = f"not.in.({','.join(str(p) for p in excluded_pks)})"
         r = _req.get(_sb_url(T_INF), headers=headers, params=params)
         rows = r.json() if isinstance(r.json(), list) else []
         s = r.headers.get("Content-Range","0/0").split("/")[-1]
         total = int(s) if s.isdigit() else len(rows)
-        if excluded_pks:
-            rows = [r for r in rows if r.get("pk") not in excluded_pks]
-            total = max(0, total - len(excluded_pks))
         return total, rows
 
     conn = get_conn()
