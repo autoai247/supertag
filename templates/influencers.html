@@ -505,9 +505,44 @@ async function markBrand(pk, username) {
   }
 }
 
-async function banUser(pk, username) {
-  const reason = prompt(`@${username} 밴 사유 (선택사항):`);
-  if (reason === null) return;
+function banUser(pk, username) {
+  // 밴 사유 선택 모달
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 z-50 flex items-center justify-center';
+  overlay.style.background = 'rgba(0,0,0,.4)';
+  overlay.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl p-5 w-80" onclick="event.stopPropagation()">
+      <div class="text-sm font-bold text-gray-800 mb-3">@${username} 밴 사유</div>
+      <div class="space-y-2 mb-4" id="banReasons">
+        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
+          <input type="radio" name="banReason" value="스팸(팔로워)" checked class="accent-red-500"> <span class="text-sm">스팸(팔로워)</span>
+        </label>
+        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
+          <input type="radio" name="banReason" value="스팸(광고)" class="accent-red-500"> <span class="text-sm">스팸(광고)</span>
+        </label>
+        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
+          <input type="radio" name="banReason" value="비활성 계정" class="accent-red-500"> <span class="text-sm">비활성 계정</span>
+        </label>
+        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
+          <input type="radio" name="banReason" value="부적절한 콘텐츠" class="accent-red-500"> <span class="text-sm">부적절한 콘텐츠</span>
+        </label>
+        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
+          <input type="radio" name="banReason" value="기타" class="accent-red-500"> <span class="text-sm">기타</span>
+        </label>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="this.closest('.fixed').remove()" class="flex-1 py-2 rounded-lg text-sm font-semibold text-gray-500 border border-gray-200 hover:bg-gray-50">취소</button>
+        <button onclick="confirmBan('${pk}','${username}',this.closest('.fixed'))" class="flex-1 py-2 rounded-lg text-sm font-semibold text-white bg-red-500 hover:bg-red-600">밴 처리</button>
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+async function confirmBan(pk, username, overlay) {
+  const reason = overlay.querySelector('input[name="banReason"]:checked')?.value || '스팸(팔로워)';
+  overlay.remove();
   const fd = new FormData();
   fd.append('reason', reason);
   const r = await fetch(`/influencers/${pk}/ban`, {method:'POST', body:fd});
@@ -515,7 +550,7 @@ async function banUser(pk, username) {
   if (d.ok) {
     const row = document.querySelector(`input[value="${pk}"]`)?.closest('.bg-white');
     if (row) { row.style.opacity='0.3'; row.style.pointerEvents='none'; }
-    alert(`@${username} 밴 완료`);
+    alert(`@${username} 밴 완료 (${reason})`);
   } else {
     alert('밴 실패: ' + (d.error || ''));
   }
