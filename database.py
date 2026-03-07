@@ -946,6 +946,8 @@ def get_stats():
 
 
 def get_public_stats():
+    excluded_pks = get_hidden_pks() | get_banned_pks()
+    excluded_str = {str(p) for p in excluded_pks}
     if _USE_SUPABASE:
         def cnt(table, params=None):
             headers = _sb_headers()
@@ -954,9 +956,14 @@ def get_public_stats():
             s = r.headers.get("Content-Range","0/0").split("/")[-1]
             return int(s) if s.isdigit() else 0
         r = _req.get(_sb_url(T_INF), headers=_sb_headers(),
-                    params={"select": "follower_count"})
-        tf = sum(row.get("follower_count",0) or 0 for row in (r.json() or []))
-        return {"total": cnt(T_INF), "verified": cnt(T_INF, {"is_verified":"eq.1"}),
+                    params={"select": "pk,follower_count"})
+        rows = [row for row in (r.json() or []) if str(row.get("pk","")) not in excluded_str]
+        tf = sum(row.get("follower_count",0) or 0 for row in rows)
+        total = len(rows)
+        verified_r = _req.get(_sb_url(T_INF), headers=_sb_headers(),
+                    params={"select": "pk", "is_verified": "eq.1"})
+        verified = len([row for row in (verified_r.json() or []) if str(row.get("pk","")) not in excluded_str])
+        return {"total": total, "verified": verified,
                 "hashtags": cnt(T_HASH), "total_followers": tf}
     conn = get_conn()
     try:
