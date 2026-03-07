@@ -575,6 +575,20 @@ def save_manual(pk: str, data: dict):
         finally: conn.close()
 
 
+def delete_influencer(pk: str):
+    """인플루언서 완전 삭제 (influencers + manual 테이블)."""
+    if _USE_SUPABASE:
+        _req.delete(_sb_url(T_INF, f"?pk=eq.{pk}"), headers=_sb_headers())
+        _req.delete(_sb_url(T_MAN, f"?pk=eq.{pk}"), headers=_sb_headers())
+    else:
+        conn = get_conn()
+        try:
+            conn.execute(f"DELETE FROM {T_INF} WHERE pk=?", (pk,))
+            conn.execute(f"DELETE FROM {T_MAN} WHERE pk=?", (pk,))
+            conn.commit()
+        finally: conn.close()
+
+
 def ban_influencer(pk: str, reason: str = ""):
     save_manual(pk, {"is_banned": 1, "ban_reason": reason})
 
@@ -1062,10 +1076,10 @@ def get_collect_job_users(job_id: int):
     if not pks:
         return []
     if _USE_SUPABASE:
-        users = _sb_get(T_INF, {"pk": f"in.({','.join(pks)})", "select": "pk,username,full_name,profile_pic_url,follower_count"})
+        users = _sb_get(T_INF, {"pk": f"in.({','.join(pks)})", "select": "pk,username,full_name,profile_pic_url,profile_pic_local,follower_count"})
         return users or []
     placeholders = ",".join(["?"] * len(pks))
-    return _sq_all(f"SELECT pk,username,full_name,profile_pic_url,follower_count FROM {T_INF} WHERE pk IN ({placeholders})", tuple(pks))
+    return _sq_all(f"SELECT pk,username,full_name,profile_pic_url,profile_pic_local,follower_count FROM {T_INF} WHERE pk IN ({placeholders})", tuple(pks))
 
 def add_hashtag(name: str, requested_count: int = 500, auto_collect: int = 1):
     now = time.time()

@@ -281,10 +281,12 @@
 
     <!-- 액션 버튼 -->
     <div class="flex gap-1 flex-shrink-0">
+      <a href="https://instagram.com/{{ r.username }}" target="_blank" rel="noopener" class="px-2 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-50 to-pink-50 text-pink-600 hover:from-purple-100 hover:to-pink-100 whitespace-nowrap" title="인스타그램 열기">IG</a>
       <a href="/influencers/{{ r.pk }}" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 whitespace-nowrap">상세</a>
       <a href="/influencers/{{ r.pk }}/edit" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap">편집</a>
       <button onclick="markBrand('{{ r.pk }}','{{ r.username }}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-orange-50 text-orange-500 hover:bg-orange-100 whitespace-nowrap">브랜드</button>
       <button onclick="banUser('{{ r.pk }}','{{ r.username }}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">밴</button>
+      <button onclick="deleteUser('{{ r.pk }}','{{ r.username }}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-100 text-red-600 hover:bg-red-200 whitespace-nowrap">삭제</button>
     </div>
   </div>
   {% endfor %}
@@ -380,6 +382,19 @@ async function banUser(pk, username) {
     alert(`@${username} 밴 완료`);
   } else {
     alert('밴 실패: ' + (d.error || ''));
+  }
+}
+
+async function deleteUser(pk, username) {
+  if (!confirm(`@${username}을(를) 완전히 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) return;
+  const r = await fetch(`/influencers/${pk}/delete`, {method:'POST'});
+  const d = await r.json();
+  if (d.ok) {
+    const row = document.querySelector(`input[value="${pk}"]`)?.closest('.bg-white');
+    if (row) row.remove();
+    alert(`@${username} 삭제 완료`);
+  } else {
+    alert('삭제 실패: ' + (d.error || ''));
   }
 }
 

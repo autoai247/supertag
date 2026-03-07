@@ -978,6 +978,7 @@ def edit_save(
     threads_url:   str = Form(default=""),
     tiktok_followers:   int = Form(default=0),
     youtube_subscribers: int = Form(default=0),
+    agency:        str = Form(default=""),
 ):
     user = get_user(session_id)
     if not user: return RedirectResponse("/login", 302)
@@ -999,6 +1000,7 @@ def edit_save(
         "tiktok_url": tiktok_url, "youtube_url": youtube_url,
         "facebook_url": facebook_url, "threads_url": threads_url,
         "tiktok_followers": tiktok_followers, "youtube_subscribers": youtube_subscribers,
+        "agency": agency,
     })
     return RedirectResponse(f"/influencers/{pk}?saved=1", 302)
 
@@ -1023,6 +1025,15 @@ def ban_one(pk: str, reason: str = Form(default="스팸/광고 계정"),
     if not user: return JSONResponse({"error": "인증 필요"}, 403)
     from database import ban_influencer
     ban_influencer(pk, reason)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/influencers/{pk}/delete")
+def delete_influencer_route(pk: str, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import delete_influencer
+    delete_influencer(pk)
     return JSONResponse({"ok": True})
 
 
@@ -1051,6 +1062,8 @@ def collect_job_users(job_id: int, session_id: Optional[str] = Cookie(default=No
     if not user: return JSONResponse({"error": "인증 필요"}, 403)
     from database import get_collect_job_users
     users = get_collect_job_users(job_id)
+    for u in users:
+        u["profile_pic_resolved"] = _pic(u)
     return JSONResponse(users)
 
 
@@ -1336,11 +1349,11 @@ def target_extract_stream(
 
                         existing = get_influencer(pk)
                         is_new = not existing
+                        pic_local = ""
 
                         if save and not is_private:
                             try:
                                 from database import upload_profile_pic
-                                pic_local = ""
                                 if pic:
                                     stored = upload_profile_pic(pk, pic)
                                     if stored: pic_local = stored
@@ -1356,7 +1369,7 @@ def target_extract_stream(
                         extracted += 1
 
                         page_users.append({"username": uname, "full_name": fname,
-                                          "pic": pic, "is_new": is_new})
+                                          "pic": _pic({"profile_pic_local": pic_local, "profile_pic_url": pic, "username": uname}), "is_new": is_new})
 
                     p.update({"extracted": extracted, "new_cnt": new_cnt, "dup_cnt": dup_cnt,
                               "users": page_users,
@@ -1436,7 +1449,7 @@ def target_extract_stream(
                         else: dup_cnt += 1
                         extracted += 1
                         page_users.append({"username": uname, "full_name": fname,
-                                          "pic": pic, "is_new": is_new})
+                                          "pic": _pic({"profile_pic_url": pic, "username": uname}), "is_new": is_new})
 
                     cursor = next_cursor
                     p.update({"extracted": extracted, "new_cnt": new_cnt, "dup_cnt": dup_cnt,
@@ -1540,7 +1553,7 @@ def target_extract_stream(
                             else: dup_cnt += 1
                             extracted += 1
                             page_users.append({"username": uname, "full_name": fname,
-                                              "pic": pic, "is_new": is_new})
+                                              "pic": _pic({"profile_pic_url": pic, "username": uname}), "is_new": is_new})
 
                         comment_cursor = next_c
                         if page_users:
@@ -1598,7 +1611,7 @@ def target_extract_stream(
                     else: dup_cnt += 1
                     extracted += 1
                     page_users.append({"username": uname, "full_name": fname,
-                                      "pic": pic, "is_new": is_new})
+                                      "pic": _pic({"profile_pic_url": pic, "username": uname}), "is_new": is_new})
 
                 p.update({"extracted": extracted, "new_cnt": new_cnt, "dup_cnt": dup_cnt,
                           "users": page_users,
@@ -2048,7 +2061,8 @@ def collect_progress(job_id: str,
 
                     page_users.append({
                         "username": uname, "full_name": fname,
-                        "pic": pic_local or pic, "is_new": is_new,
+                        "pic": _pic({"profile_pic_local": pic_local, "profile_pic_url": pic, "username": uname}),
+                        "is_new": is_new,
                     })
 
                 p.update({"posts": total_medias, "new": new_cnt, "updated": updated_cnt,

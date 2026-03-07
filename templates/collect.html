@@ -437,7 +437,7 @@ function loadJobUsers(jobId, el) {
         const fcStr = fc ? (fc >= 1000000 ? (fc/1000000).toFixed(1).replace(/\.0$/,'')+'M' : fc >= 1000 ? (fc/1000).toFixed(1).replace(/\.0$/,'')+'K' : fc) : '';
         div.innerHTML = `
           <span class="text-xs text-gray-300 w-6 text-right flex-shrink-0">${i+1}</span>
-          <img src="${u.profile_pic_url || 'https://ui-avatars.com/api/?name='+encodeURIComponent(u.username||'U')+'&background=6366f1&color=fff&size=32'}"
+          <img src="${u.profile_pic_resolved || u.profile_pic_url || 'https://ui-avatars.com/api/?name='+encodeURIComponent(u.username||'U')+'&background=6366f1&color=fff&size=32'}"
                class="w-8 h-8 rounded-full object-cover flex-shrink-0" style="border:2px solid #e5e7eb;"
                onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${u.username||'U'}')+'&background=6366f1&color=fff&size=32'">
           <div class="flex-1 min-w-0">
