@@ -282,6 +282,9 @@ class CollectJob {
           <button onclick="jobs['${this.jobId}'].stop()" class="j-stopBtn px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition" style="border:1px solid #fecaca;">
             중지
           </button>
+          <button onclick="jobs['${this.jobId}'].restart()" class="j-restartBtn px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-500 hover:bg-indigo-50 transition hidden" style="border:1px solid #c7d2fe;">
+            재시작
+          </button>
           <button onclick="jobs['${this.jobId}'].remove()" class="j-closeBtn px-2 py-1.5 rounded-lg text-xs text-gray-400 hover:bg-gray-100 hidden">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
@@ -457,6 +460,23 @@ class CollectJob {
     this.finish('stopped');
   }
 
+  restart() {
+    this.stopped = false;
+    this.resumeCount = 0;
+    // UI 복원
+    const badge = this.$('.j-badge');
+    badge.textContent = '수집 중'; badge.style.cssText = 'background:rgba(245,158,11,.1);color:#d97706;';
+    this.$('.j-stopBtn').classList.remove('hidden');
+    this.$('.j-restartBtn').classList.add('hidden');
+    this.$('.j-closeBtn').classList.add('hidden');
+    const bar = this.$('.j-bar');
+    bar.classList.add('active');
+    bar.style.background = '';
+    this.el.classList.add('card-running');
+    this.setStatus(`재시작 — 신규 ${this.lastNew}명부터 계속`, 'running');
+    this.listen();
+  }
+
   finish(type, errorMsg) {
     if (this.dotTimer) { clearInterval(this.dotTimer); this.dotTimer = null; }
     const badge = this.$('.j-badge');
@@ -465,6 +485,7 @@ class CollectJob {
     const bar = this.$('.j-bar');
     stopBtn.classList.add('hidden');
     closeBtn.classList.remove('hidden');
+    const restartBtn = this.$('.j-restartBtn');
     // 애니메이션 중지
     this.el.classList.remove('card-running');
     bar.classList.remove('active');
@@ -475,10 +496,12 @@ class CollectJob {
       this.$('.j-error').classList.remove('hidden');
       this.$('.j-errorMsg').textContent = errorMsg;
       bar.style.background = '#ef4444';
+      restartBtn.classList.remove('hidden');
     } else if (type === 'stopped') {
       badge.textContent = '중지됨'; badge.style.cssText = 'background:rgba(245,158,11,.1);color:#d97706;';
       this.setStatus(`중지됨 — 신규 ${this.lastNew}명 저장됨`, 'done');
       bar.style.background = '#f59e0b';
+      restartBtn.classList.remove('hidden');
     } else {
       badge.textContent = '완료'; badge.style.cssText = 'background:rgba(16,185,129,.1);color:#10b981;';
       this.setStatus(`완료 — 신규 ${this.lastNew}명, 중복 ${this.lastUpdated}명`, 'done');
