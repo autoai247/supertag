@@ -1139,10 +1139,7 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
 
 @app.get("/api/debug/version")
 def debug_version():
-    from database import get_collect_jobs
-    jobs = get_collect_jobs(limit=3)
-    raw = [{"id": j.get("id"), "started_at": j.get("started_at"), "type": str(type(j.get("started_at")))} for j in jobs]
-    return JSONResponse({"version": "20260308-v7", "deployed": True, "jobs_raw": raw})
+    return JSONResponse({"version": "20260308-v8", "deployed": True})
 
 @app.get("/api/debug/excluded-pks")
 def debug_excluded_pks(session_id: Optional[str] = Cookie(default=None)):
@@ -1176,7 +1173,19 @@ def api_collect_jobs(session_id: Optional[str] = Cookie(default=None)):
     kst = timezone(timedelta(hours=9))
     for j in jobs:
         t = j.get("started_at")
-        j["started_at_fmt"] = datetime.fromtimestamp(float(t), tz=kst).strftime("%m/%d %H:%M") if t else "-"
+        if not t:
+            j["started_at_fmt"] = "-"
+        elif isinstance(t, str) and "T" in t:
+            try:
+                dt = datetime.fromisoformat(t)
+                j["started_at_fmt"] = dt.strftime("%m/%d %H:%M")
+            except Exception:
+                j["started_at_fmt"] = t[:16]
+        else:
+            try:
+                j["started_at_fmt"] = datetime.fromtimestamp(float(t), tz=kst).strftime("%m/%d %H:%M")
+            except Exception:
+                j["started_at_fmt"] = "-"
     return JSONResponse(jobs)
 
 @app.get("/api/collect-job/{job_id}/users")

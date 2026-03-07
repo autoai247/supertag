@@ -87,6 +87,31 @@
 
   <!-- 실시간 진행 패널들 (다중) -->
   <div class="col-span-3 space-y-4" id="jobPanels">
+    <!-- 총합 통계 -->
+    <div id="totalStats" class="card px-4 py-3 hidden">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-semibold text-gray-600">전체 수집 현황</span>
+        <span id="totalRunning" class="text-xs text-amber-600 font-semibold"></span>
+      </div>
+      <div class="grid grid-cols-4 gap-2">
+        <div class="text-center py-2 rounded-lg" style="background:#f8fafc;">
+          <div id="totalPosts" class="text-lg font-bold text-gray-900">0</div>
+          <div class="text-xs text-gray-400">총 게시물</div>
+        </div>
+        <div class="text-center py-2 rounded-lg" style="background:#eef2ff;">
+          <div id="totalNew" class="text-lg font-bold text-indigo-600">0</div>
+          <div class="text-xs text-gray-400">총 신규</div>
+        </div>
+        <div class="text-center py-2 rounded-lg" style="background:#fef3c7;">
+          <div id="totalDup" class="text-lg font-bold text-amber-600">0</div>
+          <div class="text-xs text-gray-400">총 중복</div>
+        </div>
+        <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;">
+          <div id="totalTarget" class="text-lg font-bold text-emerald-600">0</div>
+          <div class="text-xs text-gray-400">총 목표</div>
+        </div>
+      </div>
+    </div>
     <div id="emptyState" class="card p-8 text-center text-gray-400 text-sm">
       <div class="text-3xl mb-2">📡</div>
       해시태그를 입력하고 수집을 시작하세요.<br>
@@ -436,6 +461,44 @@ function renderHistory(jobsList) {
     </div>`;
   }).join('');
 }
+
+function updateTotalStats() {
+  let posts=0, newU=0, dup=0, target=0, running=0;
+  // 활성 SSE 수집 (이 탭)
+  Object.values(jobs).forEach(j => {
+    if (!j.stopped) {
+      posts += j.lastPosts || 0;
+      newU += j.lastNew || 0;
+      dup += j.lastUpdated || 0;
+      target += j.targetUsers || 0;
+      running++;
+    }
+  });
+  // 모니터 패널 (다른 탭 수집)
+  Object.keys(_monitors).forEach(mid => {
+    const p = document.getElementById(_monitors[mid].panelId);
+    if (p) {
+      posts += parseInt(p.querySelector('.mon-posts')?.textContent) || 0;
+      newU += parseInt(p.querySelector('.mon-new')?.textContent) || 0;
+      dup += parseInt(p.querySelector('.mon-dup')?.textContent) || 0;
+      const t = p.querySelector('.grid .text-emerald-600');
+      if (t) target += parseInt(t.textContent) || 0;
+      running++;
+    }
+  });
+  const box = document.getElementById('totalStats');
+  if (running >= 2) {
+    box.classList.remove('hidden');
+    document.getElementById('totalPosts').textContent = posts.toLocaleString();
+    document.getElementById('totalNew').textContent = newU.toLocaleString();
+    document.getElementById('totalDup').textContent = dup.toLocaleString();
+    document.getElementById('totalTarget').textContent = target.toLocaleString();
+    document.getElementById('totalRunning').textContent = `${running}개 작업 진행 중`;
+  } else {
+    box.classList.add('hidden');
+  }
+}
+setInterval(updateTotalStats, 1000);
 
 function refreshHistory() {
   fetch('/api/collect-jobs')

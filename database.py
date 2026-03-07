@@ -1216,11 +1216,13 @@ def update_hashtag_status(name: str, status: str):
 
 def add_collect_job(hashtag: str, status: str, requested_count: int, search_type: str = "recent"):
     now = time.time()
+    from datetime import datetime, timezone, timedelta
+    now_iso = datetime.now(timezone(timedelta(hours=9))).isoformat()
     if _USE_SUPABASE:
         rows = _sb_post(T_CJOB, {
             "hashtag": hashtag, "status": status,
             "requested_count": requested_count, "collected_posts": 0,
-            "new_users": 0, "updated_users": 0, "started_at": now,
+            "new_users": 0, "updated_users": 0, "started_at": now_iso,
             "search_type": search_type,
         })
         return rows[0].get("id") if rows and isinstance(rows, list) else None
