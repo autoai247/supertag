@@ -860,6 +860,7 @@ def influencer_detail(
     if posts:
         reels_p = [p for p in posts if p.get("post_type") == "reel"]
         feeds_p = [p for p in posts if p.get("post_type") != "reel"]
+        all_p = list(posts)
         reels_p.sort(key=lambda x: x.get("views", 0) or 0, reverse=True)
         feeds_p.sort(key=lambda x: x.get("likes", 0) or 0, reverse=True)
         if reels_p:
@@ -874,6 +875,14 @@ def influencer_detail(
                  "thumbnail": p.get("thumbnail_url", "") or p.get("thumbnail_local", "")}
                 for p in feeds_p[:5]
             ]
+        # 댓글순 TOP 5
+        comments_sorted = sorted(all_p, key=lambda x: x.get("comments", 0) or 0, reverse=True)
+        inf["top_posts_comments"] = [
+            {"url": p["post_url"], "comments": p.get("comments", 0), "likes": p.get("likes", 0),
+             "post_type": p.get("post_type", ""), "views": p.get("views", 0),
+             "thumbnail": p.get("thumbnail_url", "") or p.get("thumbnail_local", "")}
+            for p in comments_sorted[:5]
+        ]
 
     recent_reels = get_influencer_reels(pk, sort="recent", limit=12)
     popular_reels = get_influencer_reels(pk, sort="popular", limit=12)
