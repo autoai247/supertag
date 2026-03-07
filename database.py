@@ -792,12 +792,20 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
             return 0, []
         inf_params["pk"] = f"in.({','.join(pks)})"
     elif excluded_pks:
-        # 숨김/밴 pk를 Supabase 서버에서 직접 제외
-        inf_params["pk"] = f"not.in.({','.join(str(p) for p in excluded_pks)})"
+        _excl_not_in = True
+    else:
+        _excl_not_in = False
 
     headers = _sb_headers()
     headers["Prefer"] = "count=exact"
-    r = _req.get(_sb_url(T_INF), headers=headers, params=inf_params)
+    if _excl_not_in:
+        pk_list = ','.join(str(p) for p in excluded_pks)
+        extra = f"pk=not.in.({pk_list})"
+        qs = "&".join(f"{k}={v}" for k, v in inf_params.items())
+        full_url = f"{_sb_url(T_INF)}?{qs}&{extra}"
+        r = _req.get(full_url, headers=headers)
+    else:
+        r = _req.get(_sb_url(T_INF), headers=headers, params=inf_params)
     rows = r.json() if isinstance(r.json(), list) else []
     total_str = r.headers.get("Content-Range","0/0").split("/")[-1]
     total = int(total_str) if total_str.isdigit() else len(rows)
@@ -996,9 +1004,16 @@ def get_public_influencers(page=1, per_page=30, sort="follower_count",
         if biz_only: params["is_business"] = "eq.true"
         if verified_only: params["is_verified"] = "eq.true"
         # 숨김/밴 pk를 Supabase 서버에서 직접 제외
+        # requests의 URL 인코딩 문제 우회를 위해 직접 URL 구성
+        url = _sb_url(T_INF)
         if excluded_pks:
-            params["pk"] = f"not.in.({','.join(str(p) for p in excluded_pks)})"
-        r = _req.get(_sb_url(T_INF), headers=headers, params=params)
+            pk_list = ','.join(str(p) for p in excluded_pks)
+            extra = f"pk=not.in.({pk_list})"
+            qs = "&".join(f"{k}={v}" for k, v in params.items())
+            full_url = f"{url}?{qs}&{extra}"
+            r = _req.get(full_url, headers=headers)
+        else:
+            r = _req.get(url, headers=headers, params=params)
         rows = r.json() if isinstance(r.json(), list) else []
         s = r.headers.get("Content-Range","0/0").split("/")[-1]
         total = int(s) if s.isdigit() else len(rows)

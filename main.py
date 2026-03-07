@@ -1125,6 +1125,18 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
         "request": request, "user": user, "hidden": hidden,
     })
 
+@app.get("/api/debug/excluded-pks")
+def debug_excluded_pks(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import get_banned_pks, get_hidden_pks
+    banned = get_banned_pks()
+    hidden = get_hidden_pks()
+    return JSONResponse({
+        "banned_count": len(banned), "banned_pks": list(banned)[:10],
+        "hidden_count": len(hidden), "hidden_pks": list(hidden)[:10],
+    })
+
 @app.get("/api/collect-job/{job_id}")
 def api_collect_job_status(job_id: int, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
@@ -2186,6 +2198,14 @@ def collect_progress(job_id: str,
                           "next_id": next_id or "",
                           "users": page_users})
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+                # 페이지마다 DB 통계 실시간 업데이트 (다른 탭 모니터용)
+                try:
+                    update_collect_job(job_db_id,
+                        collected_posts=total_medias, new_users=new_cnt,
+                        updated_users=updated_cnt, status="running")
+                except Exception:
+                    pass
 
                 if not next_id:
                     no_data = True
