@@ -145,8 +145,12 @@ def upload_profile_pic(pk: str, image_url: str, old_stored_url: str = "") -> str
         if upload_r.status_code in (200, 201):
             public_url = f"{SUPABASE_URL}/storage/v1/object/public/{_STORAGE_BUCKET}/{path}"
             return public_url
-    except Exception:
-        pass
+        else:
+            import logging
+            logging.getLogger("database").warning(f"Storage upload failed {pk}: {upload_r.status_code} {upload_r.text[:200]}")
+    except Exception as e:
+        import logging
+        logging.getLogger("database").warning(f"Storage upload error {pk}: {e}")
     return ""
 
 
@@ -382,15 +386,18 @@ def upsert_influencer(data: dict) -> str:
         if existing:
             old_tags = set(t.strip() for t in (existing[0].get("hashtags") or "").split(",") if t.strip())
             if new_tag: old_tags.add(new_tag)
-            _sb_patch(T_INF, f"?pk=eq.{pk}", {
+            patch = {
                 "username": data.get("username"), "full_name": data.get("full_name"),
                 "biography": data.get("biography"), "follower_count": data.get("follower_count",0),
                 "following_count": data.get("following_count",0), "media_count": data.get("media_count",0),
                 "hashtags": ",".join(old_tags), "updated_at": now,
-            })
+            }
+            if data.get("profile_pic_url"): patch["profile_pic_url"] = data["profile_pic_url"]
+            if data.get("profile_pic_local"): patch["profile_pic_local"] = data["profile_pic_local"]
+            _sb_patch(T_INF, f"?pk=eq.{pk}", patch)
             return "updated"
         else:
-            _sb_post(T_INF, {
+            post_data = {
                 "pk": pk, "username": data.get("username"), "full_name": data.get("full_name"),
                 "biography": data.get("biography"), "follower_count": data.get("follower_count",0),
                 "following_count": data.get("following_count",0), "media_count": data.get("media_count",0),
@@ -398,7 +405,9 @@ def upsert_influencer(data: dict) -> str:
                 "is_business": int(data.get("is_business",False)), "category": data.get("category"),
                 "external_url": data.get("external_url"), "profile_pic_url": data.get("profile_pic_url"),
                 "hashtags": new_tag, "created_at": now, "updated_at": now,
-            })
+            }
+            if data.get("profile_pic_local"): post_data["profile_pic_local"] = data["profile_pic_local"]
+            _sb_post(T_INF, post_data)
             return "new"
     else:
         conn = get_conn()

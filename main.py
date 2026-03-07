@@ -1256,6 +1256,20 @@ def collect_posts_page(request: Request, session_id: Optional[str] = Cookie(defa
         "request": request, "user": user,
     })
 
+@app.get("/refresh", response_class=HTMLResponse)
+def refresh_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    cutoff = time.time() - 86400 * 30
+    all_infs = get_influencers(per_page=99999, page=1)
+    items = all_infs.get("items", [])
+    stale = [r for r in items if not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff]
+    return templates.TemplateResponse("refresh.html", {
+        "request": request, "user": user,
+        "total_count": len(items), "stale_count": len(stale),
+    })
+
+
 @app.post("/refresh/start")
 def refresh_start(session_id: Optional[str] = Cookie(default=None)):
     """게시물 수집 시작 → SSE 스트림으로 전환"""
@@ -1613,12 +1627,26 @@ def collect_progress(job_id: str,
                     pic = str(user_data.get("profile_pic_url", "") or "")
                     is_new = pk_str not in existing_pks
 
+                    # 프로필 사진 Supabase Storage 업로드
+                    pic_local = ""
+                    if pic:
+                        try:
+                            from database import upload_profile_pic
+                            stored = upload_profile_pic(pk_str, pic)
+                            if stored:
+                                pic_local = stored
+                        except Exception:
+                            pass
+
                     try:
-                        upsert_influencer({
+                        inf_data = {
                             "pk": pk_str, "username": uname,
                             "full_name": fname, "profile_pic_url": pic,
                             "hashtag": hashtag,
-                        })
+                        }
+                        if pic_local:
+                            inf_data["profile_pic_local"] = pic_local
+                        upsert_influencer(inf_data)
                         collected_pk_list.append(pk_str)
                         if is_new:
                             new_cnt += 1
@@ -1630,7 +1658,7 @@ def collect_progress(job_id: str,
 
                     page_users.append({
                         "username": uname, "full_name": fname,
-                        "pic": pic, "is_new": is_new,
+                        "pic": pic_local or pic, "is_new": is_new,
                     })
 
                 p.update({"posts": total_medias, "new": new_cnt, "updated": updated_cnt,

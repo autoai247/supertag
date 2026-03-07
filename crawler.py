@@ -863,8 +863,10 @@ def _update_profile_from_info(u_info, pk: str, username: str):
                 stored_url = upload_profile_pic(pk, pic_url, old_stored)
                 if stored_url:
                     profile_updates["profile_pic_local"] = stored_url
-            except Exception:
-                pass
+                else:
+                    log.warning(f"[{username}] 프로필 사진 Storage 업로드 실패")
+            except Exception as e:
+                log.warning(f"[{username}] 프로필 사진 처리 오류: {e}")
 
         if is_biz:
             from database import save_manual, get_manual
