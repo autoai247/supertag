@@ -638,6 +638,43 @@ def get_banned_list():
         return []
 
 
+def hide_influencer(pk: str):
+    save_manual(pk, {"is_hidden": 1})
+
+def unhide_influencer(pk: str):
+    save_manual(pk, {"is_hidden": 0})
+
+def get_hidden_pks() -> set:
+    """숨김 처리된 인플루언서 pk 목록."""
+    try:
+        if _USE_SUPABASE:
+            rows = _sb_get(T_MAN, {"is_hidden": "eq.1", "select": "pk"})
+            return {r["pk"] for r in rows} if isinstance(rows, list) and rows else set()
+        else:
+            rows = _sq_all(f"SELECT pk FROM {T_MAN} WHERE is_hidden=1")
+            return {r["pk"] for r in rows} if rows else set()
+    except Exception:
+        return set()
+
+
+def get_hidden_list():
+    """숨김 처리된 인플루언서 목록."""
+    try:
+        if _USE_SUPABASE:
+            hidden = _sb_get(T_MAN, {"is_hidden": "eq.1", "select": "pk"})
+            if not isinstance(hidden, list) or not hidden:
+                return []
+            pks = [h["pk"] for h in hidden]
+            infs = _sb_get(T_INF, {"pk": f"in.({','.join(pks)})", "select": "pk,username,full_name,profile_pic_url,profile_pic_local,follower_count"})
+            return infs or []
+        else:
+            return _sq_all(f"""SELECT i.pk,i.username,i.full_name,i.profile_pic_url,i.profile_pic_local,i.follower_count
+                FROM {T_MAN} m JOIN {T_INF} i ON m.pk=i.pk
+                WHERE m.is_hidden=1""") or []
+    except Exception:
+        return []
+
+
 def get_influencers(keyword="", min_f=None, max_f=None,
                     only_verified=False, exclude_private=False,
                     hashtag_filter="", main_category="",
@@ -670,6 +707,9 @@ def get_influencers(keyword="", min_f=None, max_f=None,
     if has_kids: conditions.append("m.has_kids=1")
     if has_car: conditions.append("m.has_car=1")
     if is_visual: conditions.append("m.is_visual=1")
+    # 밴된/숨김 유저 제외
+    conditions.append("COALESCE(m.is_hidden,0)!=1")
+    conditions.append("COALESCE(m.is_banned,0)!=1")
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     valid_sorts = {"follower_count","engagement_rate","avg_reel_views","avg_likes",
                    "media_count","updated_at","stats_updated_at","username"}
@@ -715,8 +755,10 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
     need_manual_filter = any([can_live, only_approved, main_category, has_pet,
                                is_married, has_kids, has_car, is_visual])
 
-    # 밴된 유저 제외
+    # 밴된/숨김 유저 제외
     banned_pks = get_banned_pks()
+    hidden_pks = get_hidden_pks()
+    excluded_pks = banned_pks | hidden_pks
 
     # Step 2: influencer 필터
     inf_params = {
@@ -743,27 +785,26 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
         pks = [r["pk"] for r in man_rows] if man_rows else []
         if not pks:
             return 0, []
-        # 밴된 PK도 제거
-        pks = [p for p in pks if p not in banned_pks]
+        # 밴된/숨김 PK도 제거
+        pks = [p for p in pks if p not in excluded_pks]
         if not pks:
             return 0, []
         inf_params["pk"] = f"in.({','.join(pks)})"
-    elif banned_pks:
-        # manual 필터 없어도 밴된 유저는 제외
-        # PostgREST: not.in.(val1,val2)은 너무 길어질 수 있으므로 결과에서 필터
+    elif excluded_pks:
+        # manual 필터 없어도 제외 유저는 결과에서 필터
         pass
 
     headers = _sb_headers()
     headers["Prefer"] = "count=exact"
     r = _req.get(_sb_url(T_INF), headers=headers, params=inf_params)
     rows = r.json() if isinstance(r.json(), list) else []
-    # 밴된 유저 제외
-    if banned_pks:
-        rows = [r for r in rows if r.get("pk") not in banned_pks]
+    # 밴된/숨김 유저 제외
+    if excluded_pks:
+        rows = [r for r in rows if r.get("pk") not in excluded_pks]
     total_str = r.headers.get("Content-Range","0/0").split("/")[-1]
     total = int(total_str) if total_str.isdigit() else len(rows)
-    if banned_pks:
-        total = max(0, total - len(banned_pks))
+    if excluded_pks:
+        total = max(0, total - len(excluded_pks))
 
     # manual 데이터 병합
     if rows:
@@ -829,6 +870,10 @@ def get_influencer_reels(pk: str, sort: str = "recent", limit: int = 20) -> list
 
 
 def get_stats():
+    hidden_pks = get_hidden_pks()
+    banned_pks = get_banned_pks()
+    excluded = hidden_pks | banned_pks
+
     if _USE_SUPABASE:
         def cnt(table, params=None):
             headers = _sb_headers()
@@ -836,43 +881,64 @@ def get_stats():
             r = _req.get(_sb_url(table), headers=headers, params={**(params or {}), "select": "pk", "limit": "1"})
             s = r.headers.get("Content-Range","0/0").split("/")[-1]
             return int(s) if s.isdigit() else 0
+
+        def cnt_excl(table, params=None):
+            """excluded pk를 제외한 카운트 (manual 테이블용)"""
+            p = dict(params or {})
+            if excluded:
+                # is_hidden!=1 AND is_banned!=1 필터 추가
+                p["is_hidden"] = "neq.1"
+                p["is_banned"] = "neq.1"
+            return cnt(table, p)
+
+        # hidden/banned 수 차감
+        n_excl_inf = 0
+        if excluded:
+            all_pks = _sb_get(T_INF, {"select": "pk"})
+            if isinstance(all_pks, list):
+                n_excl_inf = sum(1 for r in all_pks if r.get("pk") in excluded)
+
         return {
-            "total":      cnt(T_INF),
-            "verified":   cnt(T_INF, {"is_verified": "eq.1"}),
+            "total":      cnt(T_INF) - n_excl_inf,
+            "verified":   cnt(T_INF, {"is_verified": "eq.1"}) - n_excl_inf,  # 근사치
             "business":   cnt(T_INF, {"is_business": "eq.1"}),
             "hashtags":   cnt(T_HASH),
             "with_stats": cnt(T_INF, {"stats_updated_at": "gt.0"}),
-            "live_ok":    cnt(T_MAN, {"can_live": "eq.1"}),
-            "approved":   cnt(T_MAN, {"is_approved": "eq.1"}),
+            "live_ok":    cnt_excl(T_MAN, {"can_live": "eq.1"}),
+            "approved":   cnt_excl(T_MAN, {"is_approved": "eq.1"}),
             "has_url":    cnt(T_INF, {"external_url": "not.is.null"}),
             "linktree":   0,
-            "has_tiktok": cnt(T_MAN, {"tiktok_url": "not.eq."}),
-            "has_youtube":cnt(T_MAN, {"youtube_url": "not.eq."}),
-            "has_kids":   cnt(T_MAN, {"has_kids": "eq.1"}),
-            "has_pet":    cnt(T_MAN, {"has_pet": "eq.1"}),
-            "is_married": cnt(T_MAN, {"is_married": "eq.1"}),
-            "is_visual":  cnt(T_MAN, {"is_visual": "eq.1"}),
+            "has_tiktok": cnt_excl(T_MAN, {"tiktok_url": "not.eq."}),
+            "has_youtube":cnt_excl(T_MAN, {"youtube_url": "not.eq."}),
+            "has_kids":   cnt_excl(T_MAN, {"has_kids": "eq.1"}),
+            "has_pet":    cnt_excl(T_MAN, {"has_pet": "eq.1"}),
+            "is_married": cnt_excl(T_MAN, {"is_married": "eq.1"}),
+            "is_visual":  cnt_excl(T_MAN, {"is_visual": "eq.1"}),
+            "hidden":     len(hidden_pks),
         }
     conn = get_conn()
     try:
+        excl_cond = "i.pk NOT IN (SELECT pk FROM {T_MAN} WHERE is_hidden=1 OR is_banned=1)".replace("{T_MAN}", T_MAN)
+        man_excl = "is_hidden!=1 AND is_banned!=1"
         def cnt(sql):
             return conn.execute(sql).fetchone()[0]
         return {
-            "total":      cnt(f"SELECT COUNT(*) FROM {T_INF}"),
-            "verified":   cnt(f"SELECT COUNT(*) FROM {T_INF} WHERE is_verified=1"),
-            "business":   cnt(f"SELECT COUNT(*) FROM {T_INF} WHERE is_business=1"),
+            "total":      cnt(f"SELECT COUNT(*) FROM {T_INF} i WHERE {excl_cond}"),
+            "verified":   cnt(f"SELECT COUNT(*) FROM {T_INF} i WHERE is_verified=1 AND {excl_cond}"),
+            "business":   cnt(f"SELECT COUNT(*) FROM {T_INF} i WHERE is_business=1 AND {excl_cond}"),
             "hashtags":   cnt(f"SELECT COUNT(*) FROM {T_HASH}"),
-            "with_stats": cnt(f"SELECT COUNT(*) FROM {T_INF} WHERE stats_updated_at>0"),
-            "live_ok":    cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE can_live=1"),
-            "approved":   cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_approved=1"),
-            "has_url":    cnt(f"SELECT COUNT(*) FROM {T_INF} WHERE external_url IS NOT NULL AND external_url!=''"),
-            "linktree":   cnt(f"SELECT COUNT(*) FROM {T_INF} WHERE external_url LIKE '%linktree%' OR external_url LIKE '%linktr.ee%'"),
-            "has_tiktok": cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE tiktok_url!='' AND tiktok_url IS NOT NULL"),
-            "has_youtube":cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE youtube_url!='' AND youtube_url IS NOT NULL"),
-            "has_kids":   cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE has_kids=1"),
-            "has_pet":    cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE has_pet=1"),
-            "is_married": cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_married=1"),
-            "is_visual":  cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_visual=1"),
+            "with_stats": cnt(f"SELECT COUNT(*) FROM {T_INF} i WHERE stats_updated_at>0 AND {excl_cond}"),
+            "live_ok":    cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE can_live=1 AND {man_excl}"),
+            "approved":   cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_approved=1 AND {man_excl}"),
+            "has_url":    cnt(f"SELECT COUNT(*) FROM {T_INF} i WHERE external_url IS NOT NULL AND external_url!='' AND {excl_cond}"),
+            "linktree":   cnt(f"SELECT COUNT(*) FROM {T_INF} i WHERE (external_url LIKE '%linktree%' OR external_url LIKE '%linktr.ee%') AND {excl_cond}"),
+            "has_tiktok": cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE tiktok_url!='' AND tiktok_url IS NOT NULL AND {man_excl}"),
+            "has_youtube":cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE youtube_url!='' AND youtube_url IS NOT NULL AND {man_excl}"),
+            "has_kids":   cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE has_kids=1 AND {man_excl}"),
+            "has_pet":    cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE has_pet=1 AND {man_excl}"),
+            "is_married": cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_married=1 AND {man_excl}"),
+            "is_visual":  cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_visual=1 AND {man_excl}"),
+            "hidden":     cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_hidden=1"),
         }
     finally: conn.close()
 

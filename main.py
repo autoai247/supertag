@@ -1037,6 +1037,24 @@ def delete_influencer_route(pk: str, session_id: Optional[str] = Cookie(default=
     return JSONResponse({"ok": True})
 
 
+@app.post("/influencers/{pk}/hide")
+def hide_one(pk: str, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import hide_influencer
+    hide_influencer(pk)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/influencers/{pk}/unhide")
+def unhide_one(pk: str, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import unhide_influencer
+    unhide_influencer(pk)
+    return JSONResponse({"ok": True})
+
+
 @app.post("/influencers/{pk}/unban")
 def unban_one(pk: str, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
@@ -1054,6 +1072,16 @@ def banned_page(request: Request, session_id: Optional[str] = Cookie(default=Non
     banned = get_banned_list()
     return templates.TemplateResponse("banned.html", {
         "request": request, "user": user, "banned": banned,
+    })
+
+@app.get("/hidden", response_class=HTMLResponse)
+def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    from database import get_hidden_list
+    hidden = get_hidden_list()
+    return templates.TemplateResponse("hidden.html", {
+        "request": request, "user": user, "hidden": hidden,
     })
 
 @app.get("/api/collect-job/{job_id}/users")

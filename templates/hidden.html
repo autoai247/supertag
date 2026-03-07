@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% set active = "influencers" %}
+{% block title %}숨김 목록 - SuperTag{% endblock %}
+{% block content %}
+
+<div class="mb-5 flex items-center justify-between">
+  <div>
+    <h1 class="text-xl font-bold text-gray-900">숨김 목록</h1>
+    <p class="text-sm text-gray-500 mt-0.5">통계 및 리스트에서 제외된 계정입니다. 숨김 해제하면 다시 반영됩니다.</p>
+  </div>
+  <a href="/influencers" class="btn btn-ghost btn-sm">목록으로</a>
+</div>
+
+<div class="card overflow-hidden">
+  {% if hidden %}
+  <div class="divide-y divide-gray-50">
+    {% for h in hidden %}
+    <div class="flex items-center gap-4 px-5 py-3 hover:bg-gray-50" id="hide-{{ h.pk }}">
+      <img src="{{ h | pic }}"
+           class="w-10 h-10 rounded-full object-cover flex-shrink-0" style="border:2px solid #fde68a;"
+           onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('{{ h.username or 'U' }}')+'&background=9ca3af&color=fff&size=40'">
+      <div class="flex-1">
+        <div class="text-sm font-bold text-gray-800">@{{ h.username or '?' }}</div>
+        {% if h.full_name %}<div class="text-xs text-gray-400">{{ h.full_name }}</div>{% endif %}
+      </div>
+      <span class="text-xs text-gray-400">{{ h.follower_count | fmtn if h.follower_count else '-' }}</span>
+      <button onclick="unhideUser('{{ h.pk }}')"
+        class="px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition"
+        style="border:1px solid #a7f3d0;">숨김 해제</button>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="py-12 text-center text-gray-400 text-sm">숨김 처리된 계정이 없습니다</div>
+  {% endif %}
+</div>
+
+<script>
+async function unhideUser(pk) {
+  if (!confirm('이 계정의 숨김을 해제하시겠습니까?\n통계에 다시 반영됩니다.')) return;
+  const r = await fetch(`/influencers/${pk}/unhide`, {method:'POST'});
+  if (r.ok) {
+    document.getElementById('hide-'+pk).remove();
+  }
+}
+</script>
+{% endblock %}
