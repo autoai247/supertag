@@ -82,7 +82,7 @@
             <span class="font-bold text-gray-800">#{{ j.hashtag }}</span>
             <span class="text-gray-400 ml-1">
               {% if j.status == 'done' %}
-              신규 {{ j.new_users or 0 }}명{% if j.updated_users %} / 중복 {{ j.updated_users }}명{% endif %}
+              신규 {{ j.new_users or 0 }}명 / 중복 {{ j.updated_users or 0 }}명
               {% elif j.status == 'running' %}
               진행 중
               {% else %}

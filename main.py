@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 import uuid, time, json, os, re, bcrypt, logging, collections, hashlib, secrets, hmac
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -477,7 +477,7 @@ os.makedirs(_STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
-templates.env.filters["dt"]    = lambda t: datetime.fromtimestamp(float(t)).strftime("%m/%d %H:%M") if t else "-"
+templates.env.filters["dt"]    = lambda t: (datetime.fromtimestamp(float(t), tz=timezone(timedelta(hours=9)))).strftime("%m/%d %H:%M") if t else "-"
 templates.env.filters["comma"] = lambda n: f"{int(n or 0):,}"
 def _fmtn(n):
     v = int(n or 0)
