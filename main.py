@@ -1292,6 +1292,22 @@ def cron_auto(request: Request):
     return JSONResponse(results)
 
 
+@app.get("/api/hiker-balance")
+def hiker_balance(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    token = os.getenv("HIKERAPI_TOKEN", "").strip()
+    if not token:
+        return JSONResponse({"error": "HIKERAPI_TOKEN 미설정"}, 400)
+    try:
+        import requests as _r
+        r = _r.get("https://api.hikerapi.com/sys/balance",
+                    headers={"x-access-key": token}, timeout=10)
+        return JSONResponse(r.json())
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, 500)
+
+
 @app.post("/api/cron/manual-run")
 def cron_manual_run(session_id: Optional[str] = Cookie(default=None)):
     """관리자가 대시보드에서 수동으로 cron 1회 실행"""

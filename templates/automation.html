@@ -9,7 +9,7 @@
 </div>
 
 <!-- DB 현황 -->
-<div class="grid grid-cols-4 gap-4 mb-5">
+<div class="grid grid-cols-5 gap-4 mb-5">
   <div class="card p-4 text-center">
     <div class="text-2xl font-bold text-gray-900">{{ stats.total | comma }}</div>
     <div class="text-xs text-gray-400 mt-1">전체 인플루언서</div>
@@ -30,6 +30,11 @@
     <div class="text-2xl font-bold text-red-500">OFF</div>
     <div class="text-xs text-gray-400 mt-1">Cron 미설정</div>
     {% endif %}
+  </div>
+  <div class="card p-4 text-center">
+    <div id="apiBalance" class="text-2xl font-bold text-amber-600">-</div>
+    <div class="text-xs text-gray-400 mt-1">API 잔액 (USD)</div>
+    <div id="apiRequests" class="text-xs text-gray-400 mt-0.5"></div>
   </div>
 </div>
 
@@ -171,5 +176,17 @@ async function runCron() {
   btn.disabled = false;
   btn.textContent = '수동 실행 (즉시 1회)';
 }
+
+// API 잔액 조회
+fetch('/api/hiker-balance').then(r=>r.json()).then(d=>{
+  if(d.amount !== undefined){
+    document.getElementById('apiBalance').textContent = '$' + d.amount.toFixed(2);
+    document.getElementById('apiRequests').textContent = d.requests.toLocaleString() + '회 남음';
+    if(d.amount < 10){
+      document.getElementById('apiBalance').classList.remove('text-amber-600');
+      document.getElementById('apiBalance').classList.add('text-red-500');
+    }
+  }
+}).catch(()=>{});
 </script>
 {% endblock %}
