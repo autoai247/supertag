@@ -4,7 +4,7 @@
 {% block content %}
 <div class="mb-5">
   <h1 class="text-xl font-bold text-gray-900">설정</h1>
-  <p class="text-sm text-gray-500 mt-0.5">인스타그램 수집 계정 및 시스템 설정을 관리합니다.</p>
+  <p class="text-sm text-gray-500 mt-0.5">시스템 설정을 관리합니다.</p>
 </div>
 
 {% if request.query_params.get('saved') %}
@@ -15,43 +15,9 @@
 
 <form action="/settings/save" method="post" class="space-y-5 max-w-2xl">
 
-  <!-- 인스타그램 계정 -->
-  <div class="card p-5">
-    <h2 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-      <span class="text-lg">📱</span> 인스타그램 수집 계정
-    </h2>
-    <div class="space-y-3">
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="text-xs font-medium text-gray-500 block mb-1">아이디</label>
-          <input type="text" name="insta_username" value="{{ insta_username }}" required
-            class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300">
-        </div>
-        <div>
-          <label class="text-xs font-medium text-gray-500 block mb-1">비밀번호</label>
-          <input type="password" name="insta_password" placeholder="변경 시에만 입력"
-            class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300">
-          <p class="text-xs text-gray-400 mt-1">빈칸이면 기존 비밀번호 유지</p>
-        </div>
-      </div>
-      <div>
-        <label class="text-xs font-medium text-gray-500 block mb-1">2FA TOTP 시크릿 키</label>
-        <div class="flex gap-2">
-          <input type="text" name="insta_totp" id="totp_input" placeholder="예: YQ754N2HTC7IDAT5BQIPNA5RHQA75JFY"
-            class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300">
-          <button type="button" onclick="testTotp()"
-            class="px-3 py-2 text-sm rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 whitespace-nowrap">
-            🔑 TOTP 확인
-          </button>
-        </div>
-        <p class="text-xs text-gray-400 mt-1">
-          Google Authenticator 또는 Authy의 시크릿 키 (32자 Base32 문자열).
-          없으면 비워두세요.
-        </p>
-        <div id="totp_result" class="hidden mt-2 px-3 py-2 rounded-lg text-sm"></div>
-      </div>
-    </div>
-  </div>
+  <input type="hidden" name="insta_username" value="{{ insta_username }}">
+  <input type="hidden" name="insta_password" value="">
+  <input type="hidden" name="insta_totp" value="">
 
   <!-- 관리자 비밀번호 -->
   <div class="card p-5">
@@ -70,38 +36,6 @@
   </button>
 </form>
 
-<!-- 확장 프로그램 설정 -->
-<div class="mt-8 max-w-2xl">
-  <h2 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-    <span class="text-lg">🔌</span> Chrome 확장 프로그램 설정
-  </h2>
-  <div class="card p-5">
-    <div class="text-sm text-gray-600 mb-4">
-      SuperTag Session Sync 확장 프로그램을 사용하면 instagram.com에서 세션을 <strong>버튼 한 번</strong>으로 자동 등록할 수 있습니다.
-    </div>
-    <div class="grid grid-cols-2 gap-4">
-      <div>
-        <div class="text-xs text-gray-500 mb-1">서버 주소 (확장 프로그램 설정에 입력)</div>
-        <div class="flex gap-2 items-center">
-          <input id="serverUrlDisplay" type="text" value="{{ request.base_url | string | replace('http://', 'https://') | trim('/') }}"
-                 class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 font-mono bg-gray-50" readonly>
-          <button onclick="copyText('serverUrlDisplay')" class="btn btn-ghost text-xs px-3">복사</button>
-        </div>
-      </div>
-      <div>
-        <div class="text-xs text-gray-500 mb-1">API 키 (확장 프로그램 설정에 입력)</div>
-        <div class="flex gap-2 items-center">
-          <input id="apiKeyDisplay" type="text" value="{{ extension_api_key }}"
-                 class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 font-mono bg-gray-50" readonly>
-          <button onclick="copyText('apiKeyDisplay')" class="btn btn-ghost text-xs px-3">복사</button>
-        </div>
-      </div>
-    </div>
-    <div class="mt-4 p-3 rounded-lg text-xs text-gray-500" style="background:#f8fafc;">
-      확장 프로그램 아이콘 우클릭 → <strong>옵션</strong> → 위 값 붙여넣기 → 저장
-    </div>
-  </div>
-</div>
 
 <!-- 구독 플랜 안내 -->
 <div class="mt-8 max-w-2xl">
@@ -135,38 +69,4 @@
   </p>
 </div>
 
-<script>
-function copyText(inputId) {
-  const el = document.getElementById(inputId);
-  navigator.clipboard.writeText(el.value).then(() => {
-    const btn = el.nextElementSibling;
-    btn.textContent = '✓';
-    setTimeout(() => btn.textContent = '복사', 1500);
-  });
-}
-async function testTotp() {
-  const btn = document.querySelector('[onclick="testTotp()"]');
-  btn.disabled = true; btn.textContent = '확인 중...';
-  try {
-    const r = await fetch('/settings/test-account', {method:'POST'});
-    const d = await r.json();
-    const el = document.getElementById('totp_result');
-    el.classList.remove('hidden');
-    if (d.ok) {
-      el.className = 'mt-2 px-3 py-2 rounded-lg text-sm text-emerald-700';
-      el.style.background = 'rgba(16,185,129,.1)';
-      el.textContent = d.totp_code
-        ? `✅ TOTP 연결 정상. 현재 코드: ${d.totp_code} (30초마다 갱신)`
-        : `✅ 계정 확인됨 (2FA 없음): ${d.username}`;
-    } else {
-      el.className = 'mt-2 px-3 py-2 rounded-lg text-sm text-red-700';
-      el.style.background = 'rgba(239,68,68,.08)';
-      el.textContent = `❌ 오류: ${d.error}`;
-    }
-  } catch(e) {
-    alert('테스트 중 오류가 발생했습니다.');
-  }
-  btn.disabled = false; btn.textContent = '🔑 TOTP 확인';
-}
-</script>
 {% endblock %}
