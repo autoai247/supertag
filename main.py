@@ -1256,6 +1256,25 @@ def collect_posts_page(request: Request, session_id: Optional[str] = Cookie(defa
         "request": request, "user": user,
     })
 
+@app.get("/api/hashtag/search")
+def hashtag_search_api(q: str = "", session_id: Optional[str] = Cookie(default=None)):
+    """해시태그 검색 → 연관 해시태그 + 게시물 수"""
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    if not q: return JSONResponse([])
+    import requests
+    token = os.getenv("HIKERAPI_TOKEN", "")
+    try:
+        r = requests.get("https://api.hikerapi.com/v1/search/hashtags",
+                         params={"query": q, "access_key": token}, timeout=10)
+        data = r.json()
+        if isinstance(data, list):
+            return JSONResponse(data[:20])
+    except Exception:
+        pass
+    return JSONResponse([])
+
+
 @app.get("/refresh", response_class=HTMLResponse)
 def refresh_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)

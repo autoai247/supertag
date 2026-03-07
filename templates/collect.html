@@ -20,10 +20,15 @@
             <span class="flex items-center px-2.5 py-2 text-sm text-gray-400 rounded-lg border border-gray-200 border-r-0 rounded-r-none">#</span>
             <input id="hashtagInput" type="text" placeholder="광고, 협찬, 맛집..."
               class="flex-1 px-3 py-2 text-sm rounded-lg rounded-l-none border border-gray-200 border-l-0"
-              list="hashtagList">
+              list="hashtagList" oninput="onHashtagInput(this.value)">
             <datalist id="hashtagList">
               {% for h in hashtags %}<option value="{{ h }}">{% endfor %}
             </datalist>
+          </div>
+          <!-- 연관 해시태그 -->
+          <div id="relatedTags" class="mt-2 hidden">
+            <div class="text-xs text-gray-400 mb-1.5">연관 해시태그</div>
+            <div id="relatedTagsList" class="flex flex-wrap gap-1.5"></div>
           </div>
         </div>
         <div>
@@ -176,6 +181,35 @@
 </div>
 
 <script>
+let hashtagTimer = null;
+function onHashtagInput(val) {
+  clearTimeout(hashtagTimer);
+  const q = val.trim().replace(/^#/,'');
+  if (q.length < 1) { document.getElementById('relatedTags').classList.add('hidden'); return; }
+  hashtagTimer = setTimeout(() => searchHashtags(q), 400);
+}
+async function searchHashtags(q) {
+  try {
+    const r = await fetch(`/api/hashtag/search?q=${encodeURIComponent(q)}`);
+    const tags = await r.json();
+    const box = document.getElementById('relatedTags');
+    const list = document.getElementById('relatedTagsList');
+    if (!Array.isArray(tags) || tags.length === 0) { box.classList.add('hidden'); return; }
+    list.innerHTML = tags.map(t => {
+      const cnt = t.media_count >= 1000000 ? (t.media_count/1000000).toFixed(1)+'M'
+                : t.media_count >= 10000 ? Math.round(t.media_count/10000)+'만'
+                : t.media_count >= 1000 ? (t.media_count/1000).toFixed(1)+'K'
+                : t.media_count;
+      return `<button type="button" onclick="document.getElementById('hashtagInput').value='${t.name}';onHashtagInput('${t.name}')"
+        class="px-2.5 py-1.5 rounded-lg text-xs border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition flex items-center gap-1.5">
+        <span class="font-semibold text-gray-700">#${t.name}</span>
+        <span class="text-gray-400">${cnt}</span>
+      </button>`;
+    }).join('');
+    box.classList.remove('hidden');
+  } catch(e) {}
+}
+
 let sse = null;
 let dotTimer = null;
 let dotCount = 0;
