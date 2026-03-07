@@ -5,7 +5,7 @@
 
 <div class="mb-5">
   <h1 class="text-xl font-bold text-gray-900">계정 수집</h1>
-  <p class="text-sm text-gray-500 mt-0.5">해시태그로 인플루언서를 검색하여 DB에 등록합니다.</p>
+  <p class="text-sm text-gray-500 mt-0.5">해시태그로 인플루언서를 검색하여 DB에 등록합니다. 여러 해시태그를 동시에 수집할 수 있습니다.</p>
 </div>
 
 <div class="grid grid-cols-5 gap-5">
@@ -115,67 +115,12 @@
     </div>
   </div>
 
-  <!-- 실시간 진행 + 유저 리스트 -->
-  <div class="col-span-3 space-y-4">
-    <!-- 진행 상황 -->
-    <div class="card p-5">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="font-semibold text-gray-800">진행 상황</h2>
-        <span id="statusBadge" class="badge text-gray-500" style="background:#f1f5f9;">대기 중</span>
-      </div>
-
-      <div id="progressArea" class="hidden">
-        <div class="flex justify-between text-xs text-gray-500 mb-1">
-          <span id="progressLabel">게시물 수집 중...</span>
-          <span id="progressNum">0 / 0</span>
-        </div>
-        <div class="w-full h-2 rounded-full mb-4" style="background:#e2e8f0;">
-          <div id="progressBar" class="h-2 rounded-full transition-all duration-300"
-               style="background:linear-gradient(90deg,#6366f1,#8b5cf6);width:0%"></div>
-        </div>
-
-        <div class="grid grid-cols-4 gap-3 mb-4">
-          <div class="text-center py-3 rounded-lg" style="background:#f8fafc;">
-            <div id="cntPosts" class="text-xl font-bold text-gray-900">0</div>
-            <div class="text-xs text-gray-400 mt-0.5">검색 게시물</div>
-          </div>
-          <div class="text-center py-3 rounded-lg" style="background:#eef2ff;">
-            <div id="cntNew" class="text-xl font-bold text-indigo-600">0</div>
-            <div class="text-xs text-gray-400 mt-0.5">신규</div>
-          </div>
-          <div class="text-center py-3 rounded-lg" style="background:#fef3c7;">
-            <div id="cntUpdated" class="text-xl font-bold text-amber-600">0</div>
-            <div class="text-xs text-gray-400 mt-0.5">중복</div>
-          </div>
-          <div class="text-center py-3 rounded-lg" style="background:#f0fdf4;">
-            <div id="cntTarget" class="text-xl font-bold text-emerald-600">0</div>
-            <div class="text-xs text-gray-400 mt-0.5">목표</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="rounded-lg px-4 py-3 font-mono text-xs flex items-center gap-3" style="background:#0f172a;min-height:48px;">
-        <span id="statusDot" class="w-2 h-2 rounded-full flex-shrink-0" style="background:#475569;"></span>
-        <span id="statusLine" class="text-gray-500">수집 준비 완료. 해시태그를 입력하고 시작하세요.</span>
-      </div>
-      <div id="errorBox" class="hidden mt-2 rounded-lg p-3 text-xs" style="background:#1e1b1b;border:1px solid #450a0a;">
-        <div class="text-red-400 font-semibold mb-1">오류</div>
-        <div id="errorMsg" class="text-red-300 leading-relaxed"></div>
-      </div>
-
-      <div id="doneArea" class="hidden mt-4 flex gap-2">
-        <a href="/influencers" class="btn btn-primary text-sm flex-1 justify-center">인플루언서 목록 보기</a>
-        <button onclick="resetForm()" class="btn btn-ghost text-sm">다시 수집</button>
-      </div>
-    </div>
-
-    <!-- 실시간 유저 리스트 -->
-    <div id="userListCard" class="card overflow-hidden hidden">
-      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-        <h2 class="font-semibold text-gray-800 text-sm">수집된 인플루언서</h2>
-        <span id="userCount" class="text-xs text-gray-400">0명</span>
-      </div>
-      <div id="userList" class="divide-y divide-gray-50" style="max-height:500px;overflow-y:auto;"></div>
+  <!-- 실시간 진행 패널들 (다중) -->
+  <div class="col-span-3 space-y-4" id="jobPanels">
+    <div id="emptyState" class="card p-8 text-center text-gray-400 text-sm">
+      <div class="text-3xl mb-2">📡</div>
+      해시태그를 입력하고 수집을 시작하세요.<br>
+      <span class="text-xs text-gray-300">여러 해시태그를 동시에 수집할 수 있습니다.</span>
     </div>
   </div>
 </div>
@@ -210,226 +155,312 @@ async function searchHashtags(q) {
   } catch(e) {}
 }
 
-let sse = null;
-let dotTimer = null;
-let dotCount = 0;
-let totalUsers = 0;
-// 자동 재연결을 위한 상태
-let lastNextId = '';
-let lastNew = 0;
-let lastUpdated = 0;
-let lastPosts = 0;
-let lastPage = 0;
-let currentJobId = '';
-let currentHashtag = '';
-let currentTargetUsers = 0;
-let currentSearchType = 'recent';
-let resumeCount = 0;
-const MAX_RESUME = 50; // 최대 재연결 횟수
+// ═══ 다중 수집 관리 ═══
+const MAX_RESUME = 50;
+const jobs = {};  // jobId → job state
 
-function setStatus(msg, type='idle') {
-  const line = document.getElementById('statusLine');
-  const dot = document.getElementById('statusDot');
-  if (dotTimer) { clearInterval(dotTimer); dotTimer = null; }
-  line.textContent = msg;
-  if (type === 'running') {
-    dot.style.background = '#6366f1';
-    dot.style.boxShadow = '0 0 6px #6366f1';
-    dotCount = 0;
-    const base = msg.replace(/\.+$/, '');
-    dotTimer = setInterval(() => {
-      dotCount = (dotCount + 1) % 4;
-      line.textContent = base + '.'.repeat(dotCount);
-    }, 400);
-  } else if (type === 'error') {
-    dot.style.background = '#ef4444';
-    dot.style.boxShadow = '0 0 6px #ef4444';
-  } else if (type === 'done') {
-    dot.style.background = '#10b981';
-    dot.style.boxShadow = '0 0 6px #10b981';
-  } else {
-    dot.style.background = '#475569';
-    dot.style.boxShadow = 'none';
+class CollectJob {
+  constructor(jobId, hashtag, targetUsers, searchType) {
+    this.jobId = jobId;
+    this.hashtag = hashtag;
+    this.targetUsers = targetUsers;
+    this.searchType = searchType;
+    this.sse = null;
+    this.stopped = false;
+    this.lastNextId = '';
+    this.lastNew = 0;
+    this.lastUpdated = 0;
+    this.lastPosts = 0;
+    this.lastPage = 0;
+    this.resumeCount = 0;
+    this.totalUsers = 0;
+    this.dotTimer = null;
+    this.dotCount = 0;
+    this.createPanel();
   }
-}
 
-function addUsers(users) {
-  const list = document.getElementById('userList');
-  users.forEach(u => {
-    totalUsers++;
-    const div = document.createElement('div');
-    div.className = 'flex items-center gap-3 px-4 py-2 hover:bg-gray-50 animate-fadeIn';
-    const badge = u.is_new
-      ? '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#eef2ff;color:#4f46e5;">NEW</span>'
-      : '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#f0fdf4;color:#059669;">기존</span>';
-    div.innerHTML = `
-      <span class="text-xs text-gray-300 w-6 text-right flex-shrink-0">${totalUsers}</span>
-      <img src="${u.pic || 'https://ui-avatars.com/api/?name='+encodeURIComponent(u.username||'U')+'&background=6366f1&color=fff&size=32'}"
-           class="w-8 h-8 rounded-full object-cover flex-shrink-0" style="border:2px solid ${u.is_new?'#c7d2fe':'#e5e7eb'};"
-           onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${u.username||'U'}')+'&background=6366f1&color=fff&size=32'">
-      <div class="flex-1 min-w-0">
-        <div class="text-sm font-semibold text-gray-800 truncate">@${u.username || '?'}</div>
-        ${u.full_name ? '<div class="text-xs text-gray-400 truncate">'+u.full_name+'</div>' : ''}
+  createPanel() {
+    document.getElementById('emptyState')?.remove();
+    const panel = document.createElement('div');
+    panel.id = `panel-${this.jobId}`;
+    panel.className = 'card overflow-hidden';
+    panel.innerHTML = `
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-gray-800 text-sm">#${this.hashtag}</span>
+          <span class="badge text-xs j-badge" style="background:rgba(245,158,11,.1);color:#d97706;">수집 중</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="jobs['${this.jobId}'].stop()" class="j-stopBtn px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition" style="border:1px solid #fecaca;">
+            중지
+          </button>
+          <button onclick="jobs['${this.jobId}'].remove()" class="j-closeBtn px-2 py-1.5 rounded-lg text-xs text-gray-400 hover:bg-gray-100 hidden">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
       </div>
-      ${badge}
+      <div class="p-4">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span class="j-label">게시물 수집 중...</span>
+          <span class="j-num">0 / 0</span>
+        </div>
+        <div class="w-full h-2 rounded-full mb-3" style="background:#e2e8f0;">
+          <div class="j-bar h-2 rounded-full transition-all duration-300" style="background:linear-gradient(90deg,#6366f1,#8b5cf6);width:0%"></div>
+        </div>
+        <div class="grid grid-cols-4 gap-2 mb-3">
+          <div class="text-center py-2 rounded-lg" style="background:#f8fafc;">
+            <div class="j-posts text-lg font-bold text-gray-900">0</div>
+            <div class="text-xs text-gray-400">게시물</div>
+          </div>
+          <div class="text-center py-2 rounded-lg" style="background:#eef2ff;">
+            <div class="j-new text-lg font-bold text-indigo-600">0</div>
+            <div class="text-xs text-gray-400">신규</div>
+          </div>
+          <div class="text-center py-2 rounded-lg" style="background:#fef3c7;">
+            <div class="j-dup text-lg font-bold text-amber-600">0</div>
+            <div class="text-xs text-gray-400">중복</div>
+          </div>
+          <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;">
+            <div class="text-lg font-bold text-emerald-600">${this.targetUsers}</div>
+            <div class="text-xs text-gray-400">목표</div>
+          </div>
+        </div>
+        <div class="rounded-lg px-3 py-2 font-mono text-xs flex items-center gap-2" style="background:#0f172a;min-height:36px;">
+          <span class="j-dot w-2 h-2 rounded-full flex-shrink-0" style="background:#6366f1;box-shadow:0 0 6px #6366f1;"></span>
+          <span class="j-status text-gray-400">#${this.hashtag} 수집 준비 중...</span>
+        </div>
+        <div class="j-error hidden mt-2 rounded-lg p-2 text-xs" style="background:#1e1b1b;border:1px solid #450a0a;">
+          <span class="text-red-300 j-errorMsg"></span>
+        </div>
+      </div>
+      <div class="j-users hidden border-t border-gray-100">
+        <div class="px-4 py-2 flex items-center justify-between border-b border-gray-50">
+          <span class="text-xs font-semibold text-gray-600">수집된 인플루언서</span>
+          <span class="j-userCount text-xs text-gray-400">0명</span>
+        </div>
+        <div class="j-userList divide-y divide-gray-50" style="max-height:300px;overflow-y:auto;"></div>
+      </div>
     `;
-    list.prepend(div);
-  });
-  document.getElementById('userCount').textContent = totalUsers + '명';
-  // 자동 스크롤 (최신이 위)
+    document.getElementById('jobPanels').prepend(panel);
+    this.el = panel;
+  }
+
+  $(sel) { return this.el.querySelector(sel); }
+
+  setStatus(msg, type='running') {
+    const line = this.$('.j-status');
+    const dot = this.$('.j-dot');
+    if (this.dotTimer) { clearInterval(this.dotTimer); this.dotTimer = null; }
+    line.textContent = msg;
+    if (type === 'running') {
+      dot.style.background = '#6366f1'; dot.style.boxShadow = '0 0 6px #6366f1';
+      const base = msg.replace(/\.+$/, '');
+      this.dotCount = 0;
+      this.dotTimer = setInterval(() => {
+        this.dotCount = (this.dotCount + 1) % 4;
+        line.textContent = base + '.'.repeat(this.dotCount);
+      }, 400);
+    } else if (type === 'error') {
+      dot.style.background = '#ef4444'; dot.style.boxShadow = '0 0 6px #ef4444';
+    } else if (type === 'done') {
+      dot.style.background = '#10b981'; dot.style.boxShadow = '0 0 6px #10b981';
+    }
+  }
+
+  addUsers(users) {
+    const list = this.$('.j-userList');
+    this.$('.j-users').classList.remove('hidden');
+    users.forEach(u => {
+      this.totalUsers++;
+      const div = document.createElement('div');
+      div.className = 'flex items-center gap-3 px-4 py-1.5 hover:bg-gray-50 animate-fadeIn';
+      const badge = u.is_new
+        ? '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#eef2ff;color:#4f46e5;">NEW</span>'
+        : '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#f0fdf4;color:#059669;">기존</span>';
+      div.innerHTML = `
+        <span class="text-xs text-gray-300 w-5 text-right flex-shrink-0">${this.totalUsers}</span>
+        <img src="${u.pic || 'https://ui-avatars.com/api/?name='+encodeURIComponent(u.username||'U')+'&background=6366f1&color=fff&size=32'}"
+             class="w-7 h-7 rounded-full object-cover flex-shrink-0" style="border:2px solid ${u.is_new?'#c7d2fe':'#e5e7eb'};"
+             onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${u.username||'U'}')+'&background=6366f1&color=fff&size=32'">
+        <div class="flex-1 min-w-0">
+          <span class="text-xs font-semibold text-gray-800 truncate block">@${u.username || '?'}</span>
+        </div>
+        ${badge}
+      `;
+      list.prepend(div);
+    });
+    this.$('.j-userCount').textContent = this.totalUsers + '명';
+  }
+
+  listen() {
+    if (this.stopped) return;
+    if (this.sse) this.sse.close();
+
+    const params = new URLSearchParams({
+      hashtag: this.hashtag, target_users: this.targetUsers, search_type: this.searchType,
+      resume_from: this.lastNextId, resume_new: this.lastNew,
+      resume_updated: this.lastUpdated, resume_posts: this.lastPosts, resume_page: this.lastPage
+    });
+    this.sse = new EventSource(`/collect/progress/${this.jobId}?${params}`);
+
+    this.sse.onmessage = (e) => {
+      if (this.stopped) { this.sse.close(); return; }
+      const p = JSON.parse(e.data);
+      if (!p || !p.hashtag) return;
+
+      if (p.next_id) this.lastNextId = p.next_id;
+      if (p.new !== undefined) this.lastNew = p.new;
+      if (p.updated !== undefined) this.lastUpdated = p.updated;
+      if (p.posts !== undefined) this.lastPosts = p.posts;
+      if (p.page !== undefined) this.lastPage = p.page;
+
+      this.$('.j-posts').textContent = p.posts || 0;
+      this.$('.j-new').textContent = p.new || 0;
+      this.$('.j-dup').textContent = p.updated || 0;
+
+      const pct = Math.min(100, Math.round(((p.new || 0) / this.targetUsers) * 100));
+      this.$('.j-num').textContent = `신규 ${p.new||0}명 / 중복 ${p.updated||0}명 / 목표 ${this.targetUsers}명`;
+      this.$('.j-bar').style.width = pct + '%';
+      this.$('.j-label').textContent = p.status || '';
+
+      if (p.status) this.setStatus(p.status, p.done ? (p.error ? 'error' : 'done') : 'running');
+      if (p.users && p.users.length > 0) this.addUsers(p.users);
+
+      if (p.has_more && !this.stopped) {
+        this.sse.close();
+        this.resumeCount++;
+        setTimeout(() => this.listen(), 500);
+        return;
+      }
+
+      if (p.done) {
+        this.sse.close();
+        this.resumeCount = 0;
+        if (p.error) {
+          this.finish('error', p.error);
+        } else {
+          this.finish('done');
+        }
+      }
+    };
+
+    this.sse.onerror = () => {
+      this.sse.close();
+      if (this.stopped) return;
+      if (this.lastNextId && this.lastNew < this.targetUsers && this.resumeCount < MAX_RESUME) {
+        this.resumeCount++;
+        this.setStatus(`재연결 (${this.resumeCount}회)... 신규 ${this.lastNew}명`, 'running');
+        setTimeout(() => this.listen(), 1000);
+      } else {
+        this.finish('done');
+      }
+    };
+  }
+
+  stop() {
+    this.stopped = true;
+    if (this.sse) { this.sse.close(); this.sse = null; }
+    this.finish('stopped');
+  }
+
+  finish(type, errorMsg) {
+    if (this.dotTimer) { clearInterval(this.dotTimer); this.dotTimer = null; }
+    const badge = this.$('.j-badge');
+    const stopBtn = this.$('.j-stopBtn');
+    const closeBtn = this.$('.j-closeBtn');
+    stopBtn.classList.add('hidden');
+    closeBtn.classList.remove('hidden');
+
+    if (type === 'error') {
+      badge.textContent = '에러'; badge.style.cssText = 'background:rgba(239,68,68,.1);color:#ef4444;';
+      this.setStatus('수집 실패', 'error');
+      this.$('.j-error').classList.remove('hidden');
+      this.$('.j-errorMsg').textContent = errorMsg;
+    } else if (type === 'stopped') {
+      badge.textContent = '중지됨'; badge.style.cssText = 'background:rgba(245,158,11,.1);color:#d97706;';
+      this.setStatus(`중지됨 — 신규 ${this.lastNew}명 저장됨`, 'done');
+      this.$('.j-bar').style.background = '#f59e0b';
+    } else {
+      badge.textContent = '완료'; badge.style.cssText = 'background:rgba(16,185,129,.1);color:#10b981;';
+      this.setStatus(`완료 — 신규 ${this.lastNew}명, 중복 ${this.lastUpdated}명`, 'done');
+      this.$('.j-bar').style.width = '100%';
+    }
+  }
+
+  remove() {
+    this.stop();
+    this.el.remove();
+    delete jobs[this.jobId];
+    if (Object.keys(jobs).length === 0) {
+      document.getElementById('jobPanels').innerHTML = `
+        <div id="emptyState" class="card p-8 text-center text-gray-400 text-sm">
+          <div class="text-3xl mb-2">📡</div>
+          해시태그를 입력하고 수집을 시작하세요.<br>
+          <span class="text-xs text-gray-300">여러 해시태그를 동시에 수집할 수 있습니다.</span>
+        </div>`;
+    }
+  }
 }
 
 function startCollect() {
   const hashtag = document.getElementById('hashtagInput').value.trim().replace(/^#/,'');
   if (!hashtag) { alert('해시태그를 입력해주세요'); return; }
 
-  const targetUsers = document.getElementById('targetUsersInput').value;
+  const targetUsers = parseInt(document.getElementById('targetUsersInput').value) || 1000;
   const searchType = document.querySelector('input[name="searchType"]:checked').value;
-
-  // 상태 초기화
-  lastNextId = ''; lastNew = 0; lastUpdated = 0; lastPosts = 0; lastPage = 0; resumeCount = 0;
-  document.getElementById('startBtn').disabled = true;
-  document.getElementById('startBtn').textContent = '수집 중...';
-  document.getElementById('progressArea').classList.remove('hidden');
-  document.getElementById('userListCard').classList.remove('hidden');
-  document.getElementById('userList').innerHTML = '';
-  totalUsers = 0;
-  document.getElementById('statusBadge').textContent = '수집 중';
-  document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
-  document.getElementById('errorBox').classList.add('hidden');
-  setStatus(`#${hashtag} 수집 준비 중`, 'running');
 
   const form = new URLSearchParams({ hashtag, requested_count: '500', target_users: targetUsers, search_type: searchType });
   fetch('/collect/start', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     .then(r => r.text())
     .then(jobId => {
-      setStatus(`#${hashtag} 수집 중`, 'running');
-      listenProgress(jobId.trim(), hashtag, parseInt(targetUsers), searchType);
+      jobId = jobId.trim();
+      const job = new CollectJob(jobId, hashtag, targetUsers, searchType);
+      jobs[jobId] = job;
+      job.listen();
+      // 입력 초기화
+      document.getElementById('hashtagInput').value = '';
+      document.getElementById('relatedTags').classList.add('hidden');
     })
-    .catch(e => { setStatus(`연결 오류: ${e}`, 'error'); });
-}
-
-function listenProgress(jobId, hashtag, targetUsers, searchType) {
-  if (sse) sse.close();
-  currentJobId = jobId;
-  currentHashtag = hashtag;
-  currentTargetUsers = targetUsers;
-  currentSearchType = searchType;
-
-  const params = new URLSearchParams({
-    hashtag, target_users: targetUsers, search_type: searchType,
-    resume_from: lastNextId, resume_new: lastNew,
-    resume_updated: lastUpdated, resume_posts: lastPosts, resume_page: lastPage
-  });
-  sse = new EventSource(`/collect/progress/${jobId}?${params}`);
-
-  sse.onmessage = function(e) {
-    const p = JSON.parse(e.data);
-    if (!p || !p.hashtag) return;
-
-    // 재연결용 상태 저장
-    if (p.next_id) lastNextId = p.next_id;
-    if (p.new !== undefined) lastNew = p.new;
-    if (p.updated !== undefined) lastUpdated = p.updated;
-    if (p.posts !== undefined) lastPosts = p.posts;
-    if (p.page !== undefined) lastPage = p.page;
-
-    // 카운터 업데이트
-    document.getElementById('cntPosts').textContent = p.posts || 0;
-    document.getElementById('cntNew').textContent = p.new || 0;
-    document.getElementById('cntUpdated').textContent = p.updated || 0;
-    document.getElementById('cntTarget').textContent = targetUsers;
-
-    // 진행률
-    const pct = Math.min(100, Math.round(((p.new || 0) / targetUsers) * 100));
-    document.getElementById('progressNum').textContent = `신규 ${p.new||0}명 / 중복 ${p.updated||0}명 / 목표 ${targetUsers}명`;
-    document.getElementById('progressBar').style.width = pct + '%';
-    document.getElementById('progressLabel').textContent = p.status || '';
-
-    if (p.status) {
-      setStatus(p.status, p.done ? (p.error ? 'error' : 'done') : 'running');
-    }
-
-    // 실시간 유저 리스트
-    if (p.users && p.users.length > 0) {
-      addUsers(p.users);
-    }
-
-    // 배치 완료 → 자동으로 다음 배치 시작
-    if (p.has_more) {
-      sse.close();
-      resumeCount++;
-      setStatus(p.status, 'running');
-      setTimeout(() => {
-        listenProgress(currentJobId, currentHashtag, currentTargetUsers, currentSearchType);
-      }, 500);
-      return;
-    }
-
-    if (p.done) {
-      sse.close();
-      resumeCount = 0;
-      if (p.error) {
-        setStatus('수집 실패', 'error');
-        document.getElementById('errorBox').classList.remove('hidden');
-        document.getElementById('errorMsg').textContent = p.error;
-        document.getElementById('statusBadge').textContent = '에러';
-        document.getElementById('statusBadge').style.cssText = 'background:rgba(239,68,68,.1);color:#ef4444';
-      } else {
-        setStatus(p.status || `완료 — 신규 ${p.new}명, 중복 ${p.updated}명`, 'done');
-        document.getElementById('statusBadge').textContent = '완료';
-        document.getElementById('statusBadge').style.cssText = 'background:rgba(16,185,129,.1);color:#10b981';
-        document.getElementById('progressBar').style.width = '100%';
-        document.getElementById('doneArea').classList.remove('hidden');
-      }
-      document.getElementById('startBtn').disabled = false;
-      document.getElementById('startBtn').textContent = '수집 시작';
-    }
-  };
-
-  sse.onerror = function() {
-    sse.close();
-    // 목표 미달 + next_id 있으면 자동 재연결
-    if (lastNextId && lastNew < targetUsers && resumeCount < MAX_RESUME) {
-      resumeCount++;
-      setStatus(`연결 재시도 (${resumeCount}회)... 신규 ${lastNew}명 / 목표 ${targetUsers}명`, 'running');
-      setTimeout(() => {
-        listenProgress(currentJobId, currentHashtag, currentTargetUsers, currentSearchType);
-      }, 1000);
-    } else {
-      setStatus(`수집 중단 — 신규 ${lastNew}명 저장됨`, 'done');
-      document.getElementById('statusBadge').textContent = resumeCount >= MAX_RESUME ? '완료' : '중단';
-      document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706';
-      document.getElementById('startBtn').disabled = false;
-      document.getElementById('startBtn').textContent = '수집 시작';
-      document.getElementById('doneArea').classList.remove('hidden');
-      resumeCount = 0;
-    }
-  };
+    .catch(e => { alert('수집 시작 실패: ' + e); });
 }
 
 function loadJobUsers(jobId, el) {
-  // 이력 선택 표시
   document.querySelectorAll('[data-job-id]').forEach(r => r.classList.remove('bg-indigo-50'));
   if (el) el.classList.add('bg-indigo-50');
 
-  // 유저 리스트 카드 표시
-  const card = document.getElementById('userListCard');
-  const list = document.getElementById('userList');
-  card.classList.remove('hidden');
-  list.innerHTML = '<div class="py-6 text-center text-gray-400 text-sm">불러오는 중...</div>';
-  document.getElementById('userCount').textContent = '';
+  // 기존 히스토리 패널이 있으면 제거
+  document.getElementById('historyPanel')?.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'historyPanel';
+  panel.className = 'card overflow-hidden';
+  panel.innerHTML = `
+    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <span class="font-semibold text-gray-800 text-sm">수집된 인플루언서</span>
+      <div class="flex items-center gap-2">
+        <span class="h-userCount text-xs text-gray-400"></span>
+        <button onclick="document.getElementById('historyPanel').remove()" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="h-userList divide-y divide-gray-50" style="max-height:400px;overflow-y:auto;">
+      <div class="py-6 text-center text-gray-400 text-sm">불러오는 중...</div>
+    </div>
+  `;
+  document.getElementById('jobPanels').appendChild(panel);
 
   fetch(`/api/collect-job/${jobId}/users`)
     .then(r => r.json())
     .then(users => {
+      const list = panel.querySelector('.h-userList');
       list.innerHTML = '';
       if (!users || users.length === 0) {
         list.innerHTML = '<div class="py-6 text-center text-gray-400 text-sm">수집된 유저 정보가 없습니다</div>';
-        document.getElementById('userCount').textContent = '0명';
+        panel.querySelector('.h-userCount').textContent = '0명';
         return;
       }
-      document.getElementById('userCount').textContent = users.length + '명';
+      panel.querySelector('.h-userCount').textContent = users.length + '명';
       users.forEach((u, i) => {
         const div = document.createElement('div');
         div.className = 'flex items-center gap-3 px-4 py-2 hover:bg-gray-50';
@@ -450,23 +481,8 @@ function loadJobUsers(jobId, el) {
       });
     })
     .catch(e => {
-      list.innerHTML = '<div class="py-6 text-center text-red-400 text-sm">로드 실패: '+e+'</div>';
+      panel.querySelector('.h-userList').innerHTML = '<div class="py-6 text-center text-red-400 text-sm">로드 실패</div>';
     });
-}
-
-function resetForm() {
-  document.getElementById('hashtagInput').value = '';
-  document.getElementById('progressArea').classList.add('hidden');
-  document.getElementById('doneArea').classList.add('hidden');
-  document.getElementById('userListCard').classList.add('hidden');
-  document.getElementById('userList').innerHTML = '';
-  totalUsers = 0;
-  document.getElementById('statusBadge').textContent = '대기 중';
-  document.getElementById('statusBadge').style.cssText = 'background:#f1f5f9;color:#64748b';
-  document.getElementById('cntPosts').textContent = document.getElementById('cntNew').textContent = document.getElementById('cntUpdated').textContent = document.getElementById('cntTarget').textContent = '0';
-  document.getElementById('progressBar').style.width = '0%';
-  setStatus('수집 준비 완료. 해시태그를 입력하고 시작하세요.', 'idle');
-  document.getElementById('errorBox').classList.add('hidden');
 }
 </script>
 
