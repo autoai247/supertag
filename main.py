@@ -1116,6 +1116,20 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
         "request": request, "user": user, "hidden": hidden,
     })
 
+@app.get("/api/collect-jobs")
+def api_collect_jobs(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import get_collect_jobs
+    jobs = get_collect_jobs(limit=20)
+    # 시간 포맷
+    from datetime import datetime, timezone, timedelta
+    kst = timezone(timedelta(hours=9))
+    for j in jobs:
+        t = j.get("started_at")
+        j["started_at_fmt"] = datetime.fromtimestamp(float(t), tz=kst).strftime("%m/%d %H:%M") if t else "-"
+    return JSONResponse(jobs)
+
 @app.get("/api/collect-job/{job_id}/users")
 def collect_job_users(job_id: int, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)

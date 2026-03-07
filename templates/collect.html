@@ -73,46 +73,15 @@
       </div>
     </div>
 
-    <!-- 수집 이력 -->
+    <!-- 수집 이력 (실시간 폴링) -->
     <div class="card overflow-hidden">
-      <div class="px-4 py-3 border-b border-gray-100">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
         <h2 class="font-semibold text-gray-800 text-sm">최근 수집 이력</h2>
+        <span id="historyRefreshDot" class="w-2 h-2 rounded-full" style="background:#10b981;" title="실시간 갱신 중"></span>
       </div>
-      {% if jobs %}
-      <div class="divide-y divide-gray-50" style="max-height:300px;overflow-y:auto;">
-        {% for j in jobs %}
-        <div class="px-4 py-2.5 text-xs flex items-center gap-3 cursor-pointer hover:bg-indigo-50 transition"
-             onclick="loadJobUsers({{ j.id }}, this)" data-job-id="{{ j.id }}">
-          <div class="flex-1">
-            <span class="font-bold text-gray-800">#{{ j.hashtag }}</span>
-            <span class="px-1.5 py-0.5 rounded text-xs font-bold {% if j.search_type == 'top' %}text-amber-600{% else %}text-blue-600{% endif %}" style="background:{% if j.search_type == 'top' %}#fef3c7{% else %}#eff6ff{% endif %};">{{ '인기' if j.search_type == 'top' else '최근' }}</span>
-            <span class="text-gray-400 ml-1">
-              {% if j.status == 'done' %}
-              게시물 {{ j.collected_posts or 0 }}개 / 신규 {{ j.new_users or 0 }}명 / 중복 {{ j.updated_users or 0 }}명
-              {% elif j.status == 'running' %}
-              진행 중
-              {% else %}
-              {{ j.status }}
-              {% endif %}
-            </span>
-          </div>
-          <div class="flex-shrink-0">
-            {% if j.status == 'done' %}
-            <span class="text-emerald-600 font-semibold">완료</span>
-            {% elif j.status == 'running' %}
-            <span class="text-amber-600 font-semibold">진행중</span>
-            {% else %}
-            <span class="text-red-500 font-semibold">에러</span>
-            {% endif %}
-          </div>
-          <div class="text-gray-400 flex-shrink-0">{{ j.started_at | dt }}</div>
-          <svg class="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-        </div>
-        {% endfor %}
+      <div id="historyList" class="divide-y divide-gray-50" style="max-height:300px;overflow-y:auto;">
+        <div class="py-6 text-center text-gray-400 text-sm">불러오는 중...</div>
       </div>
-      {% else %}
-      <div class="py-6 text-center text-gray-400 text-sm">수집 이력이 없습니다</div>
-      {% endif %}
     </div>
   </div>
 
@@ -424,6 +393,59 @@ function startCollect() {
     })
     .catch(e => { alert('수집 시작 실패: ' + e); });
 }
+
+// ═══ 수집 이력 실시간 폴링 ═══
+function renderHistory(jobsList) {
+  const container = document.getElementById('historyList');
+  if (!jobsList || jobsList.length === 0) {
+    container.innerHTML = '<div class="py-6 text-center text-gray-400 text-sm">수집 이력이 없습니다</div>';
+    return;
+  }
+  container.innerHTML = jobsList.map(j => {
+    const isTop = j.search_type === 'top';
+    const typeBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-bold ${isTop?'text-amber-600':'text-blue-600'}" style="background:${isTop?'#fef3c7':'#eff6ff'};">${isTop?'인기':'최근'}</span>`;
+    let info = '', statusBadge = '';
+    if (j.status === 'done') {
+      info = `게시물 ${j.collected_posts||0}개 / 신규 ${j.new_users||0}명 / 중복 ${j.updated_users||0}명`;
+      statusBadge = '<span class="text-emerald-600 font-semibold">완료</span>';
+    } else if (j.status === 'running') {
+      const parts = [];
+      if (j.collected_posts) parts.push(`게시물 ${j.collected_posts}개`);
+      if (j.new_users) parts.push(`신규 ${j.new_users}명`);
+      if (j.updated_users) parts.push(`중복 ${j.updated_users}명`);
+      info = parts.length ? parts.join(' / ') : '진행 중';
+      statusBadge = '<span class="text-amber-600 font-semibold animate-pulse">진행중</span>';
+    } else {
+      info = j.status;
+      statusBadge = '<span class="text-red-500 font-semibold">에러</span>';
+    }
+    return `<div class="px-4 py-2.5 text-xs flex items-center gap-3 cursor-pointer hover:bg-indigo-50 transition" onclick="loadJobUsers(${j.id}, this)" data-job-id="${j.id}">
+      <div class="flex-1">
+        <span class="font-bold text-gray-800">#${j.hashtag}</span> ${typeBadge}
+        <span class="text-gray-400 ml-1">${info}</span>
+      </div>
+      <div class="flex-shrink-0">${statusBadge}</div>
+      <div class="text-gray-400 flex-shrink-0">${j.started_at_fmt || '-'}</div>
+      <svg class="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </div>`;
+  }).join('');
+}
+
+function refreshHistory() {
+  fetch('/api/collect-jobs')
+    .then(r => r.json())
+    .then(data => {
+      if (Array.isArray(data)) renderHistory(data);
+      // 깜빡임 효과
+      const dot = document.getElementById('historyRefreshDot');
+      if (dot) { dot.style.opacity = '0.3'; setTimeout(() => dot.style.opacity = '1', 300); }
+    })
+    .catch(() => {});
+}
+
+// 초기 로드 + 5초 간격 폴링
+refreshHistory();
+setInterval(refreshHistory, 5000);
 
 function loadJobUsers(jobId, el) {
   // 진행중인 수집이면 해당 패널로 스크롤
