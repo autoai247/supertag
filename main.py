@@ -1610,23 +1610,14 @@ def collect_progress(job_id: str,
                           "users": page_users})
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
-                # 연속으로 신규가 없으면 중단 — 50페이지(~1500게시물) 연속 신규 0이면 포기
-                if page_new == 0:
-                    no_new_streak += 1
-                    if no_new_streak >= 50:
-                        p["status"] = f"신규 유저 없음 ({no_new_streak}페이지 연속). 해시태그에서 더 이상 신규 유저가 없습니다."
-                        p.update({"done": True, "page": page_num})
-                        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
-                        break
-                else:
-                    no_new_streak = 0
-
                 if not next_id:
-                    p["status"] = f"페이지 {page_num}에서 다음 페이지 없음 (next_id=None). 종료."
+                    p["status"] = f"페이지 {page_num} — 인스타그램에서 더 이상 게시물 없음. 종료."
                     yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
                     break
                 max_id = next_id
-                time.sleep(0.3)
+                # 깊이 스크롤할수록 대기 시간 증가 (API 안정성)
+                wait = min(0.3 + page_num * 0.05, 2.0)
+                time.sleep(wait)
 
             # 완료
             try:
