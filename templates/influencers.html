@@ -283,6 +283,7 @@
     <div class="flex gap-1 flex-shrink-0">
       <a href="/influencers/{{ r.pk }}" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 whitespace-nowrap">상세</a>
       <a href="/influencers/{{ r.pk }}/edit" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap">편집</a>
+      <button onclick="banUser('{{ r.pk }}','{{ r.username }}')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 whitespace-nowrap">밴</button>
     </div>
   </div>
   {% endfor %}
@@ -349,6 +350,22 @@ async function startRefresh() {
     }
   } catch(e) {
     btn.textContent = '오류';
+  }
+}
+
+async function banUser(pk, username) {
+  const reason = prompt(`@${username} 밴 사유 (선택사항):`);
+  if (reason === null) return;
+  const fd = new FormData();
+  fd.append('reason', reason);
+  const r = await fetch(`/influencers/${pk}/ban`, {method:'POST', body:fd});
+  const d = await r.json();
+  if (d.ok) {
+    const row = document.querySelector(`input[value="${pk}"]`)?.closest('.bg-white');
+    if (row) { row.style.opacity='0.3'; row.style.pointerEvents='none'; }
+    alert(`@${username} 밴 완료`);
+  } else {
+    alert('밴 실패: ' + (d.error || ''));
   }
 }
 
