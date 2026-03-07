@@ -24,7 +24,8 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       get_influencer_by_username, update_influencer_profile,
                       get_favorites, get_favorite_pks, toggle_favorite,
                       get_campaigns, create_campaign, get_campaign, get_campaign_influencers,
-                      add_to_campaign, remove_from_campaign, delete_campaign)
+                      add_to_campaign, remove_from_campaign, delete_campaign,
+                      add_cron_log, get_cron_logs, get_auto_hashtags)
 
 # ── 해시태그 활동 유형 분석 헬퍼 ──
 _SELLER_KW = {
@@ -479,6 +480,10 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "t
 templates.env.filters["dt"]    = lambda t: datetime.fromtimestamp(float(t)).strftime("%m/%d %H:%M") if t else "-"
 templates.env.filters["comma"] = lambda n: f"{int(n or 0):,}"
 templates.env.filters["fmtn"]  = lambda n: (f"{int(n or 0)//10000:,}만" if int(n or 0) >= 10000 else f"{int(n or 0):,}") if n else "0"
+def _fromjson(s):
+    try: return json.loads(s) if isinstance(s, str) else s
+    except: return {}
+templates.env.filters["fromjson"] = _fromjson
 
 def _safe_cd(fname: str) -> str:
     """Content-Disposition 헤더용 RFC 5987 인코딩"""
@@ -1194,6 +1199,102 @@ def refresh_status(session_id: Optional[str] = Cookie(default=None)):
     if not user: return JSONResponse({"error": "인증 필요"}, 403)
     from crawler import refresh_progress
     return JSONResponse(refresh_progress.get("current", {}))
+
+
+# ═══════════════════════════════════════════════════════
+# 자동화 (Cron)
+# ═══════════════════════════════════════════════════════
+
+@app.get("/api/cron/auto")
+def cron_auto(request: Request):
+    """Vercel Cron 또는 외부 cron이 호출하는 자동화 엔드포인트.
+    1) auto_collect 해시태그 1개 → 신규 계정 10명 수집
+    2) 미갱신 인플루언서 5명 → 게시물 갱신
+    """
+    # 인증: Vercel CRON_SECRET 또는 커스텀 헤더
+    cron_secret = os.getenv("CRON_SECRET", "")
+    auth = request.headers.get("authorization", "")
+    if cron_secret and auth != f"Bearer {cron_secret}":
+        raise HTTPException(401, "Unauthorized")
+    if not cron_secret:
+        raise HTTPException(403, "CRON_SECRET 미설정")
+
+    from crawler import cron_collect_batch, cron_refresh_batch
+
+    results = {"collect": None, "refresh": None}
+
+    # ① 계정 수집: auto_collect 해시태그 중 가장 오래된 것
+    auto_tags = get_auto_hashtags()
+    if auto_tags:
+        tag = auto_tags[0]
+        tag_name = tag.get("name", "")
+        try:
+            r = cron_collect_batch(tag_name, target_users=10, search_type="recent")
+            results["collect"] = {"hashtag": tag_name, **r}
+            add_cron_log("collect", "error" if r.get("error") else "ok",
+                         hashtag=tag_name, details=r)
+        except Exception as e:
+            results["collect"] = {"hashtag": tag_name, "error": str(e)}
+            add_cron_log("collect", "error", hashtag=tag_name, details={"error": str(e)})
+
+    # ② 게시물 갱신
+    try:
+        r = cron_refresh_batch(batch_size=5, stale_hours=24)
+        results["refresh"] = r
+        add_cron_log("refresh", "ok", details=r)
+    except Exception as e:
+        results["refresh"] = {"error": str(e)}
+        add_cron_log("refresh", "error", details={"error": str(e)})
+
+    return JSONResponse(results)
+
+
+@app.post("/api/cron/manual-run")
+def cron_manual_run(session_id: Optional[str] = Cookie(default=None)):
+    """관리자가 대시보드에서 수동으로 cron 1회 실행"""
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+
+    from crawler import cron_collect_batch, cron_refresh_batch
+
+    results = {"collect": None, "refresh": None}
+
+    auto_tags = get_auto_hashtags()
+    if auto_tags:
+        tag = auto_tags[0]
+        tag_name = tag.get("name", "")
+        try:
+            r = cron_collect_batch(tag_name, target_users=10, search_type="recent")
+            results["collect"] = {"hashtag": tag_name, **r}
+            add_cron_log("collect", "error" if r.get("error") else "ok",
+                         hashtag=tag_name, details=r)
+        except Exception as e:
+            results["collect"] = {"hashtag": tag_name, "error": str(e)}
+            add_cron_log("collect", "error", hashtag=tag_name, details={"error": str(e)})
+
+    try:
+        r = cron_refresh_batch(batch_size=5, stale_hours=24)
+        results["refresh"] = r
+        add_cron_log("refresh", "ok", details=r)
+    except Exception as e:
+        results["refresh"] = {"error": str(e)}
+        add_cron_log("refresh", "error", details={"error": str(e)})
+
+    return JSONResponse(results)
+
+
+@app.get("/automation", response_class=HTMLResponse)
+def automation_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return RedirectResponse("/login", 302)
+    stats = get_stats()
+    auto_tags = get_auto_hashtags()
+    cron_logs = get_cron_logs(30)
+    return templates.TemplateResponse("automation.html", {
+        "request": request, "user": user,
+        "stats": stats, "auto_tags": auto_tags, "cron_logs": cron_logs,
+        "cron_secret_set": bool(os.getenv("CRON_SECRET", "")),
+    })
 
 
 # ═══════════════════════════════════════════════════════

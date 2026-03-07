@@ -1146,6 +1146,131 @@ def refresh_all(username: str = None, password: str = None, totp_secret: str = N
         refresh_progress["current"]["error"] = str(e)
 
 
+# ─── Cron 배치 함수 (Vercel Cron용, 소량 빠른 처리) ────────────
+
+def cron_collect_batch(hashtag: str, target_users: int = 10, search_type: str = "recent") -> dict:
+    """Cron용: 해시태그에서 target_users명 신규 수집 (타임아웃 내 빠른 처리)"""
+    from database import add_collect_job, update_collect_job, update_hashtag_status
+
+    try:
+        update_hashtag_status(hashtag, "running")
+    except Exception:
+        pass
+
+    job_db_id = None
+    try:
+        job_db_id = add_collect_job(hashtag, "running", target_users)
+    except Exception:
+        pass
+
+    new_cnt = updated_cnt = 0
+    collected_posts = 0
+    try:
+        # HikerAPI로 해시태그 게시물 수집
+        hiker_medias = _hiker_hashtag_medias(hashtag, amount=500, search_type=search_type)
+        if not hiker_medias:
+            raise Exception("HikerAPI 해시태그 조회 실패")
+
+        all_pks = set()
+        for m in hiker_medias:
+            user_data = m.get("user", {})
+            pk = user_data.get("pk")
+            if pk:
+                all_pks.add(str(pk))
+            collected_posts += 1
+            if len(all_pks) >= target_users:
+                break
+
+        # 유저 상세 정보 조회
+        for pk in all_pks:
+            try:
+                u_data = _hiker_user_info_by_id(pk)
+                if not u_data:
+                    continue
+                data = {
+                    "pk": str(u_data["pk"]),
+                    "username": u_data.get("username", ""),
+                    "full_name": u_data.get("full_name", ""),
+                    "biography": u_data.get("biography", ""),
+                    "follower_count": u_data.get("follower_count", 0),
+                    "following_count": u_data.get("following_count", 0),
+                    "media_count": u_data.get("media_count", 0),
+                    "is_private": u_data.get("is_private", False),
+                    "is_verified": u_data.get("is_verified", False),
+                    "is_business": u_data.get("is_business", False),
+                    "category": u_data.get("category", ""),
+                    "public_email": u_data.get("public_email", "") or "",
+                    "public_phone": u_data.get("public_phone_number", "") or "",
+                    "external_url": str(u_data.get("external_url", "") or ""),
+                    "profile_pic_url": str(u_data.get("profile_pic_url", "") or ""),
+                    "hashtag": hashtag,
+                }
+                result = upsert_influencer(data)
+                if result == "new":
+                    new_cnt += 1
+                else:
+                    updated_cnt += 1
+                time.sleep(0.2)
+            except Exception as e:
+                log.warning(f"[cron] 유저 {pk} 조회 실패: {e}")
+
+        try:
+            update_collect_job(job_db_id, status="done",
+                collected_posts=collected_posts, new_users=new_cnt,
+                updated_users=updated_cnt, finished_at=time.time())
+            update_hashtag_status(hashtag, "idle")
+        except Exception:
+            pass
+
+        log.info(f"[cron] #{hashtag} 완료: 게시물 {collected_posts}, 신규 {new_cnt}, 업데이트 {updated_cnt}")
+        return {"posts": collected_posts, "new": new_cnt, "updated": updated_cnt}
+
+    except Exception as e:
+        log.error(f"[cron] #{hashtag} 에러: {e}")
+        try:
+            if job_db_id:
+                update_collect_job(job_db_id, status="error", error_msg=str(e)[:200], finished_at=time.time())
+            update_hashtag_status(hashtag, "error")
+        except Exception:
+            pass
+        return {"error": str(e)}
+
+
+def cron_refresh_batch(batch_size: int = 5, stale_hours: int = 24) -> dict:
+    """Cron용: stale_hours 이상 미갱신된 인플루언서 batch_size명 게시물 갱신"""
+    from database import get_influencers
+
+    cutoff = time.time() - (stale_hours * 3600)
+    all_infs = get_influencers(per_page=99999, page=1)
+    rows = [r for r in all_infs.get("items", [])
+            if not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff]
+
+    # 오래된 순 정렬
+    rows.sort(key=lambda r: r.get("stats_updated_at") or 0)
+    batch = rows[:batch_size]
+
+    success = 0
+    fail = 0
+    for row in batch:
+        pk = row.get("pk") or row.get("id")
+        uname = row.get("username", "")
+        followers = row.get("follower_count", 0)
+        try:
+            ok = crawl_user_detail(None, str(pk), uname, followers or 0)
+            if ok:
+                success += 1
+            else:
+                fail += 1
+            time.sleep(0.5)
+        except Exception as e:
+            log.warning(f"[cron] 갱신 실패 {uname}: {e}")
+            fail += 1
+
+    total_stale = len(rows)
+    log.info(f"[cron] 게시물 갱신 완료: 성공 {success}, 실패 {fail}, 미갱신 잔여 {total_stale - len(batch)}")
+    return {"processed": len(batch), "success": success, "fail": fail, "remaining": total_stale - len(batch)}
+
+
 def login_test_account(account_id: int):
     """특정 계정 로그인 테스트"""
     from database import get_accounts, update_account_status

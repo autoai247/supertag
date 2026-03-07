@@ -26,6 +26,7 @@ T_ACC  = "insta_accounts"  # 수집용 인스타그램 계정 풀
 T_FAV  = "insta_favorites"        # 광고주 찜 목록
 T_CAMP = "insta_campaigns"         # 캠페인
 T_CINF = "insta_campaign_influencers"  # 캠페인-인플루언서
+T_CRON = "insta_cron_logs"            # 자동화 로그
 
 
 # ─── Supabase REST 헬퍼 ────────────────────────────────────────────
@@ -203,6 +204,14 @@ def init_db():
         note TEXT DEFAULT '',
         added_at REAL,
         UNIQUE(campaign_id, influencer_pk)
+    )""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS {T_CRON} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_type TEXT NOT NULL,
+        status TEXT DEFAULT 'ok',
+        hashtag TEXT DEFAULT '',
+        details TEXT DEFAULT '',
+        ran_at REAL
     )""")
 
     _migrate(conn)
@@ -1151,3 +1160,34 @@ def delete_campaign(campaign_id: int):
             conn.commit()
         finally:
             conn.close()
+
+
+# ─── Cron 로그 ──────────────────────────────────────────────────
+def add_cron_log(task_type: str, status: str, hashtag: str = "", details: dict = None):
+    import json as _json
+    now = time.time()
+    det = _json.dumps(details or {}, ensure_ascii=False)
+    if _USE_SUPABASE:
+        _sb_post(T_CRON, {
+            "task_type": task_type, "status": status,
+            "hashtag": hashtag, "details": det, "ran_at": now,
+        })
+    else:
+        conn = get_conn()
+        try:
+            conn.execute(f"INSERT INTO {T_CRON} (task_type,status,hashtag,details,ran_at) VALUES (?,?,?,?,?)",
+                         (task_type, status, hashtag, det, now))
+            conn.commit()
+        finally:
+            conn.close()
+
+def get_cron_logs(limit: int = 50) -> list:
+    if _USE_SUPABASE:
+        return _sb_get(T_CRON, {"order": "ran_at.desc", "limit": str(limit)}) or []
+    return _sq_all(f"SELECT * FROM {T_CRON} ORDER BY ran_at DESC LIMIT {limit}")
+
+def get_auto_hashtags() -> list:
+    """auto_collect=1인 해시태그를 last_run_at 오래된순으로 반환"""
+    if _USE_SUPABASE:
+        return _sb_get(T_HASH, {"auto_collect": "eq.1", "order": "last_run_at.asc.nullsfirst"}) or []
+    return _sq_all(f"SELECT * FROM {T_HASH} WHERE auto_collect=1 ORDER BY last_run_at ASC NULLS FIRST")
