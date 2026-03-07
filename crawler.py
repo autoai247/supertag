@@ -119,12 +119,12 @@ def _hiker_user_medias(user_id: str, amount: int = 50) -> list | None:
 
 
 def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "recent") -> list | None:
-    """HikerAPI로 해시태그 게시물 조회 (직접 REST API). 실패 시 None."""
+    """HikerAPI로 해시태그 게시물 조회 (직접 REST API). recent 빈 결과 시 top 폴백."""
     token = os.environ.get("HIKERAPI_TOKEN", "").strip()
     if not token:
         return None
-    try:
-        endpoint = "top" if search_type == "top" else "recent"
+
+    def _fetch(endpoint):
         r = req_lib.get(
             f"https://api.hikerapi.com/v1/hashtag/medias/{endpoint}",
             params={"name": hashtag, "count": amount},
@@ -136,12 +136,16 @@ def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "r
         if r.status_code != 200:
             raise Exception(f"HikerAPI 응답 오류 ({r.status_code}): {r.text[:200]}")
         data = r.json()
-        if isinstance(data, list):
-            return data[:amount]
-        return None
-    except req_lib.RequestException as e:
-        log.warning(f"[HikerAPI] 해시태그 조회 실패 {hashtag}: {e}")
-        raise
+        return data if isinstance(data, list) else []
+
+    try:
+        endpoint = "top" if search_type == "top" else "recent"
+        results = _fetch(endpoint)
+        # recent가 빈 결과면 top으로 폴백
+        if not results and endpoint == "recent":
+            log.info(f"[HikerAPI] #{hashtag} recent 빈 결과 → top 폴백")
+            results = _fetch("top")
+        return results[:amount] if results else None
     except Exception as e:
         log.warning(f"[HikerAPI] 해시태그 조회 실패 {hashtag}: {e}")
         raise
