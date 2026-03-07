@@ -1525,46 +1525,55 @@ def collect_progress(job_id: str,
         except Exception:
             pass
 
-        p = {"hashtag": hashtag, "posts": 0, "new": 0, "updated": 0,
-             "done": False, "error": None, "status": "게시물 검색 중",
-             "target": target_users}
+        p = {"hashtag": hashtag, "posts": resume_posts, "new": resume_new,
+             "updated": resume_updated, "done": False, "error": None,
+             "status": "게시물 검색 중", "target": target_users}
         yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+        BATCH_PAGES = 8  # 배치당 페이지 수 (Vercel 타임아웃 전에 완료)
 
         try:
             from crawler import _hiker_hashtag_medias_page
 
-            # DB에 이미 있는 PK → 중복 방지, 밴된 PK → 건너뛰기
             existing_pks = get_existing_pks()
             banned_pks = get_banned_pks()
 
-            # ① 해시태그 게시물을 페이지 단위로 스크롤하며 유저 수집
             seen_pks = set()
-            collected_pk_list = []  # 수집된 PK 목록 (이력 저장용)
+            collected_pk_list = []
             posts_count = resume_posts
             new_cnt = resume_new
             updated_cnt = resume_updated
             max_id = resume_from or None
             endpoint = "top" if search_type == "top" else "recent"
             page_num = resume_page
-            max_pages = 500  # 안전 상한
+            batch_done = 0
+            last_next_id = None
+            no_data = False
 
-            while new_cnt < target_users and page_num < max_pages:
+            while new_cnt < target_users and batch_done < BATCH_PAGES:
                 page_num += 1
+                batch_done += 1
                 _page_start = time.time()
-                items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
 
-                if not items and page_num <= 1 and not max_id:
+                try:
+                    items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
+                except Exception as api_err:
+                    # API 에러 시 1회 재시도
+                    time.sleep(2)
+                    try:
+                        items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
+                    except Exception:
+                        raise api_err
+
+                if not items and not max_id:
                     raise Exception("HikerAPI 해시태그 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
                 if not items:
-                    # 빈 결과: 1회 재시도 후에도 비면 종료
                     time.sleep(1)
                     items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
                     if not items:
-                        p["status"] = f"더 이상 게시물 없음. 총 {page_num}페이지 스캔."
-                        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                        no_data = True
                         break
 
-                page_new = 0
                 page_users = []
                 for m in items:
                     user_data = m.get("user", {})
@@ -1576,15 +1585,13 @@ def collect_progress(job_id: str,
                         continue
                     seen_pks.add(pk_str)
                     if pk_str in banned_pks:
-                        continue  # 밴된 유저 건너뛰기
+                        continue
                     posts_count += 1
-
                     uname = user_data.get("username", "")
                     fname = user_data.get("full_name", "")
                     pic = str(user_data.get("profile_pic_url", "") or "")
                     is_new = pk_str not in existing_pks
 
-                    # DB에 즉시 저장
                     try:
                         upsert_influencer({
                             "pk": pk_str, "username": uname,
@@ -1594,7 +1601,6 @@ def collect_progress(job_id: str,
                         collected_pk_list.append(pk_str)
                         if is_new:
                             new_cnt += 1
-                            page_new += 1
                             existing_pks.add(pk_str)
                         else:
                             updated_cnt += 1
@@ -1615,19 +1621,18 @@ def collect_progress(job_id: str,
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
                 if not next_id:
-                    p["status"] = f"페이지 {page_num} — 인스타그램에서 더 이상 게시물 없음. 종료."
-                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                    no_data = True
                     break
                 max_id = next_id
-                # 깊이 스크롤할수록 대기 시간 증가 + API 응답 시간 반영
+                last_next_id = next_id
+
                 base_wait = min(0.3 + page_num * 0.05, 2.0)
-                # 직전 API 응답이 느렸으면 추가 대기
                 elapsed = time.time() - _page_start
                 if elapsed > 5:
                     base_wait = max(base_wait, elapsed * 0.5)
                 time.sleep(base_wait)
 
-            # 완료
+            # 배치 결과 저장
             try:
                 update_collect_job(job_db_id, status="done",
                     collected_posts=posts_count, new_users=new_cnt,
@@ -1637,10 +1642,18 @@ def collect_progress(job_id: str,
             except Exception:
                 pass
 
-            stop_reason = "목표 달성" if new_cnt >= target_users else f"{page_num}페이지 스캔 완료"
-            p.update({"done": True, "new": new_cnt, "updated": updated_cnt,
-                      "status": f"완료 — 신규 {new_cnt}명, 중복 {updated_cnt}명 ({stop_reason})",
-                      "page": page_num})
+            # 목표 달성 or 더 이상 데이터 없음 → 진짜 완료
+            # 아직 목표 미달 + 다음 페이지 있음 → continue 이벤트 (클라이언트가 자동 이어서 요청)
+            if new_cnt >= target_users or no_data:
+                reason = "목표 달성" if new_cnt >= target_users else f"해시태그 끝 ({page_num}페이지)"
+                p.update({"done": True, "new": new_cnt, "updated": updated_cnt,
+                          "status": f"완료 — 신규 {new_cnt}명 / 중복 {updated_cnt}명 ({reason})",
+                          "page": page_num})
+            else:
+                p.update({"done": False, "continue": True, "new": new_cnt, "updated": updated_cnt,
+                          "next_id": last_next_id or "", "page": page_num,
+                          "posts": posts_count,
+                          "status": f"배치 {page_num}페이지 완료 — 신규 {new_cnt}명 / 중복 {updated_cnt}명 / 목표 {target_users}명 (자동 계속)"})
             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
         except Exception as e:

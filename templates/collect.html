@@ -321,6 +321,17 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
       addUsers(p.users);
     }
 
+    // 배치 완료 → 자동으로 다음 배치 시작
+    if (p.continue) {
+      sse.close();
+      resumeCount++;
+      setStatus(p.status, 'running');
+      setTimeout(() => {
+        listenProgress(currentJobId, currentHashtag, currentTargetUsers, currentSearchType);
+      }, 500);
+      return;
+    }
+
     if (p.done) {
       sse.close();
       resumeCount = 0;
