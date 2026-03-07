@@ -506,43 +506,27 @@ async function markBrand(pk, username) {
 }
 
 function banUser(pk, username) {
-  // 밴 사유 선택 모달
-  const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 z-50 flex items-center justify-center';
-  overlay.style.background = 'rgba(0,0,0,.4)';
-  overlay.innerHTML = `
-    <div class="bg-white rounded-xl shadow-xl p-5 w-80" onclick="event.stopPropagation()">
-      <div class="text-sm font-bold text-gray-800 mb-3">@${username} 밴 사유</div>
-      <div class="space-y-2 mb-4" id="banReasons">
-        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
-          <input type="radio" name="banReason" value="스팸(팔로워)" checked class="accent-red-500"> <span class="text-sm">스팸(팔로워)</span>
-        </label>
-        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
-          <input type="radio" name="banReason" value="스팸(광고)" class="accent-red-500"> <span class="text-sm">스팸(광고)</span>
-        </label>
-        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
-          <input type="radio" name="banReason" value="비활성 계정" class="accent-red-500"> <span class="text-sm">비활성 계정</span>
-        </label>
-        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
-          <input type="radio" name="banReason" value="부적절한 콘텐츠" class="accent-red-500"> <span class="text-sm">부적절한 콘텐츠</span>
-        </label>
-        <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 cursor-pointer">
-          <input type="radio" name="banReason" value="기타" class="accent-red-500"> <span class="text-sm">기타</span>
-        </label>
-      </div>
-      <div class="flex gap-2">
-        <button onclick="this.closest('.fixed').remove()" class="flex-1 py-2 rounded-lg text-sm font-semibold text-gray-500 border border-gray-200 hover:bg-gray-50">취소</button>
-        <button onclick="confirmBan('${pk}','${username}',this.closest('.fixed'))" class="flex-1 py-2 rounded-lg text-sm font-semibold text-white bg-red-500 hover:bg-red-600">밴 처리</button>
-      </div>
-    </div>
-  `;
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
+  // 기존 드롭다운 닫기
+  document.querySelectorAll('.ban-dropdown').forEach(d => d.remove());
+  const btn = event.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  const dd = document.createElement('div');
+  dd.className = 'ban-dropdown';
+  dd.style.cssText = `position:fixed;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px;min-width:150px;`;
+  dd.style.top = (rect.bottom + 4) + 'px';
+  dd.style.left = rect.left + 'px';
+  const reasons = ['스팸(팔로워)','스팸(광고)','비활성 계정','부적절한 콘텐츠','기타'];
+  dd.innerHTML = reasons.map(r => `<div class="px-3 py-2 text-xs rounded-lg cursor-pointer hover:bg-red-50 text-gray-700 hover:text-red-600" onclick="doBan('${pk}','${username}','${r}',this)">${r}</div>`).join('');
+  document.body.appendChild(dd);
+  // 바깥 클릭 시 닫기
+  setTimeout(() => {
+    const close = (e) => { if (!dd.contains(e.target)) { dd.remove(); document.removeEventListener('click', close); } };
+    document.addEventListener('click', close);
+  }, 10);
 }
 
-async function confirmBan(pk, username, overlay) {
-  const reason = overlay.querySelector('input[name="banReason"]:checked')?.value || '스팸(팔로워)';
-  overlay.remove();
+async function doBan(pk, username, reason, el) {
+  el.closest('.ban-dropdown').remove();
   const fd = new FormData();
   fd.append('reason', reason);
   const r = await fetch(`/influencers/${pk}/ban`, {method:'POST', body:fd});
@@ -550,9 +534,6 @@ async function confirmBan(pk, username, overlay) {
   if (d.ok) {
     const row = document.querySelector(`input[value="${pk}"]`)?.closest('.bg-white');
     if (row) { row.style.opacity='0.3'; row.style.pointerEvents='none'; }
-    alert(`@${username} 밴 완료 (${reason})`);
-  } else {
-    alert('밴 실패: ' + (d.error || ''));
   }
 }
 
