@@ -660,6 +660,13 @@ def api_public(
                                          category=category, hashtag=hashtag,
                                          public_only=public_only, no_biz=no_biz,
                                          biz_only=biz_only, verified_only=verified_only)
+    # 최종 안전망: 숨김/밴 계정 재필터링
+    from database import get_hidden_pks, get_banned_pks
+    _excluded = {str(p) for p in (get_hidden_pks() | get_banned_pks())}
+    if _excluded:
+        before = len(rows)
+        rows = [r for r in rows if str(r.get("pk","")) not in _excluded]
+        total = max(0, total - (before - len(rows)))
     total_pages = max(1, (total + per_page - 1) // per_page)
     def _g(r, k, d=0):
         return r[k] if isinstance(r, dict) else getattr(r, k, d)
@@ -843,6 +850,11 @@ def api_influencers(
         has_kids=bool(has_kids), has_car=bool(has_car), is_visual=bool(is_visual),
         sort=sort, order=order, page=page, per_page=per_page
     )
+    # 최종 안전망: 숨김/밴 계정 재필터링
+    from database import get_hidden_pks, get_banned_pks
+    _excluded = {str(p) for p in (get_hidden_pks() | get_banned_pks())}
+    if _excluded:
+        rows = [r for r in rows if str(r.get("pk","")) not in _excluded]
     for r in rows:
         r["pic_url"] = _pic(r)
     return JSONResponse({"total": total, "rows": rows, "page": page, "per_page": per_page})
