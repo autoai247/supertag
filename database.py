@@ -79,6 +79,60 @@ def _sb_rpc(func, payload=None):
     return r.json()
 
 
+# ─── Supabase Storage (프로필 사진) ───────────────────────────────
+_STORAGE_BUCKET = "profile-pics"
+_bucket_ensured = False
+
+def _ensure_storage_bucket():
+    global _bucket_ensured
+    if _bucket_ensured or not _USE_SUPABASE:
+        return
+    try:
+        _req.post(
+            f"{SUPABASE_URL}/storage/v1/bucket",
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
+                     "Content-Type": "application/json"},
+            json={"id": _STORAGE_BUCKET, "name": _STORAGE_BUCKET, "public": True},
+        )
+    except Exception:
+        pass
+    _bucket_ensured = True
+
+def upload_profile_pic(pk: str, image_url: str) -> str:
+    """인스타 프로필 사진을 다운로드 → Supabase Storage에 업로드. public URL 반환."""
+    if not _USE_SUPABASE or not image_url:
+        return ""
+    _ensure_storage_bucket()
+    try:
+        r = _req.get(image_url, timeout=10)
+        if r.status_code != 200:
+            return ""
+        content_type = r.headers.get("content-type", "image/jpeg")
+        ext = "jpg"
+        if "png" in content_type:
+            ext = "png"
+        elif "webp" in content_type:
+            ext = "webp"
+        path = f"{pk}.{ext}"
+        # upsert 모드 (이미 있으면 덮어쓰기)
+        upload_r = _req.post(
+            f"{SUPABASE_URL}/storage/v1/object/{_STORAGE_BUCKET}/{path}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": content_type,
+                "x-upsert": "true",
+            },
+            data=r.content,
+        )
+        if upload_r.status_code in (200, 201):
+            public_url = f"{SUPABASE_URL}/storage/v1/object/public/{_STORAGE_BUCKET}/{path}"
+            return public_url
+    except Exception:
+        pass
+    return ""
+
+
 # ─── 로컬 SQLite 연결 ─────────────────────────────────────────────
 def get_conn():
     if _USE_SUPABASE:
@@ -394,7 +448,7 @@ def update_influencer_profile(pk: str, fields: dict):
     if not fields:
         return
     allowed = {"follower_count", "following_count", "media_count", "bio", "full_name",
-                "is_business", "category", "profile_pic_url"}
+                "is_business", "category", "profile_pic_url", "profile_pic_local"}
     payload = {k: v for k, v in fields.items() if k in allowed}
     if not payload:
         return

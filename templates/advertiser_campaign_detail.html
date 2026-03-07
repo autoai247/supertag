@@ -69,12 +69,8 @@
         <tr class="border-b border-gray-50 hover:bg-gray-50" id="ci-{{ r.pk }}">
           <td class="px-4 py-3">
             <a href="/advertiser/influencers/{{ r.pk }}" class="flex items-center gap-2 hover:text-indigo-600">
-              {% if r.profile_pic_url %}
-              <img src="{{ r.profile_pic_url }}" class="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                   onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent(this.alt||'U')+'&background=6366f1&color=fff&size=128'">
-              {% else %}
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style="background:#6366f1;">{{ r.username[0].upper() if r.username else '?' }}</div>
-              {% endif %}
+              <img src="{{ r | pic }}" class="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                   onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('{{ r.username or 'U' }}')+'&background=6366f1&color=fff&size=128'">
               <div>
                 <div class="font-medium text-gray-900">@{{ r.username }}</div>
                 {% if r.is_business %}<div class="text-xs text-orange-600">🏢 기업</div>{% endif %}

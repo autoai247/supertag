@@ -851,7 +851,16 @@ def _update_profile_from_info(u_info, pk: str, username: str):
         if fn: profile_updates["full_name"] = fn
         profile_updates["is_business"] = is_biz
         if cat: profile_updates["category"] = cat
-        if pic_url: profile_updates["profile_pic_url"] = pic_url
+        if pic_url:
+            profile_updates["profile_pic_url"] = pic_url
+            # Supabase Storage에 프로필 사진 영구 저장
+            try:
+                from database import upload_profile_pic
+                stored_url = upload_profile_pic(pk, pic_url)
+                if stored_url:
+                    profile_updates["profile_pic_local"] = stored_url
+            except Exception:
+                pass
 
         if is_biz:
             from database import save_manual, get_manual

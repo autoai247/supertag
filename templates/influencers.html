@@ -225,12 +225,8 @@
 
     <!-- 프로필 이미지 -->
     <a href="/influencers/{{ r.pk }}" class="flex-shrink-0">
-      {% if r.profile_pic_url %}
-      <img src="{{ r.profile_pic_url }}" class="w-12 h-12 rounded-full object-cover border border-gray-100"
-           onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent(this.alt||'U')+'&background=6366f1&color=fff&size=128'">
-      {% else %}
-      <div class="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">{{ (r.username or '?')[0].upper() }}</div>
-      {% endif %}
+      <img src="{{ r | pic }}" class="w-12 h-12 rounded-full object-cover border border-gray-100"
+           onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('{{ r.username or 'U' }}')+'&background=6366f1&color=fff&size=128'">
     </a>
 
     <!-- 계정 정보 -->

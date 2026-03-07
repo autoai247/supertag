@@ -491,6 +491,20 @@ def _fromjson(s):
     except: return {}
 templates.env.filters["fromjson"] = _fromjson
 
+def _pic(inf, size=128):
+    """프로필 사진 URL: profile_pic_local > profile_pic_url > fallback"""
+    if isinstance(inf, dict):
+        url = inf.get("profile_pic_local") or inf.get("profile_pic_url") or ""
+        name = inf.get("username") or inf.get("full_name") or "U"
+    else:
+        url = ""
+        name = str(inf) if inf else "U"
+    if url:
+        return url
+    from urllib.parse import quote
+    return f"https://ui-avatars.com/api/?name={quote(name[:2])}&background=6366f1&color=fff&size={size}"
+templates.env.filters["pic"] = _pic
+
 def _safe_cd(fname: str) -> str:
     """Content-Disposition 헤더용 RFC 5987 인코딩"""
     from urllib.parse import quote

@@ -342,8 +342,9 @@ function renderCard(r, idx) {
   const rank = idx + 1;
   const dest = IS_ADMIN ? `/influencers/${r.pk}` : '/advertiser/login';
   const initial = (r.username||'?')[0].toUpperCase();
-  let imgInner = r.profile_pic_url
-    ? `<img src="${r.profile_pic_url}" class="profile-img" onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${initial}')+'&background=6366f1&color=fff&size=128'">`
+  const picUrl = r.profile_pic_local || r.profile_pic_url || '';
+  let imgInner = picUrl
+    ? `<img src="${picUrl}" class="profile-img" onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${initial}')+'&background=6366f1&color=fff&size=128'">`
     : `<div class="profile-placeholder">${initial}</div>`;
 
   // 티어 계산

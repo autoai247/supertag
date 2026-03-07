@@ -46,12 +46,8 @@
       </button>
       <a href="/advertiser/influencers/{{ r.pk }}" class="block">
         <div class="flex flex-col items-center text-center">
-          {% if r.profile_pic_url %}
-          <img src="{{ r.profile_pic_url }}" class="w-14 h-14 rounded-full object-cover border-2 mb-2" style="border-color:#6366f1;"
-               onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent(this.alt||'U')+'&background=6366f1&color=fff&size=128'">
-          {% else %}
-          <div class="w-14 h-14 rounded-full flex items-center justify-center text-white text-lg font-bold mb-2" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">{{ r.username[0].upper() if r.username else '?' }}</div>
-          {% endif %}
+          <img src="{{ r | pic }}" class="w-14 h-14 rounded-full object-cover border-2 mb-2" style="border-color:#6366f1;"
+               onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('{{ r.username or 'U' }}')+'&background=6366f1&color=fff&size=128'">
           <div class="font-bold text-gray-900 text-sm mb-0.5">@{{ r.username }}</div>
           <div class="text-xs text-gray-400 mb-1">{{ r.full_name or '' }}</div>
           {% if r.is_business %}<span class="text-xs px-2 py-0.5 rounded-full mb-1" style="background:#fff7ed;color:#c2410c;">🏢 기업</span>{% endif %}
