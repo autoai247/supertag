@@ -1577,7 +1577,11 @@ def collect_progress(job_id: str,
                 total_medias += len(items)
                 page_users = []
                 for m in items:
-                    user_data = m.get("user", {})
+                    if not isinstance(m, dict):
+                        continue
+                    user_data = m.get("user") or {}
+                    if not isinstance(user_data, dict):
+                        continue
                     upk = user_data.get("pk")
                     if not upk:
                         continue

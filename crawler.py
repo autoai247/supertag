@@ -151,20 +151,20 @@ def _hiker_hashtag_medias_page(hashtag: str, endpoint: str = "recent", max_id: s
         medias = []
         for sec in resp.get("sections", []):
             lc = sec.get("layout_content", {})
-            # ① medias 배열
             for row in lc.get("medias", []):
-                if "media" in row:
-                    medias.append(row["media"])
-            # ② one_by_two_item (클립 등)
-            obt = lc.get("one_by_two_item", {})
-            if obt:
+                md = row.get("media") if isinstance(row, dict) else None
+                if isinstance(md, dict):
+                    medias.append(md)
+            obt = lc.get("one_by_two_item")
+            if isinstance(obt, dict):
                 for ci in obt.get("clips", {}).get("items", []):
-                    if "media" in ci:
-                        medias.append(ci["media"])
-            # ③ fill_items
+                    md = ci.get("media") if isinstance(ci, dict) else None
+                    if isinstance(md, dict):
+                        medias.append(md)
             for fi in lc.get("fill_items", []):
-                if "media" in fi:
-                    medias.append(fi["media"])
+                md = fi.get("media") if isinstance(fi, dict) else None
+                if isinstance(md, dict):
+                    medias.append(md)
         log.info(f"[HikerAPI] hashtag={hashtag} max_id={max_id} → {len(medias)} medias, next_id={bool(next_id)}")
         return medias, next_id
     except Exception as e:
@@ -196,21 +196,23 @@ def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "r
         data = r.json()
         resp = data.get("response", {})
         next_id = data.get("next_page_id") or resp.get("next_max_id")
-        # sections에서 media 추출 (medias, one_by_two_item, fill_items)
         medias = []
         for sec in resp.get("sections", []):
             lc = sec.get("layout_content", {})
             for row in lc.get("medias", []):
-                if "media" in row:
-                    medias.append(row["media"])
-            obt = lc.get("one_by_two_item", {})
-            if obt:
+                md = row.get("media") if isinstance(row, dict) else None
+                if isinstance(md, dict):
+                    medias.append(md)
+            obt = lc.get("one_by_two_item")
+            if isinstance(obt, dict):
                 for ci in obt.get("clips", {}).get("items", []):
-                    if "media" in ci:
-                        medias.append(ci["media"])
+                    md = ci.get("media") if isinstance(ci, dict) else None
+                    if isinstance(md, dict):
+                        medias.append(md)
             for fi in lc.get("fill_items", []):
-                if "media" in fi:
-                    medias.append(fi["media"])
+                md = fi.get("media") if isinstance(fi, dict) else None
+                if isinstance(md, dict):
+                    medias.append(md)
         return medias, next_id
 
     def _fetch_v1_top():

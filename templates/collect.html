@@ -131,10 +131,6 @@
 
         <div class="grid grid-cols-4 gap-3 mb-4">
           <div class="text-center py-3 rounded-lg" style="background:#f8fafc;">
-            <div id="cntPage" class="text-xl font-bold text-gray-900">0</div>
-            <div class="text-xs text-gray-400 mt-0.5">페이지</div>
-          </div>
-          <div class="text-center py-3 rounded-lg" style="background:#f8fafc;">
             <div id="cntPosts" class="text-xl font-bold text-gray-900">0</div>
             <div class="text-xs text-gray-400 mt-0.5">검색 게시물</div>
           </div>
@@ -145,6 +141,10 @@
           <div class="text-center py-3 rounded-lg" style="background:#fef3c7;">
             <div id="cntUpdated" class="text-xl font-bold text-amber-600">0</div>
             <div class="text-xs text-gray-400 mt-0.5">중복</div>
+          </div>
+          <div class="text-center py-3 rounded-lg" style="background:#f0fdf4;">
+            <div id="cntTarget" class="text-xl font-bold text-emerald-600">0</div>
+            <div class="text-xs text-gray-400 mt-0.5">목표</div>
           </div>
         </div>
       </div>
@@ -304,7 +304,7 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
     document.getElementById('cntPosts').textContent = p.posts || 0;
     document.getElementById('cntNew').textContent = p.new || 0;
     document.getElementById('cntUpdated').textContent = p.updated || 0;
-    if (p.page) document.getElementById('cntPage').textContent = p.page;
+    document.getElementById('cntTarget').textContent = targetUsers;
 
     // 진행률
     const pct = Math.min(100, Math.round(((p.new || 0) / targetUsers) * 100));
@@ -429,7 +429,7 @@ function resetForm() {
   totalUsers = 0;
   document.getElementById('statusBadge').textContent = '대기 중';
   document.getElementById('statusBadge').style.cssText = 'background:#f1f5f9;color:#64748b';
-  document.getElementById('cntPosts').textContent = document.getElementById('cntNew').textContent = document.getElementById('cntUpdated').textContent = document.getElementById('cntPage').textContent = '0';
+  document.getElementById('cntPosts').textContent = document.getElementById('cntNew').textContent = document.getElementById('cntUpdated').textContent = document.getElementById('cntTarget').textContent = '0';
   document.getElementById('progressBar').style.width = '0%';
   setStatus('수집 준비 완료. 해시태그를 입력하고 시작하세요.', 'idle');
   document.getElementById('errorBox').classList.add('hidden');

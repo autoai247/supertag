@@ -576,37 +576,43 @@ def unban_influencer(pk: str):
 
 def get_banned_pks() -> set:
     """밴된 인플루언서 pk 목록."""
-    if _USE_SUPABASE:
-        rows = _sb_get(T_MAN, {"is_banned": "eq.1", "select": "pk"})
-        return {r["pk"] for r in rows} if rows else set()
-    else:
-        rows = _sq_all(f"SELECT pk FROM {T_MAN} WHERE is_banned=1")
-        return {r["pk"] for r in rows} if rows else set()
+    try:
+        if _USE_SUPABASE:
+            rows = _sb_get(T_MAN, {"is_banned": "eq.1", "select": "pk"})
+            return {r["pk"] for r in rows} if isinstance(rows, list) and rows else set()
+        else:
+            rows = _sq_all(f"SELECT pk FROM {T_MAN} WHERE is_banned=1")
+            return {r["pk"] for r in rows} if rows else set()
+    except Exception:
+        return set()
 
 
 def get_banned_list():
     """밴된 인플루언서 목록 (username 포함)."""
-    if _USE_SUPABASE:
-        banned = _sb_get(T_MAN, {"is_banned": "eq.1", "select": "pk,ban_reason"})
-        if not banned:
-            return []
-        pks = [b["pk"] for b in banned]
-        infs = _sb_get(T_INF, {"pk": f"in.({','.join(pks)})", "select": "pk,username,profile_pic_url"})
-        inf_map = {r["pk"]: r for r in (infs or [])}
-        result = []
-        for b in banned:
-            inf = inf_map.get(b["pk"], {})
-            result.append({
-                "pk": b["pk"], "username": inf.get("username", "?"),
-                "profile_pic_url": inf.get("profile_pic_url", ""),
-                "ban_reason": b.get("ban_reason", ""),
-            })
-        return result
-    else:
-        rows = _sq_all(f"""SELECT m.pk, m.ban_reason, i.username, i.profile_pic_url
-            FROM {T_MAN} m LEFT JOIN {T_INF} i ON m.pk=i.pk
-            WHERE m.is_banned=1""")
-        return rows or []
+    try:
+        if _USE_SUPABASE:
+            banned = _sb_get(T_MAN, {"is_banned": "eq.1", "select": "pk,ban_reason"})
+            if not isinstance(banned, list) or not banned:
+                return []
+            pks = [b["pk"] for b in banned]
+            infs = _sb_get(T_INF, {"pk": f"in.({','.join(pks)})", "select": "pk,username,profile_pic_url"})
+            inf_map = {r["pk"]: r for r in (infs or [])}
+            result = []
+            for b in banned:
+                inf = inf_map.get(b["pk"], {})
+                result.append({
+                    "pk": b["pk"], "username": inf.get("username", "?"),
+                    "profile_pic_url": inf.get("profile_pic_url", ""),
+                    "ban_reason": b.get("ban_reason", ""),
+                })
+            return result
+        else:
+            rows = _sq_all(f"""SELECT m.pk, m.ban_reason, i.username, i.profile_pic_url
+                FROM {T_MAN} m LEFT JOIN {T_INF} i ON m.pk=i.pk
+                WHERE m.is_banned=1""")
+            return rows or []
+    except Exception:
+        return []
 
 
 def get_influencers(keyword="", min_f=None, max_f=None,
