@@ -1540,7 +1540,7 @@ def collect_progress(job_id: str,
 
             seen_pks = set()
             collected_pk_list = []
-            posts_count = resume_posts
+            total_medias = resume_posts  # 검색한 게시물 총 수
             new_cnt = resume_new
             updated_cnt = resume_updated
             max_id = resume_from or None
@@ -1574,6 +1574,7 @@ def collect_progress(job_id: str,
                         no_data = True
                         break
 
+                total_medias += len(items)
                 page_users = []
                 for m in items:
                     user_data = m.get("user", {})
@@ -1586,7 +1587,6 @@ def collect_progress(job_id: str,
                     seen_pks.add(pk_str)
                     if pk_str in banned_pks:
                         continue
-                    posts_count += 1
                     uname = user_data.get("username", "")
                     fname = user_data.get("full_name", "")
                     pic = str(user_data.get("profile_pic_url", "") or "")
@@ -1612,7 +1612,7 @@ def collect_progress(job_id: str,
                         "pic": pic, "is_new": is_new,
                     })
 
-                p.update({"posts": posts_count, "new": new_cnt, "updated": updated_cnt,
+                p.update({"posts": total_medias, "new": new_cnt, "updated": updated_cnt,
                           "status": f"페이지 {page_num} — 신규 {new_cnt}명 / 중복 {updated_cnt}명 / 목표 {target_users}명",
                           "page": page_num, "page_items": len(items),
                           "has_next": bool(next_id),
@@ -1635,7 +1635,7 @@ def collect_progress(job_id: str,
             # 배치 결과 저장
             try:
                 update_collect_job(job_db_id, status="done",
-                    collected_posts=posts_count, new_users=new_cnt,
+                    collected_posts=total_medias, new_users=new_cnt,
                     updated_users=updated_cnt, finished_at=time.time(),
                     collected_pks=json.dumps(collected_pk_list))
                 update_hashtag_status(hashtag, "idle")
@@ -1650,9 +1650,9 @@ def collect_progress(job_id: str,
                           "status": f"완료 — 신규 {new_cnt}명 / 중복 {updated_cnt}명 ({reason})",
                           "page": page_num})
             else:
-                p.update({"done": False, "continue": True, "new": new_cnt, "updated": updated_cnt,
+                p.update({"done": False, "has_more": True, "new": new_cnt, "updated": updated_cnt,
                           "next_id": last_next_id or "", "page": page_num,
-                          "posts": posts_count,
+                          "posts": total_medias,
                           "status": f"배치 {page_num}페이지 완료 — 신규 {new_cnt}명 / 중복 {updated_cnt}명 / 목표 {target_users}명 (자동 계속)"})
             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 

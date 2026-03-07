@@ -136,7 +136,7 @@
           </div>
           <div class="text-center py-3 rounded-lg" style="background:#f8fafc;">
             <div id="cntPosts" class="text-xl font-bold text-gray-900">0</div>
-            <div class="text-xs text-gray-400 mt-0.5">발견 유저</div>
+            <div class="text-xs text-gray-400 mt-0.5">검색 게시물</div>
           </div>
           <div class="text-center py-3 rounded-lg" style="background:#eef2ff;">
             <div id="cntNew" class="text-xl font-bold text-indigo-600">0</div>
@@ -322,7 +322,7 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
     }
 
     // 배치 완료 → 자동으로 다음 배치 시작
-    if (p.continue) {
+    if (p.has_more) {
       sse.close();
       resumeCount++;
       setStatus(p.status, 'running');
