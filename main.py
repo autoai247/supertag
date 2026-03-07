@@ -1095,6 +1095,15 @@ def unban_one(pk: str, session_id: Optional[str] = Cookie(default=None)):
     unban_influencer(pk)
     return JSONResponse({"ok": True})
 
+@app.post("/influencers/{pk}/ban-reason")
+def update_ban_reason(pk: str, reason: str = Form(default=""),
+                      session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import save_manual
+    save_manual(pk, {"ban_reason": reason})
+    return JSONResponse({"ok": True})
+
 
 @app.get("/banned", response_class=HTMLResponse)
 def banned_page(request: Request, session_id: Optional[str] = Cookie(default=None)):

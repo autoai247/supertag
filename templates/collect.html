@@ -451,7 +451,22 @@ function refreshHistory() {
 }
 
 // 초기 로드 + 5초 간격 폴링
-refreshHistory();
+// 첫 로드 시 running job 자동 감지
+fetch('/api/collect-jobs')
+  .then(r => r.json())
+  .then(data => {
+    if (Array.isArray(data)) {
+      renderHistory(data);
+      // 진행중인 작업이 있으면 자동으로 모니터 패널 표시
+      const runningJobs = data.filter(j => j.status === 'running');
+      runningJobs.forEach(j => {
+        if (!document.getElementById('historyPanel')) {
+          showMonitorPanel(String(j.id), j);
+        }
+      });
+    }
+  })
+  .catch(() => {});
 setInterval(refreshHistory, 5000);
 
 // 모니터 폴링 타이머 관리
@@ -479,11 +494,27 @@ function loadJobUsers(jobId, el) {
 
   // 캐시된 job 데이터로 바로 판단
   const cachedJob = _historyJobs[jobId] || _historyJobs[parseInt(jobId)];
+  console.log('[SuperTag] loadJobUsers', jobId, 'cached:', cachedJob?.status, 'keys:', Object.keys(_historyJobs).slice(0,5));
   if (cachedJob && cachedJob.status === 'running') {
     showMonitorPanel(jobId, cachedJob);
-  } else {
-    showCompletedPanel(jobId);
+    return;
   }
+  if (cachedJob) {
+    showCompletedPanel(jobId);
+    return;
+  }
+  // 캐시에 없으면 API로 직접 조회
+  fetch(`/api/collect-job/${jobId}`)
+    .then(r => r.json())
+    .then(job => {
+      console.log('[SuperTag] API fallback', jobId, 'status:', job.status);
+      if (job.status === 'running') {
+        showMonitorPanel(jobId, job);
+      } else {
+        showCompletedPanel(jobId);
+      }
+    })
+    .catch(() => showCompletedPanel(jobId));
 }
 
 function showMonitorPanel(jobId, job) {
@@ -533,6 +564,7 @@ function showMonitorPanel(jobId, job) {
       </div>
     </div>
   `;
+  document.getElementById('emptyState')?.remove();
   document.getElementById('jobPanels').prepend(panel);
 
   // 3초 간격 폴링

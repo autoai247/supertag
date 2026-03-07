@@ -3,26 +3,49 @@
 {% block title %}밴 목록 - SuperTag{% endblock %}
 {% block content %}
 
-<div class="mb-5">
-  <h1 class="text-xl font-bold text-gray-900">밴 목록</h1>
-  <p class="text-sm text-gray-500 mt-0.5">수집 및 검색에서 제외된 계정입니다.</p>
+<div class="mb-5 flex items-center justify-between">
+  <div>
+    <h1 class="text-xl font-bold text-gray-900">밴 목록</h1>
+    <p class="text-sm text-gray-500 mt-0.5">수집 및 검색에서 제외된 계정입니다.</p>
+  </div>
+  <span class="text-xs text-gray-400">총 {{ banned | length }}건</span>
 </div>
 
 <div class="card overflow-hidden">
   {% if banned %}
+  <!-- 헤더 -->
+  <div class="flex items-center gap-4 px-5 py-2.5 text-xs font-semibold text-gray-500 border-b border-gray-100" style="background:#f8fafc;">
+    <div class="w-10 flex-shrink-0"></div>
+    <div style="width:140px;" class="flex-shrink-0">아이디</div>
+    <div class="flex-1">사유</div>
+    <div class="w-20 flex-shrink-0 text-center">액션</div>
+  </div>
   <div class="divide-y divide-gray-50">
     {% for b in banned %}
     <div class="flex items-center gap-4 px-5 py-3 hover:bg-gray-50" id="ban-{{ b.pk }}">
-      <img src="{{ b.profile_pic_url or 'https://ui-avatars.com/api/?name='~(b.username or 'U')~'&background=ef4444&color=fff&size=40' }}"
+      <img src="{{ b | pic }}"
            class="w-10 h-10 rounded-full object-cover flex-shrink-0" style="border:2px solid #fecaca;"
            onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('{{ b.username or 'U' }}')+'&background=ef4444&color=fff&size=40'">
-      <div class="flex-1">
+      <div style="width:140px;" class="flex-shrink-0">
         <div class="text-sm font-bold text-gray-800">@{{ b.username or '?' }}</div>
-        <div class="text-xs text-gray-400">{{ b.ban_reason or '사유 없음' }}</div>
       </div>
-      <button onclick="unbanUser('{{ b.pk }}')"
-        class="px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition"
-        style="border:1px solid #a7f3d0;">밴 해제</button>
+      <div class="flex-1">
+        <select onchange="updateBanReason('{{ b.pk }}', this.value)"
+          class="text-xs rounded-lg border border-gray-200 px-2.5 py-1.5 text-gray-700 bg-white hover:border-gray-300 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 outline-none cursor-pointer">
+          {% set reasons = ['스팸(팔로워)', '스팸(광고)', '비활성 계정', '부적절한 콘텐츠', '기타'] %}
+          {% for reason in reasons %}
+          <option value="{{ reason }}" {{ 'selected' if b.ban_reason == reason else '' }}>{{ reason }}</option>
+          {% endfor %}
+          {% if b.ban_reason and b.ban_reason not in reasons %}
+          <option value="{{ b.ban_reason }}" selected>{{ b.ban_reason }}</option>
+          {% endif %}
+        </select>
+      </div>
+      <div class="w-20 flex-shrink-0 text-center">
+        <button onclick="unbanUser('{{ b.pk }}')"
+          class="px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition"
+          style="border:1px solid #a7f3d0;">밴 해제</button>
+      </div>
     </div>
     {% endfor %}
   </div>
@@ -37,6 +60,21 @@ async function unbanUser(pk) {
   const r = await fetch(`/influencers/${pk}/unban`, {method:'POST'});
   if (r.ok) {
     document.getElementById('ban-'+pk).remove();
+  }
+}
+
+async function updateBanReason(pk, reason) {
+  const fd = new FormData();
+  fd.append('reason', reason);
+  const r = await fetch(`/influencers/${pk}/ban-reason`, {method:'POST', body:fd});
+  const d = await r.json();
+  if (d.ok) {
+    // 잠깐 초록 깜빡임 피드백
+    const row = document.getElementById('ban-'+pk);
+    if (row) {
+      row.style.background = '#f0fdf4';
+      setTimeout(() => row.style.background = '', 500);
+    }
   }
 }
 </script>

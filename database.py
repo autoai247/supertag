@@ -618,7 +618,7 @@ def get_banned_list():
             if not isinstance(banned, list) or not banned:
                 return []
             pks = [b["pk"] for b in banned]
-            infs = _sb_get(T_INF, {"pk": f"in.({','.join(pks)})", "select": "pk,username,profile_pic_url"})
+            infs = _sb_get(T_INF, {"pk": f"in.({','.join(pks)})", "select": "pk,username,profile_pic_url,profile_pic_local"})
             inf_map = {r["pk"]: r for r in (infs or [])}
             result = []
             for b in banned:
@@ -626,11 +626,12 @@ def get_banned_list():
                 result.append({
                     "pk": b["pk"], "username": inf.get("username", "?"),
                     "profile_pic_url": inf.get("profile_pic_url", ""),
+                    "profile_pic_local": inf.get("profile_pic_local", ""),
                     "ban_reason": b.get("ban_reason", ""),
                 })
             return result
         else:
-            rows = _sq_all(f"""SELECT m.pk, m.ban_reason, i.username, i.profile_pic_url
+            rows = _sq_all(f"""SELECT m.pk, m.ban_reason, i.username, i.profile_pic_url, i.profile_pic_local
                 FROM {T_MAN} m LEFT JOIN {T_INF} i ON m.pk=i.pk
                 WHERE m.is_banned=1""")
             return rows or []
