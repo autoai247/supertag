@@ -404,15 +404,15 @@ function renderCard(r, idx) {
       <div class="stat-group">
         <div class="stat-group-title" style="color:#f97316;">피드</div>
         <div class="stat-group-body">
-          <div class="stat-cell"><div class="stat-val" style="color:#f97316;">${hasFeed?fmt(r.avg_feed_likes):fmt(r.avg_likes)}</div><div class="stat-lbl">좋아요</div></div>
-          <div class="stat-cell"><div class="stat-val" style="color:#94a3b8;">${hasFeed?fmt(r.avg_feed_comments):fmt(r.avg_comments)}</div><div class="stat-lbl">댓글</div></div>
+          <div class="stat-cell"><div class="stat-val" style="color:#f97316;">${hasFeed?fmt(r.avg_feed_likes):fmt(r.avg_likes)}</div><div class="stat-lbl">평균 좋아요</div></div>
+          <div class="stat-cell"><div class="stat-val" style="color:#94a3b8;">${hasFeed?fmt(r.avg_feed_comments):fmt(r.avg_comments)}</div><div class="stat-lbl">평균 댓글</div></div>
         </div>
       </div>
       <div class="stat-group">
         <div class="stat-group-title" style="color:#8b5cf6;">릴스</div>
         <div class="stat-group-body">
-          <div class="stat-cell"><div class="stat-val" style="color:#ec4899;">${hasReel?fmt(r.avg_reel_likes):'-'}</div><div class="stat-lbl">좋아요</div></div>
-          <div class="stat-cell"><div class="stat-val" style="color:#8b5cf6;">${hasReel?fmt(r.avg_reel_views):'-'}</div><div class="stat-lbl">조회수</div></div>
+          <div class="stat-cell"><div class="stat-val" style="color:#ec4899;">${hasReel?fmt(r.avg_reel_likes):'-'}</div><div class="stat-lbl">평균 좋아요</div></div>
+          <div class="stat-cell"><div class="stat-val" style="color:#8b5cf6;">${hasReel?fmt(r.avg_reel_views):'-'}</div><div class="stat-lbl">평균 조회수</div></div>
         </div>
       </div>
     </div>
