@@ -223,14 +223,15 @@ function startCollect() {
     .then(r => r.text())
     .then(jobId => {
       setStatus(`#${hashtag} 수집 중`, 'running');
-      listenProgress(jobId, parseInt(targetUsers));
+      listenProgress(jobId.trim(), hashtag, parseInt(targetUsers), searchType);
     })
     .catch(e => { setStatus(`연결 오류: ${e}`, 'error'); showError(String(e)); });
 }
 
-function listenProgress(jobId, targetUsers) {
+function listenProgress(jobId, hashtag, targetUsers, searchType) {
   if (sse) sse.close();
-  sse = new EventSource(`/collect/progress/${jobId}`);
+  const params = new URLSearchParams({ hashtag, target_users: targetUsers, search_type: searchType });
+  sse = new EventSource(`/collect/progress/${jobId}?${params}`);
 
   sse.onmessage = function(e) {
     const p = JSON.parse(e.data);

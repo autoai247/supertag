@@ -81,7 +81,7 @@
 </div>
 
 <script>
-let pollTimer = null;
+let sse = null;
 
 function setStatus(msg, type) {
   document.getElementById('statusLine').textContent = msg;
@@ -110,25 +110,40 @@ async function startRefresh() {
     document.getElementById('statusBadge').textContent = '수집 중';
     document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706;';
     setStatus('게시물 수집 시작됨...', 'running');
-    pollTimer = setInterval(pollStatus, 2000);
-  } catch(e) {
-    setStatus('연결 오류: ' + e, 'error');
-    btn.disabled = false; btn.textContent = '게시물 수집 시작';
-  }
-}
 
-async function pollStatus() {
-  try {
-    const r = await fetch('/refresh/status');
-    const p = await r.json();
-    if (!p || !p.running) {
-      // 완료 또는 미실행
-      if (p.total > 0) {
-        clearInterval(pollTimer);
-        document.getElementById('cntTotal').textContent = p.total || '-';
-        document.getElementById('cntDone').textContent = p.done || 0;
-        document.getElementById('cntSuccess').textContent = p.success || 0;
-        document.getElementById('cntFail').textContent = p.fail || 0;
+    // SSE 스트림으로 실시간 진행
+    if (sse) sse.close();
+    sse = new EventSource('/refresh/stream');
+    sse.onmessage = function(e) {
+      const p = JSON.parse(e.data);
+
+      if (p.error) {
+        sse.close();
+        setStatus('오류: ' + p.error, 'error');
+        document.getElementById('statusBadge').textContent = '에러';
+        document.getElementById('statusBadge').style.cssText = 'background:rgba(239,68,68,.1);color:#ef4444;';
+        btn.style.display = ''; btn.disabled = false; btn.textContent = '게시물 수집 시작';
+        return;
+      }
+
+      const total = p.total || 1;
+      const done = p.done || 0;
+      const pct = Math.round((done / total) * 100);
+
+      document.getElementById('cntTotal').textContent = total;
+      document.getElementById('cntDone').textContent = done;
+      document.getElementById('cntSuccess').textContent = p.success || 0;
+      document.getElementById('cntFail').textContent = p.fail || 0;
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressPct').textContent = pct + '%';
+      document.getElementById('progressLabel').textContent = `${done} / ${total}`;
+
+      if (p.current_username) {
+        document.getElementById('currentUser').textContent = `현재: @${p.current_username}`;
+      }
+
+      if (!p.running) {
+        sse.close();
         document.getElementById('progressBar').style.width = '100%';
         document.getElementById('progressPct').textContent = '100%';
         document.getElementById('progressLabel').textContent = '완료';
@@ -136,44 +151,18 @@ async function pollStatus() {
         document.getElementById('statusBadge').textContent = '완료';
         document.getElementById('statusBadge').style.cssText = 'background:rgba(16,185,129,.1);color:#10b981;';
         setStatus(`완료 - 성공 ${p.success || 0}명, 실패 ${p.fail || 0}명`, 'done');
+      } else {
+        setStatus(`게시물 수집 중 (${done}/${total})`, 'running');
       }
-      return;
-    }
-
-    const total = p.total || 1;
-    const done = p.done || 0;
-    const pct = Math.round((done / total) * 100);
-
-    document.getElementById('cntTotal').textContent = total;
-    document.getElementById('cntDone').textContent = done;
-    document.getElementById('cntSuccess').textContent = p.success || 0;
-    document.getElementById('cntFail').textContent = p.fail || 0;
-    document.getElementById('progressBar').style.width = pct + '%';
-    document.getElementById('progressPct').textContent = pct + '%';
-    document.getElementById('progressLabel').textContent = `${done} / ${total}`;
-
-    if (p.current_username) {
-      document.getElementById('currentUser').textContent = `현재: @${p.current_username}`;
-    }
-    setStatus(`게시물 수집 중 (${done}/${total})`, 'running');
-  } catch(e) {}
+    };
+    sse.onerror = function() {
+      sse.close();
+      setStatus('연결 종료', 'done');
+    };
+  } catch(e) {
+    setStatus('연결 오류: ' + e, 'error');
+    btn.disabled = false; btn.textContent = '게시물 수집 시작';
+  }
 }
-
-// 페이지 로드 시 이미 실행 중인지 확인
-(async function() {
-  try {
-    const r = await fetch('/refresh/status');
-    const p = await r.json();
-    if (p && p.running) {
-      document.getElementById('startBtn').style.display = 'none';
-      document.getElementById('stopBtn').style.display = '';
-      document.getElementById('progressArea').style.display = '';
-      document.getElementById('statusBadge').textContent = '수집 중';
-      document.getElementById('statusBadge').style.cssText = 'background:rgba(245,158,11,.1);color:#d97706;';
-      setStatus('게시물 수집 진행 중...', 'running');
-      pollTimer = setInterval(pollStatus, 2000);
-    }
-  } catch(e) {}
-})();
 </script>
 {% endblock %}

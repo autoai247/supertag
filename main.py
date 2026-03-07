@@ -1182,22 +1182,66 @@ def collect_posts_page(request: Request, session_id: Optional[str] = Cookie(defa
     })
 
 @app.post("/refresh/start")
-def refresh_start(background_tasks: BackgroundTasks,
-                  session_id: Optional[str] = Cookie(default=None)):
+def refresh_start(session_id: Optional[str] = Cookie(default=None)):
+    """게시물 수집 시작 → SSE 스트림으로 전환"""
     user = get_user(session_id)
     if not user: return JSONResponse({"error": "인증 필요"}, 403)
-    from crawler import refresh_all, refresh_progress
-    if refresh_progress.get("current", {}).get("running"):
-        return JSONResponse({"error": "이미 실행 중"}, 400)
-    background_tasks.add_task(refresh_all)
     return JSONResponse({"ok": True})
+
+@app.get("/refresh/stream")
+def refresh_stream(session_id: Optional[str] = Cookie(default=None)):
+    """SSE 스트림 안에서 직접 게시물 갱신 실행 (서버리스 호환)"""
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+
+    from crawler import crawl_user_detail
+
+    def stream():
+        try:
+            cutoff = time.time() - 86400
+            all_infs = get_influencers(per_page=99999, page=1)
+            rows = [r for r in all_infs.get("items", [])
+                    if not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff]
+
+            total = len(rows)
+            success = fail = 0
+
+            for i, row in enumerate(rows):
+                pk = row.get("pk") or row.get("id")
+                uname = row.get("username", "")
+                followers = row.get("follower_count", 0)
+
+                try:
+                    ok = crawl_user_detail(None, str(pk), uname, followers or 0)
+                    if ok:
+                        success += 1
+                    else:
+                        fail += 1
+                except Exception:
+                    fail += 1
+
+                p = {"running": True, "total": total, "done": i + 1,
+                     "success": success, "fail": fail, "current_username": uname}
+                yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                time.sleep(0.5)
+
+            p = {"running": False, "total": total, "done": total,
+                 "success": success, "fail": fail}
+            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            log.error(f"게시물 갱신 에러: {e}")
+            yield f"data: {json.dumps({'running': False, 'error': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 @app.get("/refresh/status")
 def refresh_status(session_id: Optional[str] = Cookie(default=None)):
+    """하위호환용 — SSE 방식으로 전환됨"""
     user = get_user(session_id)
     if not user: return JSONResponse({"error": "인증 필요"}, 403)
-    from crawler import refresh_progress
-    return JSONResponse(refresh_progress.get("current", {}))
+    return JSONResponse({})
 
 
 # ═══════════════════════════════════════════════════════
@@ -1360,39 +1404,134 @@ def collect_page(request: Request, session_id: Optional[str] = Cookie(default=No
 def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=500),
                   target_users: int = Form(default=0),
                   search_type: str = Form(default="recent"),
-                  background_tasks: BackgroundTasks = BackgroundTasks(),
                   session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return HTMLResponse("인증 필요", 403)
     hashtag = hashtag.strip().lstrip("#")
     job_id = str(uuid.uuid4())
-    try:
-        update_hashtag_status(hashtag, "running")
-    except Exception:
-        try: db_add_hashtag(hashtag)
-        except: pass
-    from crawler import crawl_hashtag
-    background_tasks.add_task(crawl_hashtag, hashtag, requested_count,
-                               job_id=job_id,
-                               target_users=target_users, search_type=search_type)
     return HTMLResponse(job_id)
 
 @app.get("/collect/progress/{job_id}")
-def collect_progress(job_id: str, session_id: Optional[str] = Cookie(default=None)):
+def collect_progress(job_id: str,
+                     hashtag: str = Query(default=""),
+                     target_users: int = Query(default=30),
+                     search_type: str = Query(default="recent"),
+                     session_id: Optional[str] = Cookie(default=None)):
+    """SSE 스트림 안에서 직접 수집 실행 (서버리스 호환)"""
     user = get_user(session_id)
     if not user:
         return JSONResponse({"error": "인증 필요"}, 403)
-    # job_id 형식 검증 (UUID만 허용)
     if not re.match(r'^[a-f0-9\-]{36}$', job_id):
         return JSONResponse({"error": "잘못된 job_id"}, 400)
-    from crawler import progress
+
+    from crawler import (
+        _hiker_hashtag_medias, _hiker_user_info_by_id,
+    )
+    from database import upsert_influencer, add_collect_job, update_collect_job
 
     def stream():
-        while True:
-            p = progress.get(job_id, {})
+        if not hashtag:
+            yield f"data: {json.dumps({'done': True, 'error': '해시태그 없음'}, ensure_ascii=False)}\n\n"
+            return
+
+        try:
+            update_hashtag_status(hashtag, "running")
+        except Exception:
+            try: db_add_hashtag(hashtag)
+            except: pass
+
+        job_db_id = None
+        try:
+            job_db_id = add_collect_job(hashtag, "running", target_users)
+        except Exception:
+            pass
+
+        p = {"hashtag": hashtag, "posts": 0, "new": 0, "updated": 0,
+             "done": False, "error": None, "status": "게시물 검색 중"}
+        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+        try:
+            # ① 해시태그 게시물에서 유저 PK 추출
+            medias = _hiker_hashtag_medias(hashtag, amount=500, search_type=search_type)
+            if not medias:
+                raise Exception("HikerAPI 해시태그 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
+
+            all_pks = set()
+            posts_count = 0
+            for m in medias:
+                user_data = m.get("user", {})
+                pk = user_data.get("pk")
+                if pk:
+                    all_pks.add(str(pk))
+                posts_count += 1
+                if len(all_pks) >= target_users:
+                    break
+
+            p.update({"posts": posts_count,
+                      "status": f"게시물 {posts_count}개에서 {len(all_pks)}명 발견. 프로필 조회 중"})
             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
-            if p.get("done"): break
-            time.sleep(1)
+
+            # ② 유저 상세 정보 조회
+            new_cnt = updated_cnt = 0
+            for i, pk in enumerate(all_pks):
+                try:
+                    u_data = _hiker_user_info_by_id(pk)
+                    if not u_data:
+                        continue
+                    data = {
+                        "pk": str(u_data["pk"]),
+                        "username": u_data.get("username", ""),
+                        "full_name": u_data.get("full_name", ""),
+                        "biography": u_data.get("biography", ""),
+                        "follower_count": u_data.get("follower_count", 0),
+                        "following_count": u_data.get("following_count", 0),
+                        "media_count": u_data.get("media_count", 0),
+                        "is_private": u_data.get("is_private", False),
+                        "is_verified": u_data.get("is_verified", False),
+                        "is_business": u_data.get("is_business", False),
+                        "category": u_data.get("category", ""),
+                        "public_email": u_data.get("public_email", "") or "",
+                        "public_phone": u_data.get("public_phone_number", "") or "",
+                        "external_url": str(u_data.get("external_url", "") or ""),
+                        "profile_pic_url": str(u_data.get("profile_pic_url", "") or ""),
+                        "hashtag": hashtag,
+                    }
+                    result = upsert_influencer(data)
+                    if result == "new":
+                        new_cnt += 1
+                    else:
+                        updated_cnt += 1
+                except Exception as e:
+                    log.warning(f"유저 {pk} 조회 실패: {e}")
+
+                p.update({"new": new_cnt, "updated": updated_cnt,
+                          "status": f"프로필 조회 중 ({i+1}/{len(all_pks)})"})
+                yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                time.sleep(0.2)
+
+            # 완료
+            try:
+                update_collect_job(job_db_id, status="done",
+                    collected_posts=posts_count, new_users=new_cnt,
+                    updated_users=updated_cnt, finished_at=time.time())
+                update_hashtag_status(hashtag, "idle")
+            except Exception:
+                pass
+
+            p.update({"done": True, "new": new_cnt, "updated": updated_cnt,
+                      "status": f"완료 — 신규 {new_cnt}명, 업데이트 {updated_cnt}명"})
+            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            log.error(f"[{hashtag}] 수집 에러: {e}")
+            try:
+                if job_db_id:
+                    update_collect_job(job_db_id, status="error", error_msg=str(e)[:200], finished_at=time.time())
+                update_hashtag_status(hashtag, "error")
+            except Exception:
+                pass
+            p.update({"done": True, "error": str(e), "status": "수집 실패"})
+            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
