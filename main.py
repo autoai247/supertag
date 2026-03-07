@@ -1139,7 +1139,10 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
 
 @app.get("/api/debug/version")
 def debug_version():
-    return JSONResponse({"version": "20260308-v6", "deployed": True})
+    from database import get_collect_jobs
+    jobs = get_collect_jobs(limit=3)
+    raw = [{"id": j.get("id"), "started_at": j.get("started_at"), "type": str(type(j.get("started_at")))} for j in jobs]
+    return JSONResponse({"version": "20260308-v7", "deployed": True, "jobs_raw": raw})
 
 @app.get("/api/debug/excluded-pks")
 def debug_excluded_pks(session_id: Optional[str] = Cookie(default=None)):
