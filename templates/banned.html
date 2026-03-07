@@ -8,8 +8,22 @@
     <h1 class="text-xl font-bold text-gray-900">밴 목록</h1>
     <p class="text-sm text-gray-500 mt-0.5">수집 및 검색에서 제외된 계정입니다.</p>
   </div>
-  <span class="text-xs text-gray-400">총 {{ banned | length }}건</span>
+  <span class="text-xs text-gray-400" id="ban-count">총 {{ banned | length }}건</span>
 </div>
+
+<!-- 사유 필터 -->
+<div class="flex gap-2 mb-4 flex-wrap">
+  <button onclick="filterReason('all')" class="reason-chip active px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer" data-reason="all">전체</button>
+  {% set reasons = ['스팸(팔로워)', '스팸(광고)', '비활성 계정', '부적절한 콘텐츠', '기타'] %}
+  {% for reason in reasons %}
+  <button onclick="filterReason('{{ reason }}')" class="reason-chip px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer" data-reason="{{ reason }}">{{ reason }}</button>
+  {% endfor %}
+</div>
+
+<style>
+.reason-chip { background:#fff; border-color:#e2e8f0; color:#64748b; }
+.reason-chip.active { background:#6366f1; border-color:#6366f1; color:#fff; }
+</style>
 
 <div class="card overflow-hidden">
   {% if banned %}
@@ -22,7 +36,7 @@
   </div>
   <div class="divide-y divide-gray-50">
     {% for b in banned %}
-    <div class="flex items-center gap-4 px-5 py-3 hover:bg-gray-50" id="ban-{{ b.pk }}">
+    <div class="flex items-center gap-4 px-5 py-3 hover:bg-gray-50" id="ban-{{ b.pk }}" data-ban-reason="{{ b.ban_reason or '스팸(팔로워)' }}">
       <img src="{{ b | pic }}"
            class="w-10 h-10 rounded-full object-cover flex-shrink-0" style="border:2px solid #fecaca;"
            onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('{{ b.username or 'U' }}')+'&background=ef4444&color=fff&size=40'">
@@ -55,6 +69,21 @@
 </div>
 
 <script>
+function filterReason(reason) {
+  document.querySelectorAll('.reason-chip').forEach(c => c.classList.remove('active'));
+  document.querySelector(`.reason-chip[data-reason="${reason}"]`).classList.add('active');
+  let shown = 0;
+  document.querySelectorAll('[data-ban-reason]').forEach(row => {
+    if (reason === 'all' || row.dataset.banReason === reason) {
+      row.style.display = '';
+      shown++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+  document.getElementById('ban-count').textContent = `총 ${shown}건`;
+}
+
 async function unbanUser(pk) {
   if (!confirm('이 계정의 밴을 해제하시겠습니까?')) return;
   const r = await fetch(`/influencers/${pk}/unban`, {method:'POST'});
@@ -72,6 +101,7 @@ async function updateBanReason(pk, reason) {
     // 잠깐 초록 깜빡임 피드백
     const row = document.getElementById('ban-'+pk);
     if (row) {
+      row.dataset.banReason = reason;
       row.style.background = '#f0fdf4';
       setTimeout(() => row.style.background = '', 500);
     }
