@@ -1553,12 +1553,16 @@ def collect_progress(job_id: str,
                 _page_start = time.time()
                 items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
 
-                if not items and page_num == 1:
+                if not items and page_num <= 1 and not max_id:
                     raise Exception("HikerAPI 해시태그 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
                 if not items:
-                    p["status"] = f"더 이상 게시물 없음. 총 {page_num}페이지 스캔."
-                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
-                    break
+                    # 빈 결과: 1회 재시도 후에도 비면 종료
+                    time.sleep(1)
+                    items, next_id = _hiker_hashtag_medias_page(hashtag, endpoint, max_id)
+                    if not items:
+                        p["status"] = f"더 이상 게시물 없음. 총 {page_num}페이지 스캔."
+                        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                        break
 
                 page_new = 0
                 page_users = []
@@ -1633,8 +1637,10 @@ def collect_progress(job_id: str,
             except Exception:
                 pass
 
+            stop_reason = "목표 달성" if new_cnt >= target_users else f"{page_num}페이지 스캔 완료"
             p.update({"done": True, "new": new_cnt, "updated": updated_cnt,
-                      "status": f"완료 — 신규 {new_cnt}명, 업데이트 {updated_cnt}명"})
+                      "status": f"완료 — 신규 {new_cnt}명, 중복 {updated_cnt}명 ({stop_reason})",
+                      "page": page_num})
             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
         except Exception as e:

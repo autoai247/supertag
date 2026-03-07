@@ -82,7 +82,7 @@
             <span class="font-bold text-gray-800">#{{ j.hashtag }}</span>
             <span class="text-gray-400 ml-1">
               {% if j.status == 'done' %}
-              신규 {{ j.new_users or 0 }}명{% if j.updated_users %}, 기존 {{ j.updated_users }}명{% endif %}
+              신규 {{ j.new_users or 0 }}명{% if j.updated_users %} / 중복 {{ j.updated_users }}명{% endif %}
               {% elif j.status == 'running' %}
               진행 중
               {% else %}
@@ -142,9 +142,9 @@
             <div id="cntNew" class="text-xl font-bold text-indigo-600">0</div>
             <div class="text-xs text-gray-400 mt-0.5">신규</div>
           </div>
-          <div class="text-center py-3 rounded-lg" style="background:#f0fdf4;">
-            <div id="cntUpdated" class="text-xl font-bold text-emerald-600">0</div>
-            <div class="text-xs text-gray-400 mt-0.5">기존</div>
+          <div class="text-center py-3 rounded-lg" style="background:#fef3c7;">
+            <div id="cntUpdated" class="text-xl font-bold text-amber-600">0</div>
+            <div class="text-xs text-gray-400 mt-0.5">중복</div>
           </div>
         </div>
       </div>
@@ -308,7 +308,7 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
 
     // 진행률
     const pct = Math.min(100, Math.round(((p.new || 0) / targetUsers) * 100));
-    document.getElementById('progressNum').textContent = `신규 ${p.new||0}명 / 목표 ${targetUsers}명`;
+    document.getElementById('progressNum').textContent = `신규 ${p.new||0}명 / 중복 ${p.updated||0}명 / 목표 ${targetUsers}명`;
     document.getElementById('progressBar').style.width = pct + '%';
     document.getElementById('progressLabel').textContent = p.status || '';
 
@@ -331,7 +331,7 @@ function listenProgress(jobId, hashtag, targetUsers, searchType) {
         document.getElementById('statusBadge').textContent = '에러';
         document.getElementById('statusBadge').style.cssText = 'background:rgba(239,68,68,.1);color:#ef4444';
       } else {
-        setStatus(`완료 — 신규 ${p.new}명, 업데이트 ${p.updated}명`, 'done');
+        setStatus(p.status || `완료 — 신규 ${p.new}명, 중복 ${p.updated}명`, 'done');
         document.getElementById('statusBadge').textContent = '완료';
         document.getElementById('statusBadge').style.cssText = 'background:rgba(16,185,129,.1);color:#10b981';
         document.getElementById('progressBar').style.width = '100%';
