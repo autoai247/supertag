@@ -1116,6 +1116,15 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
         "request": request, "user": user, "hidden": hidden,
     })
 
+@app.get("/api/collect-job/{job_id}")
+def api_collect_job_status(job_id: int, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import get_collect_job
+    job = get_collect_job(job_id)
+    if not job: return JSONResponse({"error": "없음"}, 404)
+    return JSONResponse(job)
+
 @app.get("/api/collect-jobs")
 def api_collect_jobs(session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
