@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set active = "influencers" %}
-{% block title %}인플루언서 DB - InstaFinder{% endblock %}
+{% block title %}인플루언서 DB - SuperTag{% endblock %}
 {% block head %}
 <style>
 .export-dropdown { position:relative; }
@@ -225,10 +225,9 @@
 
     <!-- 프로필 이미지 -->
     <a href="/influencers/{{ r.pk }}" class="flex-shrink-0">
-      {% if r.profile_pic_local %}
-      <img src="/data/{{ r.profile_pic_local }}" class="w-12 h-12 rounded-full object-cover border border-gray-100"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-      <div class="w-12 h-12 rounded-full hidden items-center justify-center text-white text-sm font-bold flex-shrink-0" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">{{ (r.username or '?')[0].upper() }}</div>
+      {% if r.profile_pic_url %}
+      <img src="{{ r.profile_pic_url }}" class="w-12 h-12 rounded-full object-cover border border-gray-100"
+           onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent(this.alt||'U')+'&background=6366f1&color=fff&size=128'">
       {% else %}
       <div class="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">{{ (r.username or '?')[0].upper() }}</div>
       {% endif %}

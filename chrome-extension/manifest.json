@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "InstaFinder Session Sync",
+  "name": "SuperTag Session Sync",
   "version": "1.0",
-  "description": "Instagram 세션을 InstaFinder에 자동 등록",
+  "description": "Instagram 세션을 SuperTag에 자동 등록",
   "permissions": ["cookies", "storage"],
   "host_permissions": [
     "https://www.instagram.com/*",

@@ -172,7 +172,7 @@ def _add_scorecard_slide(prs, inf, manual):
     footer_bg = slide.shapes.add_shape(1, Cm(0), Cm(H-0.8), Cm(W), Cm(0.8))
     footer_bg.fill.solid(); footer_bg.fill.fore_color.rgb = C_LIGHT
     footer_bg.line.fill.background()
-    _add_text_box(slide, f"InstaFinder  |  생성: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+    _add_text_box(slide, f"SuperTag  |  생성: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
                   0.5, H-0.75, W-1, 0.7,
                   font_size=7, color=C_GRAY, align=PP_ALIGN.RIGHT)
 

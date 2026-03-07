@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
-import uuid, time, json, os, bcrypt, logging, collections
+import uuid, time, json, os, re, bcrypt, logging, collections, hashlib, secrets, hmac
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -12,7 +12,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
-from database import (init_db, get_conn, get_influencers, get_influencer, get_influencer_posts,
+from database import (init_db, get_conn, get_influencers, get_influencer, get_influencer_posts, get_influencer_reels,
                       get_stats, get_public_stats, get_public_influencers,
                       get_manual, save_manual, get_advertisers, get_refresh_status,
                       update_influencer_stats, get_advertiser_by_username,
@@ -73,32 +73,54 @@ def _analyze_activity(htags: list) -> dict:
 
 
 app = FastAPI()
+
+# ─── CORS: 크롬 확장 프로그램만 허용, 와일드카드(*) 제거 ───
+_CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(CORSMiddleware,
-    allow_origins=["chrome-extension://*", "*"],
+    allow_origins=_CORS_ORIGINS or [],          # 기본: 외부 origin 차단 (same-origin만 허용)
+    allow_origin_regex=r"^chrome-extension://.*$",  # 크롬 확장은 패턴으로 허용
     allow_methods=["GET","POST"],
-    allow_headers=["*"]
+    allow_headers=["X-Api-Key", "Content-Type"],
+    allow_credentials=False,                    # credentials 불필요 시 false
 )
 
 # ─── 봇 차단 / Rate Limiting ───────────────────────────────────────
 _BOT_UA = [
     "bot","crawler","spider","scraper","wget","curl","python-requests",
     "httpx","aiohttp","scrapy","mechanize","selenium","playwright",
-    "headlesschrome","phantomjs","slurp","baiduspider","yandex",
-    "googlebot","bingbot","facebookexternalhit","twitterbot",
+    "headlesschrome","phantomjs","slurp","baiduspider",
+    "facebookexternalhit","twitterbot",
     "gptbot","chatgpt","claudebot","anthropic","ccbot","semrush",
     "ahrefsbot","mj12bot","dotbot","petalbot","bytespider",
+    "zoominfobot","dataforseobot","blexbot","megaindex",
+    "go-http-client","java/","libwww-perl","httpclient",
 ]
+# 정상 검색엔진 봇 (홈페이지만 허용, 데이터 페이지는 차단)
+_SEARCH_ENGINE_BOTS = ["googlebot", "bingbot", "yeti", "naverbot", "daumoa", "yandexbot"]
 
 # IP당 분당 요청 기록 (최근 60초 타임스탬프 큐)
 _rate_store: dict = collections.defaultdict(collections.deque)
+_rate_store_cleanup_ts: float = 0.0  # 마지막 정리 시간
 _honeypot_ips: set = set()  # 허니팟 걸린 IP 영구 차단
-_RATE_LIMIT = 40  # 분당 최대 요청 수
+_RATE_LIMIT = 40  # 분당 최대 요청 수 (비인증 사용자)
+_RATE_LIMIT_AUTH = 120  # 분당 최대 요청 수 (인증된 사용자)
 _WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico"}
+# 데이터 페이지 경로 (검색엔진 봇 차단 대상)
+_DATA_PATHS = ["/influencers", "/api/", "/advertiser", "/export", "/collect",
+               "/hashtags", "/accounts", "/settings", "/refresh"]
+
+def _get_client_ip(request: Request) -> str:
+    """클라이언트 IP 추출 (프록시 지원)"""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else ""
 
 @app.middleware("http")
 async def bot_protection(request: Request, call_next):
+    global _rate_store_cleanup_ts
     path = request.url.path
-    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "").split(",")[0].strip()
+    ip = _get_client_ip(request)
     ua = request.headers.get("user-agent", "").lower()
 
     # 허니팟에 걸린 IP 영구 차단
@@ -109,44 +131,298 @@ async def bot_protection(request: Request, call_next):
     if any(path.startswith(p) for p in _WHITELIST_PATHS):
         return await call_next(request)
 
+    # User-Agent가 비어있으면 차단 (정상 브라우저는 항상 UA를 보냄)
+    if not ua or len(ua) < 10:
+        log.warning(f"빈/짧은 UA 차단: {ip} UA='{ua}'")
+        return Response("Forbidden", status_code=403)
+
+    # 정상 검색엔진 봇: 홈페이지(/)만 허용, 데이터 페이지는 차단
+    is_search_bot = any(sb in ua for sb in _SEARCH_ENGINE_BOTS)
+    if is_search_bot:
+        if path == "/" or path == "":
+            return await call_next(request)
+        else:
+            log.info(f"검색엔진 봇 데이터 페이지 차단: {ip} UA={ua[:40]} path={path}")
+            return Response("Forbidden", status_code=403)
+
     # User-Agent 봇 차단
     if any(b in ua for b in _BOT_UA):
         log.warning(f"봇 차단: {ip} UA={ua[:60]}")
         return Response("Forbidden", status_code=403)
 
-    # Rate limiting (관리자/광고주 세션은 제외)
-    if not request.cookies.get("session_id") and not request.cookies.get("adv_session_id"):
-        now = time.time()
-        dq = _rate_store[ip]
-        # 60초 이전 기록 제거
-        while dq and dq[0] < now - 60:
-            dq.popleft()
-        if len(dq) >= _RATE_LIMIT:
-            log.warning(f"Rate limit 초과: {ip} ({len(dq)}req/min)")
-            return JSONResponse({"error": "Too many requests"}, status_code=429,
-                headers={"Retry-After": "60", "X-RateLimit-Limit": str(_RATE_LIMIT)})
-        dq.append(now)
+    # 데이터센터/헤드리스 브라우저 힌트 차단
+    if any(h in ua for h in _DATACENTER_UA_HINTS):
+        log.warning(f"헤드리스 브라우저 차단: {ip} UA={ua[:60]}")
+        return Response("Forbidden", status_code=403)
 
-    return await call_next(request)
+    # 클라이언트 JS 봇 탐지 쿠키 확인 (navigator.webdriver 등)
+    if request.cookies.get("_bot") == "1":
+        log.warning(f"JS 봇 탐지 쿠키 발견: {ip}")
+        _honeypot_ips.add(ip)
+        return Response("Forbidden", status_code=403)
+
+    # TLS Fingerprinting (Vercel 환경에서만 작동)
+    if not _check_tls_fingerprint(request):
+        log.warning(f"TLS fingerprint 차단: {ip} JA4={request.headers.get('x-vercel-ja4-digest','')[:20]}")
+        return Response("Forbidden", status_code=403)
+
+    # Rate limiting
+    now = time.time()
+    has_session = bool(request.cookies.get("session_id") or request.cookies.get("adv_session_id"))
+    limit = _RATE_LIMIT_AUTH if has_session else _RATE_LIMIT
+    dq = _rate_store[ip]
+    # 60초 이전 기록 제거
+    while dq and dq[0] < now - 60:
+        dq.popleft()
+    if len(dq) >= limit:
+        log.warning(f"Rate limit 초과: {ip} ({len(dq)}req/min, limit={limit})")
+        return JSONResponse({"error": "Too many requests"}, status_code=429,
+            headers={"Retry-After": "60", "X-RateLimit-Limit": str(limit)})
+    dq.append(now)
+
+    # 5분마다 오래된 IP 레코드 정리 (메모리 누수 방지)
+    if now - _rate_store_cleanup_ts > 300:
+        _rate_store_cleanup_ts = now
+        stale = [k for k, v in _rate_store.items() if not v or v[-1] < now - 120]
+        for k in stale:
+            del _rate_store[k]
+
+    response = await call_next(request)
+
+    # 보안 헤더 추가
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # 데이터 페이지는 검색엔진 인덱싱 차단
+    if any(path.startswith(dp) for dp in _DATA_PATHS):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+        response.headers["Cache-Control"] = "private, no-store, no-cache, must-revalidate"
+
+    return response
 
 
 @app.get("/trap/data-feed")  # 허니팟: robots.txt에 Disallow되어 있지만 봇은 방문함
 async def honeypot(request: Request):
-    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "").split(",")[0].strip()
+    ip = _get_client_ip(request)
     _honeypot_ips.add(ip)
     log.warning(f"허니팟 감지! IP 영구 차단: {ip}")
     return Response("Not Found", status_code=404)
 
+@app.get("/trap/admin-panel")  # 추가 허니팟
+async def honeypot2(request: Request):
+    ip = _get_client_ip(request)
+    _honeypot_ips.add(ip)
+    log.warning(f"허니팟2 감지! IP 영구 차단: {ip}")
+    return Response("Not Found", status_code=404)
+
+
+# ─── JS Challenge 토큰 (헤드리스 브라우저/스크래퍼 차단) ──────────
+_JS_CHALLENGE_SECRET = os.getenv("JS_CHALLENGE_SECRET", secrets.token_hex(16))
+
+def _generate_challenge_token(ip: str) -> str:
+    """IP + 시간(10분 단위) 기반 HMAC 토큰 생성"""
+    time_slot = str(int(time.time()) // 600)  # 10분마다 갱신
+    msg = f"{ip}:{time_slot}".encode()
+    return hmac.new(_JS_CHALLENGE_SECRET.encode(), msg, hashlib.sha256).hexdigest()[:32]
+
+def _verify_challenge_token(ip: str, token: str) -> bool:
+    """JS Challenge 토큰 검증 (현재 + 이전 10분 슬롯 허용)"""
+    if not token:
+        return False
+    now_slot = int(time.time()) // 600
+    for slot in [now_slot, now_slot - 1]:
+        msg = f"{ip}:{slot}".encode()
+        expected = hmac.new(_JS_CHALLENGE_SECRET.encode(), msg, hashlib.sha256).hexdigest()[:32]
+        if hmac.compare_digest(token, expected):
+            return True
+    return False
+
+@app.get("/api/challenge-token")
+async def get_challenge_token(request: Request):
+    """JS에서 호출하여 challenge 토큰을 받아가는 엔드포인트"""
+    ip = _get_client_ip(request)
+    return JSONResponse({"token": _generate_challenge_token(ip)})
+
+
+# ─── 로그인 Brute-force 방지 ──────────────────────────────────────
+_login_attempts: dict = collections.defaultdict(list)  # IP -> [timestamp, ...]
+_LOGIN_MAX_ATTEMPTS = 5       # 15분 내 최대 시도
+_LOGIN_LOCKOUT_SECS = 900     # 15분 잠금
+
+def _check_login_allowed(ip: str) -> bool:
+    """로그인 시도 허용 여부 확인"""
+    now = time.time()
+    attempts = _login_attempts[ip]
+    # 15분 이전 기록 제거
+    _login_attempts[ip] = [t for t in attempts if t > now - _LOGIN_LOCKOUT_SECS]
+    return len(_login_attempts[ip]) < _LOGIN_MAX_ATTEMPTS
+
+def _record_login_attempt(ip: str):
+    """실패한 로그인 시도 기록"""
+    _login_attempts[ip].append(time.time())
+
+
+# ─── 데이터센터 IP 차단 (간이 ASN 체크) ──────────────────────────
+_DATACENTER_UA_HINTS = [
+    "headless", "phantomjs", "electron", "puppeteer",
+    "splash", "nightmare", "casperjs", "slimerjs",
+]
+
+
+# ─── TLS Fingerprinting (Vercel JA4) ─────────────────────────────
+# Vercel은 모든 요청에 x-vercel-ja4-digest 헤더를 자동 주입
+# 알려진 봇/스크래퍼 TLS fingerprint를 차단
+_KNOWN_BOT_JA4 = set()  # 탐지 시 동적으로 추가
+_KNOWN_BROWSER_JA4_PREFIXES = [
+    "t13d",  # TLS 1.3 (Chrome, Firefox, Safari, Edge)
+    "t12d",  # TLS 1.2 (구형 브라우저)
+]
+
+def _check_tls_fingerprint(request: Request) -> bool:
+    """Vercel JA4 fingerprint로 비브라우저 클라이언트 탐지.
+    Vercel 환경이 아니면 (로컬 개발) 통과."""
+    ja4 = request.headers.get("x-vercel-ja4-digest", "")
+    if not ja4:
+        return True  # 로컬 개발 환경 또는 JA4 미지원 → 통과
+    if ja4 in _KNOWN_BOT_JA4:
+        return False
+    # TLS 1.3 브라우저 fingerprint 패턴 확인
+    # JA4 형식: t13d1516h2_8daaf6152771_... (TLS버전_ciphers_extensions)
+    if any(ja4.startswith(p) for p in _KNOWN_BROWSER_JA4_PREFIXES):
+        return True
+    # 알 수 없는 JA4 → 로그 기록 후 통과 (false positive 방지, 모니터링용)
+    log.info(f"미확인 JA4 fingerprint: {ja4[:30]}")
+    return True
+
+
+# ─── 워터마킹 (데이터 유출 추적) ─────────────────────────────────
+# Zero-Width 유니코드 문자로 사용자 ID를 텍스트에 인코딩
+_ZW_CHARS = ['\u200b', '\u200c', '\u200d', '\ufeff']  # ZWS, ZWNJ, ZWJ, BOM
+
+def _encode_watermark(user_id: str) -> str:
+    """사용자 ID를 보이지 않는 Zero-Width 문자열로 인코딩"""
+    # user_id의 각 문자를 2비트씩 4개의 ZW 문자로 매핑
+    bits = ''.join(format(ord(c), '08b') for c in user_id[:8])  # 최대 8자
+    result = []
+    for i in range(0, len(bits), 2):
+        idx = int(bits[i:i+2], 2)  # 0~3
+        result.append(_ZW_CHARS[idx])
+    return ''.join(result)
+
+def _watermark_text(text: str, user_id: str) -> str:
+    """텍스트에 보이지 않는 워터마크 삽입"""
+    if not text or not user_id:
+        return text
+    wm = _encode_watermark(user_id)
+    # 텍스트 중간에 워터마크 삽입 (첫 번째 공백 뒤)
+    idx = text.find(' ')
+    if idx > 0:
+        return text[:idx] + wm + text[idx:]
+    return text + wm
+
+def _watermark_number(value: int, user_id: str) -> int:
+    """숫자에 미세한 워터마크 (±0.1% 이내 변동, 사용자별 고유)"""
+    if not value or value < 100:
+        return value
+    # user_id 기반 결정론적 오프셋 (-0.1% ~ +0.1%)
+    h = int(hashlib.md5(f"{user_id}:{value}".encode()).hexdigest()[:4], 16)
+    offset_pct = (h % 200 - 100) / 100000  # -0.001 ~ +0.001
+    return int(value * (1 + offset_pct))
+
+
+# ─── Proof-of-Work (PoW) ─────────────────────────────────────────
+# 클라이언트가 SHA-256 해시를 찾아야 데이터 접근 가능
+_POW_DIFFICULTY = 4  # 해시 앞 4자리가 '0000'이어야 함 (평균 ~65,000번 시도, ~200ms)
+_POW_SECRET = os.getenv("POW_SECRET", secrets.token_hex(8))
+_pow_used_nonces: dict = {}  # nonce -> expiry timestamp (재사용 방지)
+_pow_cleanup_ts: float = 0.0
+
+def _generate_pow_challenge() -> dict:
+    """PoW 챌린지 생성"""
+    challenge_id = secrets.token_hex(8)
+    timestamp = int(time.time())
+    return {
+        "challenge": challenge_id,
+        "timestamp": timestamp,
+        "difficulty": _POW_DIFFICULTY,
+    }
+
+def _verify_pow(challenge: str, timestamp: int, nonce: str) -> bool:
+    """PoW 솔루션 검증"""
+    global _pow_cleanup_ts
+    now = time.time()
+    # 타임스탬프 유효성 (5분 이내)
+    if abs(now - timestamp) > 300:
+        return False
+    # nonce 재사용 방지
+    nonce_key = f"{challenge}:{nonce}"
+    if nonce_key in _pow_used_nonces:
+        return False
+    # 해시 검증
+    data = f"{challenge}:{timestamp}:{nonce}:{_POW_SECRET}".encode()
+    h = hashlib.sha256(data).hexdigest()
+    if not h.startswith('0' * _POW_DIFFICULTY):
+        return False
+    # nonce 등록 (5분 TTL)
+    _pow_used_nonces[nonce_key] = now + 300
+    # 10분마다 만료된 nonce 정리
+    if now - _pow_cleanup_ts > 600:
+        _pow_cleanup_ts = now
+        expired = [k for k, v in _pow_used_nonces.items() if v < now]
+        for k in expired:
+            del _pow_used_nonces[k]
+    return True
+
+@app.get("/api/pow-challenge")
+async def pow_challenge(request: Request):
+    """PoW 챌린지 발급"""
+    return JSONResponse(_generate_pow_challenge())
+
+@app.post("/api/pow-verify")
+async def pow_verify(request: Request):
+    """PoW 솔루션 검증 → 성공 시 데이터 접근 토큰 발급"""
+    try:
+        body = await request.json()
+        challenge = body.get("challenge", "")
+        timestamp = body.get("timestamp", 0)
+        nonce = body.get("nonce", "")
+        if _verify_pow(challenge, timestamp, nonce):
+            ip = _get_client_ip(request)
+            token = _generate_challenge_token(ip)
+            return JSONResponse({"ok": True, "token": token})
+        return JSONResponse({"ok": False, "error": "Invalid solution"}, status_code=400)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Bad request"}, status_code=400)
+
 
 @app.get("/robots.txt")
 async def robots():
-    content = """User-agent: *
+    content = """# 정상 검색엔진: 홈페이지만 허용
+User-agent: Googlebot
+Allow: /$
 Disallow: /
-Disallow: /api/
-Disallow: /influencers/
-Disallow: /trap/
 
-# 크롤링 금지
+User-agent: Yeti
+Allow: /$
+Disallow: /
+
+User-agent: Bingbot
+Allow: /$
+Disallow: /
+
+User-agent: Naverbot
+Allow: /$
+Disallow: /
+
+User-agent: DaumOa
+Allow: /$
+Disallow: /
+
+User-agent: Yandexbot
+Allow: /$
+Disallow: /
+
+# AI/스크래핑 봇 전면 차단
 User-agent: GPTBot
 Disallow: /
 User-agent: ChatGPT-User
@@ -157,6 +433,30 @@ User-agent: anthropic-ai
 Disallow: /
 User-agent: ClaudeBot
 Disallow: /
+User-agent: Bytespider
+Disallow: /
+User-agent: SemrushBot
+Disallow: /
+User-agent: AhrefsBot
+Disallow: /
+User-agent: MJ12bot
+Disallow: /
+User-agent: DataForSeoBot
+Disallow: /
+User-agent: PetalBot
+Disallow: /
+
+# 기타 모든 봇 전면 차단
+User-agent: *
+Disallow: /
+Disallow: /api/
+Disallow: /influencers/
+Disallow: /advertiser/
+Disallow: /export/
+Disallow: /collect/
+Disallow: /trap/
+Disallow: /accounts/
+Disallow: /settings/
 """
     return Response(content, media_type="text/plain")
 
@@ -192,7 +492,7 @@ def _safe_cd(fname: str) -> str:
 
 # ── 인증 (관리자) - JWT 기반 (Vercel 서버리스 호환) ──────────
 from jose import jwt as _jwt
-JWT_SECRET = os.getenv("SECRET_KEY", "instafinder-secret-key-2026-supers")
+JWT_SECRET = os.getenv("SECRET_KEY", "supertag-secret-key-2026-supers")
 JWT_ALG = "HS256"
 JWT_EXP_HOURS = 24 * 7  # 7일
 
@@ -200,7 +500,7 @@ ADMIN_PW_HASH = bcrypt.hashpw(
     os.getenv("ADMIN_PASSWORD", "admin").encode(), bcrypt.gensalt()
 )
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
-EXTENSION_API_KEY = os.getenv("EXTENSION_API_KEY", "instafinder-ext-key")
+EXTENSION_API_KEY = os.getenv("EXTENSION_API_KEY", "supertag-ext-key")
 
 def _check_ext_key(request: Request) -> bool:
     return request.headers.get("X-Api-Key") == EXTENSION_API_KEY
@@ -299,6 +599,7 @@ def public_home(
 
 @app.get("/api/public")
 def api_public(
+    request: Request,
     page: int = Query(1, gt=0),
     sort: str = "follower_count",
     q: str = "",
@@ -313,9 +614,21 @@ def api_public(
     session_id: Optional[str] = Cookie(default=None),
     adv_session_id: Optional[str] = Cookie(default=None),
 ):
-    """공개 인플루언서 목록 JSON API - JS 렌더링용"""
+    """공개 인플루언서 목록 JSON API - JS 렌더링용
+    비인증 사용자: 제한된 필드만 반환, 페이지 제한, JS Challenge 필수
+    인증 사용자: 전체 필드 반환
+    """
     is_authorized = bool(get_user(session_id) or get_adv_user(adv_session_id))
+    # 비인증 사용자: JS Challenge 토큰 검증 (헤드리스 크롤러 차단)
+    if not is_authorized:
+        challenge = request.headers.get("X-Challenge-Token", "")
+        ip = _get_client_ip(request)
+        if not _verify_challenge_token(ip, challenge):
+            return JSONResponse({"error": "Challenge token required", "total": 0, "rows": []}, status_code=403)
     per_page = 30 if is_authorized else 10
+    # 비인증 사용자는 최대 3페이지까지만 허용 (데이터 대량 수집 방지)
+    if not is_authorized and page > 3:
+        return JSONResponse({"error": "로그인이 필요합니다", "total": 0, "rows": []}, status_code=401)
     total, rows = get_public_influencers(page=page, per_page=per_page, sort=sort,
                                          q=q, min_f=min_f, max_f=max_f,
                                          category=category, hashtag=hashtag,
@@ -324,30 +637,53 @@ def api_public(
     total_pages = max(1, (total + per_page - 1) // per_page)
     def _g(r, k, d=0):
         return r[k] if isinstance(r, dict) else getattr(r, k, d)
+    # 워터마킹용 사용자 ID 추출
+    _wm_id = ""
+    if is_authorized:
+        u = get_user(session_id)
+        a = get_adv_user(adv_session_id)
+        _wm_id = (u.get("username","") if u else "") or (a.get("username","") if a else "") or _get_client_ip(request)
+
     result = []
     for r in rows:
-        result.append({
-            "pk": _g(r,"pk",""),
-            "username": _g(r,"username",""),
-            "full_name": _g(r,"full_name",""),
-            "biography": _g(r,"biography",""),
-            "follower_count": _g(r,"follower_count",0),
-            "engagement_rate": _g(r,"engagement_rate",0),
-            "avg_likes": _g(r,"avg_likes",0),
-            "avg_comments": _g(r,"avg_comments",0),
-            "avg_reel_views": _g(r,"avg_reel_views",0),
-            "avg_reel_likes": _g(r,"avg_reel_likes",0),
-            "avg_reel_comments": _g(r,"avg_reel_comments",0),
-            "avg_feed_likes": _g(r,"avg_feed_likes",0),
-            "avg_feed_comments": _g(r,"avg_feed_comments",0),
-            "is_verified": _g(r,"is_verified",False),
-            "is_business": _g(r,"is_business",False),
-            "is_private": bool(_g(r,"is_private",False)),
-            "category": _g(r,"category",""),
-            "hashtags": _g(r,"hashtags",""),
-            "profile_pic_url": _g(r,"profile_pic_url",""),
-            "profile_pic_local": _g(r,"profile_pic_local",""),
-        })
+        if is_authorized:
+            # 인증된 사용자: 전체 데이터 (워터마크 포함)
+            fc = int(_g(r,"follower_count",0))
+            result.append({
+                "pk": _g(r,"pk",""),
+                "username": _g(r,"username",""),
+                "full_name": _watermark_text(str(_g(r,"full_name","")), _wm_id),
+                "biography": _watermark_text(str(_g(r,"biography","")), _wm_id),
+                "follower_count": _watermark_number(fc, _wm_id),
+                "engagement_rate": _g(r,"engagement_rate",0),
+                "avg_likes": _g(r,"avg_likes",0),
+                "avg_comments": _g(r,"avg_comments",0),
+                "avg_reel_views": _g(r,"avg_reel_views",0),
+                "avg_reel_likes": _g(r,"avg_reel_likes",0),
+                "avg_reel_comments": _g(r,"avg_reel_comments",0),
+                "avg_feed_likes": _g(r,"avg_feed_likes",0),
+                "avg_feed_comments": _g(r,"avg_feed_comments",0),
+                "is_verified": _g(r,"is_verified",False),
+                "is_business": _g(r,"is_business",False),
+                "is_private": bool(_g(r,"is_private",False)),
+                "category": _g(r,"category",""),
+                "hashtags": _g(r,"hashtags",""),
+                "profile_pic_url": _g(r,"profile_pic_url",""),
+                "profile_pic_local": _g(r,"profile_pic_local",""),
+            })
+        else:
+            # 비인증 사용자: 제한된 필드만 (상세 통계 숨김)
+            result.append({
+                "pk": _g(r,"pk",""),
+                "username": _g(r,"username",""),
+                "full_name": _g(r,"full_name",""),
+                "follower_count": _g(r,"follower_count",0),
+                "is_verified": _g(r,"is_verified",False),
+                "is_business": _g(r,"is_business",False),
+                "category": _g(r,"category",""),
+                "profile_pic_url": _g(r,"profile_pic_url",""),
+                "profile_pic_local": _g(r,"profile_pic_local",""),
+            })
     return {"total": total, "total_pages": total_pages, "page": page, "rows": result}
 
 
@@ -361,13 +697,23 @@ def login_page(request: Request):
 
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    ip = _get_client_ip(request)
+    if not _check_login_allowed(ip):
+        log.warning(f"로그인 brute-force 차단: {ip}")
+        return templates.TemplateResponse("login.html", {
+            "request": request, "error": "너무 많은 로그인 시도입니다. 15분 후 다시 시도해주세요."
+        }, status_code=429)
     if username == ADMIN_USER and bcrypt.checkpw(password.encode(), ADMIN_PW_HASH):
+        _login_attempts.pop(ip, None)  # 성공 시 기록 초기화
         token = _make_jwt({"role": "admin", "username": username})
         res = RedirectResponse("/influencers", status_code=302)
-        res.set_cookie("session_id", token, httponly=True, max_age=604800)
+        res.set_cookie("session_id", token, httponly=True, max_age=604800,
+                        samesite="lax", secure=_IS_PROD)
         return res
+    _record_login_attempt(ip)
+    remaining = _LOGIN_MAX_ATTEMPTS - len(_login_attempts.get(ip, []))
     return templates.TemplateResponse("login.html", {
-        "request": request, "error": "아이디 또는 비밀번호가 올바르지 않습니다."
+        "request": request, "error": f"아이디 또는 비밀번호가 올바르지 않습니다. (남은 시도: {remaining}회)"
     }, status_code=400)
 
 @app.get("/logout")
@@ -529,10 +875,15 @@ def influencer_detail(
                 for p in feeds_p[:5]
             ]
 
+    recent_reels = get_influencer_reels(pk, sort="recent", limit=12)
+    popular_reels = get_influencer_reels(pk, sort="popular", limit=12)
+
     return templates.TemplateResponse("influencer_detail.html", {
         "request": request, "user": user,
         "inf": inf, "manual": manual, "posts": posts,
         "activity": activity_analysis,
+        "recent_reels": recent_reels,
+        "popular_reels": popular_reels,
     })
 
 
@@ -918,7 +1269,13 @@ def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=
     return HTMLResponse(job_id)
 
 @app.get("/collect/progress/{job_id}")
-def collect_progress(job_id: str):
+def collect_progress(job_id: str, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    # job_id 형식 검증 (UUID만 허용)
+    if not re.match(r'^[a-f0-9\-]{36}$', job_id):
+        return JSONResponse({"error": "잘못된 job_id"}, 400)
     from crawler import progress
 
     def stream():
@@ -1005,14 +1362,24 @@ def adv_login_page(request: Request):
 
 @app.post("/advertiser/login")
 def adv_login(request: Request, username: str = Form(...), password: str = Form(...)):
+    ip = _get_client_ip(request)
+    if not _check_login_allowed(ip):
+        log.warning(f"광고주 로그인 brute-force 차단: {ip}")
+        return templates.TemplateResponse("advertiser_login.html", {
+            "request": request, "error": "너무 많은 로그인 시도입니다. 15분 후 다시 시도해주세요."
+        }, status_code=429)
     row = get_advertiser_by_username(username.strip())
     if row and bcrypt.checkpw(password.encode(), (row.get("password_hash") or "").encode()):
+        _login_attempts.pop(ip, None)
         token = _make_jwt({"role": "advertiser", "username": username, "adv_id": row.get("id")})
         res = RedirectResponse("/advertiser", status_code=302)
-        res.set_cookie("adv_session_id", token, httponly=True, max_age=604800)
+        res.set_cookie("adv_session_id", token, httponly=True, max_age=604800,
+                        samesite="lax", secure=_IS_PROD)
         return res
+    _record_login_attempt(ip)
+    remaining = _LOGIN_MAX_ATTEMPTS - len(_login_attempts.get(ip, []))
     return templates.TemplateResponse("advertiser_login.html", {
-        "request": request, "error": "아이디 또는 비밀번호가 올바르지 않습니다."
+        "request": request, "error": f"아이디 또는 비밀번호가 올바르지 않습니다. (남은 시도: {remaining}회)"
     }, status_code=400)
 
 @app.get("/advertiser/logout")
@@ -1212,6 +1579,8 @@ def adv_influencer_detail(pk: str, request: Request,
     except:
         inf["top_hashtags"] = []
     posts = get_influencer_posts(pk)
+    recent_reels = get_influencer_reels(pk, sort="recent", limit=12)
+    popular_reels = get_influencer_reels(pk, sort="popular", limit=12)
     # 활동 유형 분석 (광고주 뷰에서도 동일하게 표시)
     activity = _analyze_activity(inf.get("top_hashtags", []))
     return templates.TemplateResponse("influencer_detail.html", {
@@ -1219,6 +1588,8 @@ def adv_influencer_detail(pk: str, request: Request,
         "inf": inf, "manual": manual_safe, "posts": posts,
         "is_advertiser_view": True,
         "activity": activity,
+        "recent_reels": recent_reels,
+        "popular_reels": popular_reels,
     })
 
 

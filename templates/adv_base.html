@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{% block title %}InstaFinder{% endblock %}</title>
+  <title>{% block title %}SuperTag{% endblock %}</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"/>
   <style>
@@ -26,10 +26,28 @@
     <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
       <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
     </div>
-    <span class="font-bold text-gray-900 text-sm">InstaFinder</span>
+    <span class="font-bold text-gray-900 text-sm">SuperTag</span>
     {% if adv %}<span class="text-xs text-gray-400">| {{ adv.company_name or adv.username }}</span>{% endif %}
   </div>
   <a href="/advertiser/logout" class="text-xs text-gray-400 hover:text-gray-600">로그아웃</a>
 </nav>
 <main class="min-h-screen"><div class="p-5 max-w-7xl mx-auto">{% block content %}{% endblock %}</div></main>
+<script src="https://openfpcdn.io/botd/v1" async></script>
+<script>
+(function(){
+  if(navigator.webdriver){document.cookie='_bot=1;path=/';return;}
+  if(typeof navigator.languages==='undefined'||navigator.languages.length===0){document.cookie='_bot=1;path=/';return;}
+  try{var c=document.createElement('canvas'),g=c.getContext('2d');g.fillText('t',2,2);if(c.toDataURL().length<100){document.cookie='_bot=1;path=/';return;}}catch(e){}
+  if(window.BotD){BotD.load().then(function(b){return b.detect()}).then(function(r){if(r.bot)document.cookie='_bot=1;path=/';}).catch(function(){});}
+  fetch('/api/challenge-token').then(function(r){return r.json()}).then(function(d){if(d.token)window.__challengeToken=d.token;}).catch(function(){});
+})();
+var _origFetch=window.fetch;
+window.fetch=function(url,opts){
+  if(typeof url==='string'&&url.indexOf('/api/')===0&&window.__challengeToken){
+    opts=opts||{};opts.headers=opts.headers||{};
+    if(!opts.headers['X-Challenge-Token'])opts.headers['X-Challenge-Token']=window.__challengeToken;
+  }
+  return _origFetch.call(this,url,opts);
+};
+</script>
 </body></html>

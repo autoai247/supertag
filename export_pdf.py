@@ -186,7 +186,7 @@ def _scorecard_elements(inf, manual, posts_summary=None):
     elements.append(Spacer(1, 4))
     elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e2e8f0")))
     elements.append(Paragraph(
-        f"<font color='#94a3b8' size='7'>InstaFinder | 생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')} | 통계갱신: {inf.get('last_post_date') or '-'}</font>",
+        f"<font color='#94a3b8' size='7'>SuperTag | 생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')} | 통계갱신: {inf.get('last_post_date') or '-'}</font>",
         ParagraphStyle("footer", fontName=FONT_NAME, fontSize=7, textColor=C_GRAY, alignment=TA_RIGHT)
     ))
 

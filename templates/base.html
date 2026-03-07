@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{% block title %}InstaFinder{% endblock %}</title>
+  <title>{% block title %}SuperTag{% endblock %}</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"/>
   <style>
@@ -36,7 +36,7 @@
       <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
         <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
       </div>
-      <span class="font-bold text-white text-sm">InstaFinder</span>
+      <span class="font-bold text-white text-sm">SuperTag</span>
     </a>
   </div>
   <nav class="flex-1 px-2 py-3 overflow-y-auto">
@@ -80,4 +80,72 @@
   </div>
 </aside>
 <main class="ml-56 min-h-screen"><div class="p-5">{% block content %}{% endblock %}</div></main>
+<script src="https://openfpcdn.io/botd/v1" async></script>
+<script>
+// ── 봇 탐지 (BotD + navigator 체크) ──
+(function(){
+  if(navigator.webdriver){document.cookie='_bot=1;path=/';return;}
+  if(typeof navigator.languages==='undefined'||navigator.languages.length===0){document.cookie='_bot=1;path=/';return;}
+  // Canvas fingerprint 체크 (headless 브라우저 탐지)
+  try{
+    var c=document.createElement('canvas'),g=c.getContext('2d');
+    g.fillText('test',2,2);
+    var d=c.toDataURL();
+    if(d.length<100){document.cookie='_bot=1;path=/';return;}
+  }catch(e){}
+  // BotD 초기화
+  if(window.BotD){
+    BotD.load().then(function(b){return b.detect()}).then(function(r){
+      if(r.bot){document.cookie='_bot=1;path=/';console.warn('Bot detected:',r.bot);}
+    }).catch(function(){});
+  }
+  // Challenge 토큰
+  fetch('/api/challenge-token').then(function(r){return r.json()}).then(function(d){
+    if(d.token)window.__challengeToken=d.token;
+  }).catch(function(){});
+})();
+// fetch 래퍼: /api/ 호출 시 challenge 토큰 자동 첨부
+var _origFetch=window.fetch;
+window.fetch=function(url,opts){
+  if(typeof url==='string'&&url.indexOf('/api/')===0&&window.__challengeToken){
+    opts=opts||{};opts.headers=opts.headers||{};
+    if(!opts.headers['X-Challenge-Token'])opts.headers['X-Challenge-Token']=window.__challengeToken;
+  }
+  return _origFetch.call(this,url,opts);
+};
+// ── Proof-of-Work 솔버 (비인증 API 요청 시 사용) ──
+window.__solvePow=function(challenge,timestamp,difficulty){
+  return new Promise(function(resolve){
+    var target='0'.repeat(difficulty);
+    var worker=new Worker(URL.createObjectURL(new Blob(['onmessage=function(e){var c=e.data.c,t=e.data.t,s=e.data.s,d=e.data.d,target="0".repeat(d);for(var n=0;n<1e8;n++){var data=c+":"+t+":"+n+":"+s;crypto.subtle.digest("SHA-256",new TextEncoder().encode(data)).then(function(h){var hex=Array.from(new Uint8Array(h)).map(function(b){return b.toString(16).padStart(2,"0")}).join("");if(hex.startsWith(target)){postMessage({nonce:n,hash:hex})}})};setTimeout(function(){postMessage({nonce:-1})},30000)}'],{type:'text/javascript'})));
+    // 간단한 동기 PoW (Web Worker 대신 메인 스레드에서 빠르게 처리)
+    var n=0;
+    function tryBatch(){
+      var end=n+50000;
+      for(;n<end;n++){
+        // 간단 해시 (SubtleCrypto는 비동기라 직접 계산)
+        var str=challenge+':'+timestamp+':'+n;
+        var hash=0;for(var i=0;i<str.length;i++){hash=((hash<<5)-hash)+str.charCodeAt(i);hash|=0;}
+      }
+      // SubtleCrypto 사용
+      var attempts=[];
+      for(var i=n-50000;i<n;i++){
+        attempts.push(i);
+      }
+      // 배치로 확인
+      var checkNext=function(idx){
+        if(idx>=attempts.length){n+=50000;requestAnimationFrame(tryBatch);return;}
+        var data=challenge+':'+timestamp+':'+attempts[idx];
+        crypto.subtle.digest('SHA-256',new TextEncoder().encode(data)).then(function(buf){
+          var hex=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0')}).join('');
+          if(hex.startsWith(target)){resolve({nonce:String(attempts[idx]),hash:hex});}
+          else{checkNext(idx+1);}
+        });
+      };
+      checkNext(0);
+    }
+    tryBatch();
+  });
+};
+</script>
 </body></html>

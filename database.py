@@ -5,7 +5,7 @@
 """
 import os, time, json, requests as _req
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://kknkekgendsxwbsivcnq.supabase.co")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://ysqnixgdpltguatvjjcb.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")  # service_role key
 _USE_SUPABASE = bool(os.environ.get("SUPABASE_KEY"))
 
@@ -591,6 +591,23 @@ def get_influencer_posts(pk: str) -> list:
     if _USE_SUPABASE:
         return _sb_get(T_POST, {"influencer_pk": f"eq.{pk}", "order": "taken_at.desc"}) or []
     return _sq_all(f"SELECT * FROM {T_POST} WHERE influencer_pk=? ORDER BY taken_at DESC", (pk,))
+
+
+def get_influencer_reels(pk: str, sort: str = "recent", limit: int = 20) -> list:
+    """인플루언서 릴스 조회. sort: 'recent'(최신순) 또는 'popular'(조회수순)"""
+    order = "taken_at.desc" if sort == "recent" else "views.desc"
+    if _USE_SUPABASE:
+        return _sb_get(T_POST, {
+            "influencer_pk": f"eq.{pk}",
+            "post_type": "eq.reel",
+            "order": order,
+            "limit": str(limit),
+        }) or []
+    order_sql = "taken_at DESC" if sort == "recent" else "views DESC"
+    return _sq_all(
+        f"SELECT * FROM {T_POST} WHERE influencer_pk=? AND post_type='reel' ORDER BY {order_sql} LIMIT ?",
+        (pk, limit)
+    )
 
 
 def get_stats():

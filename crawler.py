@@ -23,6 +23,119 @@ except OSError:
     os.makedirs(PROFILE_PIC_DIR, exist_ok=True)
     os.makedirs(POSTS_DIR, exist_ok=True)
 
+# ─── HikerAPI (SaaS) ───────────────────────────────────────────
+_hiker_client = None
+
+def _get_hiker():
+    """HikerAPI 클라이언트 싱글톤. 토큰 없으면 None 반환."""
+    global _hiker_client
+    if _hiker_client is not None:
+        return _hiker_client
+    token = os.environ.get("HIKERAPI_TOKEN", "").strip()
+    if not token:
+        return None
+    try:
+        from hikerapi import Client as HikerClient
+        _hiker_client = HikerClient(token=token, timeout=30)
+        log.info("HikerAPI 클라이언트 초기화 완료")
+        return _hiker_client
+    except Exception as e:
+        log.warning(f"HikerAPI 초기화 실패: {e}")
+        return None
+
+
+def _hiker_user_info(username: str) -> dict | None:
+    """HikerAPI로 유저 프로필 조회. 실패 시 None."""
+    hk = _get_hiker()
+    if not hk:
+        return None
+    try:
+        data = hk.user_by_username_v1(username)
+        if isinstance(data, dict) and data.get("pk"):
+            return data
+        log.warning(f"[HikerAPI] 유저 조회 응답 비정상: {username}")
+    except Exception as e:
+        log.warning(f"[HikerAPI] 유저 조회 실패 {username}: {e}")
+    return None
+
+
+def _hiker_user_info_by_id(user_id: str) -> dict | None:
+    """HikerAPI로 pk 기반 유저 프로필 조회."""
+    hk = _get_hiker()
+    if not hk:
+        return None
+    try:
+        data = hk.user_by_id_v1(str(user_id))
+        if isinstance(data, dict) and data.get("pk"):
+            return data
+    except Exception as e:
+        log.warning(f"[HikerAPI] 유저 ID 조회 실패 {user_id}: {e}")
+    return None
+
+
+def _hiker_user_medias(user_id: str, amount: int = 50) -> list | None:
+    """HikerAPI로 유저 게시물 조회 (페이징). 실패 시 None."""
+    hk = _get_hiker()
+    if not hk:
+        return None
+    try:
+        all_medias = []
+        end_cursor = None
+        while len(all_medias) < amount:
+            resp = hk.user_medias_chunk_v1(str(user_id), end_cursor=end_cursor)
+            items = []
+            npid = None
+            # 응답 형태: [items_list, next_page_id] 또는 dict
+            if isinstance(resp, list) and len(resp) == 2 and isinstance(resp[0], list):
+                items = resp[0]
+                npid = resp[1]
+            elif isinstance(resp, dict):
+                if "response" in resp:
+                    items = resp["response"].get("items", [])
+                elif "items" in resp:
+                    items = resp["items"]
+                npid = resp.get("next_page_id") or resp.get("next_max_id")
+            if not items:
+                break
+            all_medias.extend(items)
+            end_cursor = npid
+            if not end_cursor:
+                break
+        return all_medias[:amount]
+    except Exception as e:
+        log.warning(f"[HikerAPI] 게시물 조회 실패 {user_id}: {e}")
+    return None
+
+
+def _hiker_hashtag_medias(hashtag: str, amount: int = 100) -> list | None:
+    """HikerAPI로 해시태그 게시물 조회. 실패 시 None."""
+    hk = _get_hiker()
+    if not hk:
+        return None
+    try:
+        medias = hk.hashtag_medias_recent(hashtag, count=amount)
+        # 응답: list of dicts (paging은 라이브러리가 처리)
+        if isinstance(medias, list):
+            # [items, next_page_id] 형태일 수도 있음
+            if len(medias) == 2 and isinstance(medias[0], list):
+                return medias[0][:amount]
+            return medias[:amount]
+    except Exception as e:
+        log.warning(f"[HikerAPI] 해시태그 조회 실패 {hashtag}: {e}")
+    return None
+
+
+def _media_get(m, key, default=0):
+    """instagrapi 객체 또는 dict에서 값 추출 헬퍼."""
+    if isinstance(m, dict):
+        return m.get(key, default)
+    return getattr(m, key, default)
+
+
+def _media_get_str(m, key, default=""):
+    val = _media_get(m, key, default)
+    return str(val) if val else default
+
 SPONSOR_KEYWORDS = re.compile(
     r'#(ad|advertisement|sponsored|협찬|광고|제공|유료광고|ppㅣ|ppl|협찬제품|제품협찬|협업|파트너십|홍보)',
     re.IGNORECASE
@@ -34,9 +147,80 @@ _client_pool: dict = {}
 _current_account_id: int = None
 
 
+def _extract_sessionid_playwright(username: str, password: str, totp_secret: str = "") -> str | None:
+    """Playwright로 브라우저 자동 로그인 → sessionid 쿠키 추출.
+    instagrapi 로그인이 모두 실패했을 때 최후 수단으로 사용.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        log.warning("playwright 미설치 — pip install playwright && playwright install chromium")
+        return None
+
+    log.info(f"[Playwright] 브라우저 자동 로그인 시도: {username}")
+    sessionid = None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                locale="en-US",
+            )
+            page = context.new_page()
+            page.goto("https://www.instagram.com/accounts/login/", timeout=30000)
+            time.sleep(3)
+
+            # 로그인 폼 입력
+            page.fill('input[name="email"]', username)
+            page.fill('input[name="pass"]', password)
+            page.get_by_role("button", name="Log In", exact=True).click()
+            time.sleep(8)
+
+            # 2FA 코드 자동 입력
+            if totp_secret:
+                inputs = page.query_selector_all("input")
+                for inp in inputs:
+                    name = (inp.get_attribute("name") or "").lower()
+                    aria = (inp.get_attribute("aria-label") or "").lower()
+                    if any(k in name + aria for k in ["code", "verif", "security"]):
+                        code = pyotp.TOTP(totp_secret).now()
+                        inp.fill(code)
+                        log.info(f"[Playwright] 2FA 코드 입력: {code}")
+                        try:
+                            page.get_by_role("button", name="Confirm", exact=True).click(timeout=5000)
+                        except Exception:
+                            page.query_selector('button[type="button"]')
+                        time.sleep(5)
+                        break
+
+            # "Save info" 등 팝업 닫기
+            try:
+                page.get_by_role("button", name="Not Now").click(timeout=3000)
+            except Exception:
+                pass
+
+            # sessionid 추출
+            for c in context.cookies("https://www.instagram.com"):
+                if c["name"] == "sessionid":
+                    sessionid = c["value"]
+                    break
+
+            browser.close()
+
+        if sessionid:
+            log.info(f"[Playwright] sessionid 추출 성공: {username}")
+        else:
+            log.warning(f"[Playwright] sessionid 추출 실패: {username}")
+    except Exception as e:
+        log.error(f"[Playwright] 오류 ({username}): {e}")
+
+    return sessionid
+
+
 def _make_client(acc: dict):
     """계정 딕셔너리로 instagrapi Client 생성 및 로그인.
-    우선순위: ① sessionid 쿠키 → ② 저장된 세션 → ③ 아이디/비밀번호
+    우선순위: ① sessionid 쿠키 → ② 저장된 세션 → ③ 아이디/비밀번호 → ④ Playwright 자동 추출
     """
     from instagrapi import Client
     cl = Client()
@@ -52,10 +236,27 @@ def _make_client(acc: dict):
         cl.set_proxy(f"http://{auth}{proxy_host}:{proxy_port}")
         log.info(f"프록시 설정: {proxy_host}:{proxy_port}")
 
+    # device UUID 영속화 (인스타가 같은 기기로 인식)
+    session_data = acc.get("session_data", "")
+    saved_uuids = None
+    if session_data:
+        try:
+            saved_settings = json.loads(session_data)
+            saved_uuids = {k: saved_settings[k] for k in
+                          ("uuid", "phone_id", "device_id", "android_device_id")
+                          if k in saved_settings}
+        except Exception:
+            pass
+
+    def _apply_uuids(client):
+        if saved_uuids:
+            client.set_settings({"uuids": saved_uuids})
+
     # ① sessionid 쿠키로 로그인 (IP 차단 우회 - 최우선)
     sessionid = (acc.get("sessionid_cookie") or "").strip()
     if sessionid:
         try:
+            _apply_uuids(cl)
             cl.login_by_sessionid(sessionid)
             log.info(f"세션ID 로그인 성공: {acc['username']}")
             return cl
@@ -63,7 +264,6 @@ def _make_client(acc: dict):
             log.warning(f"세션ID 만료 또는 오류 ({acc['username']}): {e}")
 
     # ② 저장된 instagrapi 세션 복원
-    session_data = acc.get("session_data", "")
     if session_data:
         try:
             cl.set_settings(json.loads(session_data))
@@ -72,18 +272,45 @@ def _make_client(acc: dict):
             return cl
         except Exception:
             log.info(f"세션 만료, 재로그인: {acc['username']}")
-            cl = Client()  # 클라이언트 초기화 후 재시도
+            cl = Client()
             cl.delay_range = [1, 3]
             if proxy_host and proxy_port:
                 auth = f"{proxy_user}:{proxy_pass}@" if proxy_user and proxy_pass else ""
                 cl.set_proxy(f"http://{auth}{proxy_host}:{proxy_port}")
 
-    # ③ 아이디/비밀번호 로그인 (마지막 수단)
+    # ③ 아이디/비밀번호 로그인
     totp_secret = acc.get("totp_secret", "")
-    totp_code = pyotp.TOTP(totp_secret).now() if totp_secret else None
-    cl.login(acc["username"], acc["password"], verification_code=totp_code)
-    log.info(f"로그인 성공: {acc['username']}" + (" (2FA)" if totp_code else ""))
-    return cl
+    try:
+        _apply_uuids(cl)
+        totp_code = pyotp.TOTP(totp_secret).now() if totp_secret else None
+        cl.login(acc["username"], acc["password"], verification_code=totp_code)
+        log.info(f"로그인 성공: {acc['username']}" + (" (2FA)" if totp_code else ""))
+        return cl
+    except Exception as e:
+        log.warning(f"비밀번호 로그인 실패 ({acc['username']}): {e}")
+
+    # ④ Playwright 브라우저 자동 로그인 → sessionid 추출 → DB 저장
+    new_sessionid = _extract_sessionid_playwright(
+        acc["username"], acc["password"], totp_secret
+    )
+    if new_sessionid:
+        try:
+            from database import update_account_sessionid
+            acc_id = acc.get("id") or acc.get("pk")
+            update_account_sessionid(acc_id, new_sessionid)
+        except Exception:
+            pass
+        cl2 = Client()
+        cl2.delay_range = [1, 3]
+        if proxy_host and proxy_port:
+            auth = f"{proxy_user}:{proxy_pass}@" if proxy_user and proxy_pass else ""
+            cl2.set_proxy(f"http://{auth}{proxy_host}:{proxy_port}")
+        _apply_uuids(cl2)
+        cl2.login_by_sessionid(new_sessionid)
+        log.info(f"Playwright sessionid 로그인 성공: {acc['username']}")
+        return cl2
+
+    raise Exception(f"모든 로그인 방법 실패: {acc['username']}")
 
 
 def get_client_from_pool():
@@ -187,7 +414,7 @@ def download_image(url: str, save_path: str) -> bool:
 
 
 def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dict:
-    """게시물 목록에서 통계 계산"""
+    """게시물 목록에서 통계 계산 (instagrapi 객체 및 HikerAPI dict 모두 지원)"""
     reels, feeds = [], []
     all_hours = []
     all_intervals = []
@@ -195,26 +422,50 @@ def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dic
     prev_date = None
 
     for m in medias:
-        media_type = getattr(m, "media_type", 1)
-        product_type = getattr(m, "product_type", "")
-        is_reel = (media_type == 2 and product_type == "clips") or (media_type == 2 and hasattr(m, "video_duration"))
-        likes = getattr(m, "like_count", 0) or 0
-        comments = getattr(m, "comment_count", 0) or 0
-        views = getattr(m, "view_count", 0) or getattr(m, "play_count", 0) or 0
-        caption = str(getattr(m, "caption_text", "") or "")
-        taken_at = getattr(m, "taken_at", None)
+        media_type = _media_get(m, "media_type", 1)
+        product_type = _media_get(m, "product_type", "")
+        is_reel = (media_type == 2 and product_type == "clips") or (media_type == 2 and (_media_get(m, "video_duration", 0) or 0) > 0)
+        likes = _media_get(m, "like_count", 0) or 0
+        comments = _media_get(m, "comment_count", 0) or 0
+        views = _media_get(m, "view_count", 0) or _media_get(m, "play_count", 0) or 0
+        # caption: instagrapi는 caption_text, HikerAPI는 caption.text
+        caption = _media_get_str(m, "caption_text", "")
+        if not caption and isinstance(m, dict):
+            cap_obj = m.get("caption")
+            if isinstance(cap_obj, dict):
+                caption = cap_obj.get("text", "")
+            elif isinstance(cap_obj, str):
+                caption = cap_obj
+        taken_at = _media_get(m, "taken_at", None)
+        taken_at_ts = _media_get(m, "taken_at_ts", None)
 
         if SPONSOR_KEYWORDS.search(caption):
             sponsored_cnt += 1
 
-        if taken_at:
-            dt = taken_at if isinstance(taken_at, datetime) else datetime.fromtimestamp(float(taken_at))
-            all_hours.append(dt.hour)
-            if prev_date:
-                diff = abs((dt - prev_date).days)
-                if diff < 365:
-                    all_intervals.append(diff)
-            prev_date = dt
+        if taken_at or taken_at_ts:
+            if taken_at_ts and isinstance(taken_at_ts, (int, float)):
+                dt = datetime.fromtimestamp(float(taken_at_ts))
+            elif isinstance(taken_at, datetime):
+                dt = taken_at
+            elif isinstance(taken_at, str):
+                try:
+                    dt = datetime.fromisoformat(taken_at.replace("Z", "+00:00"))
+                except ValueError:
+                    dt = None
+            elif isinstance(taken_at, (int, float)):
+                dt = datetime.fromtimestamp(float(taken_at))
+            else:
+                dt = None
+            if dt:
+                # timezone-aware → naive로 변환 (비교용)
+                if hasattr(dt, 'tzinfo') and dt.tzinfo:
+                    dt = dt.replace(tzinfo=None)
+                all_hours.append(dt.hour)
+                if prev_date:
+                    diff = abs((dt - prev_date).days)
+                    if diff < 365:
+                        all_intervals.append(diff)
+                prev_date = dt
 
         entry = {"likes": likes, "comments": comments, "views": views}
         if is_reel:
@@ -251,9 +502,21 @@ def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dic
     # 마지막 게시일
     last_post_date = ""
     if medias:
-        ta = getattr(medias[0], "taken_at", None)
-        if ta:
-            dt = ta if isinstance(ta, datetime) else datetime.fromtimestamp(float(ta))
+        ta = _media_get(medias[0], "taken_at", None)
+        ta_ts = _media_get(medias[0], "taken_at_ts", None)
+        dt = None
+        if ta_ts and isinstance(ta_ts, (int, float)):
+            dt = datetime.fromtimestamp(float(ta_ts))
+        elif isinstance(ta, datetime):
+            dt = ta
+        elif isinstance(ta, str) and ta:
+            try:
+                dt = datetime.fromisoformat(ta.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        elif isinstance(ta, (int, float)):
+            dt = datetime.fromtimestamp(float(ta))
+        if dt:
             last_post_date = dt.strftime("%Y-%m-%d")
 
     return {
@@ -276,157 +539,248 @@ def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dic
     }
 
 
-def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
-    """단일 인플루언서 게시물 수집 + 통계 계산 + 사진 저장"""
+def _extract_media_fields(m, pk: str):
+    """게시물(instagrapi 객체 또는 dict)에서 DB 저장용 필드 추출."""
+    media_type = _media_get(m, "media_type", 1)
+    product_type = _media_get(m, "product_type", "")
+    is_reel = (media_type == 2 and product_type == "clips")
+    post_type = "reel" if is_reel else ("video" if media_type == 2 else ("carousel" if media_type == 8 else "photo"))
+
+    # taken_at: int/float(timestamp), datetime, 또는 ISO문자열 모두 처리
+    taken_at = _media_get(m, "taken_at", None)
+    # HikerAPI는 taken_at_ts (unix timestamp)도 제공
+    taken_at_ts = _media_get(m, "taken_at_ts", None)
+    if taken_at_ts and isinstance(taken_at_ts, (int, float)):
+        taken_ts = float(taken_at_ts)
+    elif isinstance(taken_at, (int, float)):
+        taken_ts = float(taken_at)
+    elif hasattr(taken_at, "timestamp"):
+        taken_ts = taken_at.timestamp()
+    elif isinstance(taken_at, str) and taken_at:
+        try:
+            taken_ts = datetime.fromisoformat(taken_at.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            taken_ts = 0.0
+    else:
+        taken_ts = 0.0
+
+    # caption 추출
+    caption_text = _media_get_str(m, "caption_text", "")
+    if not caption_text and isinstance(m, dict):
+        cap_obj = m.get("caption")
+        if isinstance(cap_obj, dict):
+            caption_text = cap_obj.get("text", "")
+        elif isinstance(cap_obj, str):
+            caption_text = cap_obj
+
+    hashtags_in_post = ",".join(re.findall(r'#(\w+)', caption_text))
+
+    # thumbnail
+    thumbnail_url = ""
+    if isinstance(m, dict):
+        thumbnail_url = m.get("thumbnail_url", "") or ""
+        if not thumbnail_url:
+            img = m.get("image_versions2", {})
+            candidates = img.get("candidates", [])
+            if candidates:
+                thumbnail_url = candidates[0].get("url", "")
+    else:
+        try:
+            if m.thumbnail_url:
+                thumbnail_url = str(m.thumbnail_url)
+            elif m.resources:
+                thumbnail_url = str(m.resources[0].thumbnail_url or "")
+        except:
+            pass
+
+    # 썸네일 로컬 저장
+    post_dir = os.path.join(POSTS_DIR, pk)
+    thumb_local = ""
+    media_pk = str(_media_get(m, "pk", ""))
+    if thumbnail_url and media_pk:
+        thumb_path = os.path.join(post_dir, f"{media_pk}.jpg")
+        if download_image(thumbnail_url, thumb_path):
+            thumb_local = f"posts/{pk}/{media_pk}.jpg"
+
+    is_sponsored = 1 if SPONSOR_KEYWORDS.search(caption_text) else 0
+    code = _media_get_str(m, "code", "")
+
+    return {
+        "influencer_pk": pk,
+        "post_id": media_pk,
+        "post_url": f"https://www.instagram.com/p/{code}/" if code else "",
+        "post_type": post_type,
+        "likes": _media_get(m, "like_count", 0) or 0,
+        "comments": _media_get(m, "comment_count", 0) or 0,
+        "views": _media_get(m, "view_count", 0) or _media_get(m, "play_count", 0) or 0,
+        "caption": caption_text[:500],
+        "hashtags_used": hashtags_in_post,
+        "is_sponsored": is_sponsored,
+        "thumbnail_url": thumbnail_url,
+        "thumbnail_local": thumb_local,
+        "taken_at": taken_ts,
+    }
+
+
+def _extract_top_posts(medias: list):
+    """Top 게시물 URL 추출 (instagrapi 객체/dict 모두 지원)."""
+    def _thumb(m):
+        if isinstance(m, dict):
+            url = m.get("thumbnail_url", "")
+            if not url:
+                img = m.get("image_versions2", {})
+                cands = img.get("candidates", [])
+                url = cands[0].get("url", "") if cands else ""
+            return url
+        try:
+            return str(m.thumbnail_url) if m.thumbnail_url else ""
+        except:
+            return ""
+
+    sorted_by_likes = sorted(medias, key=lambda m: _media_get(m, "like_count", 0) or 0, reverse=True)
+    top_likes = []
+    for m in sorted_by_likes[:3]:
+        code = _media_get_str(m, "code", "")
+        top_likes.append({
+            "url": f"https://www.instagram.com/p/{code}/" if code else "",
+            "likes": _media_get(m, "like_count", 0) or 0,
+            "thumbnail": _thumb(m),
+            "post_id": str(_media_get(m, "pk", "")),
+        })
+
+    sorted_by_comments = sorted(medias, key=lambda m: _media_get(m, "comment_count", 0) or 0, reverse=True)
+    top_comments = []
+    for m in sorted_by_comments[:3]:
+        code = _media_get_str(m, "code", "")
+        top_comments.append({
+            "url": f"https://www.instagram.com/p/{code}/" if code else "",
+            "comments": _media_get(m, "comment_count", 0) or 0,
+            "thumbnail": _thumb(m),
+            "post_id": str(_media_get(m, "pk", "")),
+        })
+
+    reel_medias = [m for m in medias
+                   if _media_get(m, "media_type", 1) == 2 and _media_get(m, "product_type", "") == "clips"]
+    sorted_reels = sorted(reel_medias, key=lambda m: _media_get(m, "view_count", 0) or 0, reverse=True)
+    top_reels = []
+    for m in sorted_reels[:3]:
+        code = _media_get_str(m, "code", "")
+        top_reels.append({
+            "url": f"https://www.instagram.com/p/{code}/" if code else "",
+            "views": _media_get(m, "view_count", 0) or _media_get(m, "play_count", 0) or 0,
+            "thumbnail": _thumb(m),
+            "post_id": str(_media_get(m, "pk", "")),
+        })
+
+    return top_likes, top_comments, top_reels
+
+
+def _update_profile_from_info(u_info, pk: str, username: str):
+    """유저 프로필 정보를 DB에 갱신 (instagrapi 객체/dict 모두 지원). 프로필 사진 로컬경로 반환."""
+    pic_local = ""
     try:
-        # 게시물 수집 (최근 50개)
-        medias = cl.user_medias(int(pk), amount=50)
+        if isinstance(u_info, dict):
+            fc = u_info.get("follower_count", 0)
+            foc = u_info.get("following_count", 0)
+            mc = u_info.get("media_count", 0)
+            bio = u_info.get("biography", "") or ""
+            fn = u_info.get("full_name", "") or ""
+            is_biz = 1 if u_info.get("is_business") else 0
+            cat = u_info.get("category", "") or ""
+            pic_url = u_info.get("profile_pic_url", "") or u_info.get("profile_pic_url_hd", "") or ""
+        else:
+            fc = getattr(u_info, "follower_count", 0)
+            foc = getattr(u_info, "following_count", 0)
+            mc = getattr(u_info, "media_count", 0)
+            bio = str(getattr(u_info, "biography", "") or "")
+            fn = str(getattr(u_info, "full_name", "") or "")
+            is_biz = 1 if getattr(u_info, "is_business", False) else 0
+            cat = str(getattr(u_info, "category", "") or "")
+            pic_url = str(u_info.profile_pic_url) if u_info.profile_pic_url else ""
+
+        profile_updates = {}
+        if fc: profile_updates["follower_count"] = fc
+        if foc: profile_updates["following_count"] = foc
+        if mc: profile_updates["media_count"] = mc
+        if bio: profile_updates["bio"] = bio
+        if fn: profile_updates["full_name"] = fn
+        profile_updates["is_business"] = is_biz
+        if cat: profile_updates["category"] = cat
+
+        if is_biz:
+            from database import save_manual, get_manual
+            m = get_manual(pk)
+            if not m.get("is_brand"):
+                save_manual(pk, {**m, "is_brand": 1})
+
+        if profile_updates:
+            from database import update_influencer_profile
+            update_influencer_profile(pk, profile_updates)
+
+        if pic_url:
+            pic_path = os.path.join(PROFILE_PIC_DIR, f"{username}.jpg")
+            if download_image(pic_url, pic_path):
+                pic_local = f"profile_pics/{username}.jpg"
+    except Exception as e:
+        log.debug(f"프로필 갱신 오류 {username}: {e}")
+
+    return pic_local
+
+
+def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
+    """단일 인플루언서 게시물 수집 + 통계 계산 + 사진 저장.
+    HikerAPI 우선, 실패 시 instagrapi(cl) 폴백.
+    cl이 None이면 HikerAPI 전용 모드.
+    """
+    try:
+        medias = None
+        u_info = None
+
+        # ① HikerAPI 시도
+        hiker_medias = _hiker_user_medias(pk, amount=50)
+        if hiker_medias:
+            medias = hiker_medias
+            u_info = _hiker_user_info_by_id(pk)
+            log.info(f"[{username}] HikerAPI로 게시물 {len(medias)}개 조회")
+
+        # ② instagrapi 폴백
+        if not medias and cl:
+            medias = cl.user_medias(int(pk), amount=50)
+            try:
+                u_info = cl.user_info(int(pk))
+            except Exception:
+                pass
+
         if not medias:
             return False
 
         # 게시물 DB 저장
         for m in medias:
-            media_type = getattr(m, "media_type", 1)
-            product_type = getattr(m, "product_type", "")
-            is_reel = (media_type == 2 and product_type == "clips")
-            post_type = "reel" if is_reel else ("video" if media_type == 2 else ("carousel" if media_type == 8 else "photo"))
-
-            taken_at = getattr(m, "taken_at", None)
-            taken_ts = taken_at.timestamp() if hasattr(taken_at, "timestamp") else float(taken_at or 0)
-
-            caption_text = str(getattr(m, "caption_text", "") or "")
-            hashtags_in_post = ",".join(re.findall(r'#(\w+)', caption_text))
-
-            thumbnail_url = ""
-            try:
-                if m.thumbnail_url:
-                    thumbnail_url = str(m.thumbnail_url)
-                elif m.resources:
-                    thumbnail_url = str(m.resources[0].thumbnail_url or "")
-            except:
-                pass
-
-            # 썸네일 로컬 저장
-            post_dir = os.path.join(POSTS_DIR, pk)
-            thumb_local = ""
-            if thumbnail_url:
-                thumb_path = os.path.join(post_dir, f"{m.pk}.jpg")
-                if download_image(thumbnail_url, thumb_path):
-                    thumb_local = f"posts/{pk}/{m.pk}.jpg"
-
-            is_sponsored = 1 if SPONSOR_KEYWORDS.search(caption_text) else 0
-
-            upsert_post({
-                "influencer_pk": pk,
-                "post_id": str(m.pk),
-                "post_url": f"https://www.instagram.com/p/{m.code}/",
-                "post_type": post_type,
-                "likes": getattr(m, "like_count", 0) or 0,
-                "comments": getattr(m, "comment_count", 0) or 0,
-                "views": getattr(m, "view_count", 0) or getattr(m, "play_count", 0) or 0,
-                "caption": caption_text[:500],
-                "hashtags_used": hashtags_in_post,
-                "is_sponsored": is_sponsored,
-                "thumbnail_url": thumbnail_url,
-                "thumbnail_local": thumb_local,
-                "taken_at": taken_ts,
-            })
+            post_data = _extract_media_fields(m, pk)
+            upsert_post(post_data)
 
         # 통계 계산
         stats = calc_stats(pk, username, medias, follower_count)
 
-        # 프로필 정보 갱신 (팔로워/팔로잉/게시물수/바이오 등) + 프로필 사진
+        # 프로필 정보 갱신
         pic_local = ""
-        try:
-            u_info = cl.user_info(int(pk))
-            # 팔로워 수 등 기본 정보 DB 갱신
-            profile_updates = {}
-            if hasattr(u_info, "follower_count") and u_info.follower_count:
-                profile_updates["follower_count"] = u_info.follower_count
-            if hasattr(u_info, "following_count") and u_info.following_count:
-                profile_updates["following_count"] = u_info.following_count
-            if hasattr(u_info, "media_count") and u_info.media_count:
-                profile_updates["media_count"] = u_info.media_count
-            if hasattr(u_info, "biography") and u_info.biography:
-                profile_updates["bio"] = str(u_info.biography)
-            if hasattr(u_info, "full_name") and u_info.full_name:
-                profile_updates["full_name"] = str(u_info.full_name)
-            # 브랜드/기업 계정 자동 감지
-            is_biz = 1 if getattr(u_info, "is_business", False) else 0
-            cat = str(getattr(u_info, "category", "") or "")
-            profile_updates["is_business"] = is_biz
-            if cat:
-                profile_updates["category"] = cat
-            # is_business=True 면 manual.is_brand 도 자동 태깅
-            if is_biz:
-                from database import save_manual, get_manual
-                m = get_manual(pk)
-                if not m.get("is_brand"):
-                    save_manual(pk, {**m, "is_brand": 1})
-            if profile_updates:
-                from database import update_influencer_profile
-                update_influencer_profile(pk, profile_updates)
-            # 프로필 사진 다운로드
-            pic_url = str(u_info.profile_pic_url) if u_info.profile_pic_url else ""
-            if pic_url:
-                pic_path = os.path.join(PROFILE_PIC_DIR, f"{username}.jpg")
-                if download_image(pic_url, pic_path):
-                    pic_local = f"profile_pics/{username}.jpg"
-        except Exception as e:
-            log.debug(f"프로필 갱신 오류 {username}: {e}")
+        if u_info:
+            pic_local = _update_profile_from_info(u_info, pk, username)
+        elif cl:
+            try:
+                u_info = cl.user_info(int(pk))
+                pic_local = _update_profile_from_info(u_info, pk, username)
+            except Exception as e:
+                log.debug(f"프로필 갱신 오류 {username}: {e}")
 
         stats["profile_pic_local"] = pic_local
 
-        # Top 게시물 URL 업데이트
+        # Top 게시물 URL
         try:
-            sorted_medias = sorted(medias, key=lambda m: getattr(m, "like_count", 0) or 0, reverse=True)
-            top_likes_urls = []
-            for m in sorted_medias[:3]:
-                thumb = ""
-                try:
-                    if m.thumbnail_url: thumb = str(m.thumbnail_url)
-                except: pass
-                top_likes_urls.append({
-                    "url": f"https://www.instagram.com/p/{m.code}/",
-                    "likes": getattr(m, "like_count", 0) or 0,
-                    "thumbnail": thumb,
-                    "post_id": str(m.pk),
-                })
-
-            sorted_by_comments = sorted(medias, key=lambda m: getattr(m, "comment_count", 0) or 0, reverse=True)
-            top_comments_urls = []
-            for m in sorted_by_comments[:3]:
-                thumb = ""
-                try:
-                    if m.thumbnail_url: thumb = str(m.thumbnail_url)
-                except: pass
-                top_comments_urls.append({
-                    "url": f"https://www.instagram.com/p/{m.code}/",
-                    "comments": getattr(m, "comment_count", 0) or 0,
-                    "thumbnail": thumb,
-                    "post_id": str(m.pk),
-                })
-
-            # 릴스만 조회수 기준
-            reel_medias = [m for m in medias
-                           if getattr(m, "media_type", 1) == 2 and getattr(m, "product_type", "") == "clips"]
-            sorted_reels = sorted(reel_medias, key=lambda m: getattr(m, "view_count", 0) or 0, reverse=True)
-            top_reels_urls = []
-            for m in sorted_reels[:3]:
-                thumb = ""
-                try:
-                    if m.thumbnail_url: thumb = str(m.thumbnail_url)
-                except: pass
-                top_reels_urls.append({
-                    "url": f"https://www.instagram.com/p/{m.code}/",
-                    "views": getattr(m, "view_count", 0) or getattr(m, "play_count", 0) or 0,
-                    "thumbnail": thumb,
-                    "post_id": str(m.pk),
-                })
-
-            stats["top_posts_likes"] = top_likes_urls
-            stats["top_posts_comments"] = top_comments_urls
-            stats["top_reels_views"] = top_reels_urls
+            top_likes, top_comments, top_reels = _extract_top_posts(medias)
+            stats["top_posts_likes"] = top_likes
+            stats["top_posts_comments"] = top_comments
+            stats["top_reels_views"] = top_reels
         except:
             pass
 
@@ -442,13 +796,37 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
 def crawl_single_user(target_username: str) -> dict:
     """
     특정 계정명을 즉시 수집하여 DB에 저장하고 pk 반환.
-    DB에 없는 계정을 검색할 때 실시간으로 호출.
+    HikerAPI 우선, 실패 시 instagrapi 계정 풀 폴백.
     """
     from database import upsert_influencer, get_influencer_by_username
 
-    # 이미 DB에 있으면 상세만 갱신
     existing = get_influencer_by_username(target_username)
 
+    # ① HikerAPI 시도
+    hiker_info = _hiker_user_info(target_username)
+    if hiker_info:
+        pk = str(hiker_info["pk"])
+        uname = hiker_info.get("username", target_username)
+        upsert_influencer({
+            "pk": pk,
+            "username": uname,
+            "full_name": str(hiker_info.get("full_name", "") or ""),
+            "follower_count": hiker_info.get("follower_count", 0) or 0,
+            "following_count": hiker_info.get("following_count", 0) or 0,
+            "media_count": hiker_info.get("media_count", 0) or 0,
+            "bio": str(hiker_info.get("biography", "") or ""),
+            "is_private": 1 if hiker_info.get("is_private") else 0,
+            "is_verified": 1 if hiker_info.get("is_verified") else 0,
+            "hashtag": "__direct__",
+        })
+        # 상세 수집 (cl=None → HikerAPI 전용)
+        crawl_user_detail(None, pk, uname, hiker_info.get("follower_count", 0) or 0)
+        log.info(f"[HikerAPI] 즉시 수집 완료: @{target_username} (pk={pk})")
+        return {"ok": True, "pk": pk, "username": uname}
+
+    # ② instagrapi 폴백
+    log.info(f"[HikerAPI 실패/미설정] instagrapi 폴백: @{target_username}")
+    used_acc_id = None
     try:
         cl, used_acc_id = get_client_from_pool()
     except Exception as e:
@@ -459,7 +837,6 @@ def crawl_single_user(target_username: str) -> dict:
         u = cl.user_info_by_username(target_username)
         pk = str(u.pk)
 
-        # 기본 프로필 upsert
         upsert_influencer({
             "pk": pk,
             "username": u.username,
@@ -473,7 +850,6 @@ def crawl_single_user(target_username: str) -> dict:
             "hashtag": "__direct__",
         })
 
-        # 상세 수집 (게시물/통계/프로필 사진)
         crawl_user_detail(cl, pk, u.username, u.follower_count or 0)
 
         if used_acc_id:
@@ -496,7 +872,7 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                   job_id: str = None,
                   proxy_host: str = "", proxy_port: str = "",
                   proxy_user: str = "", proxy_pass: str = ""):
-    """해시태그 크롤링 - 계정 풀 자동 사용"""
+    """해시태그 크롤링 - HikerAPI 우선, instagrapi 폴백"""
     import time as _time
     from database import add_collect_job, update_collect_job
 
@@ -505,7 +881,7 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         job_id = str(uuid.uuid4())
 
     progress[job_id] = {
-        "status": "로그인 중", "hashtag": hashtag,
+        "status": "수집 준비 중", "hashtag": hashtag,
         "posts": 0, "new": 0, "updated": 0,
         "requested": requested_count, "done": False, "error": None
     }
@@ -516,57 +892,75 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         job_db_id = None
 
     try:
-        # 계정 풀 우선, 레거시 단일 계정 폴백
-        if username:
-            cl = get_client(username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass)
-            used_acc_id = None
-        else:
-            cl, used_acc_id = get_client_from_pool()
-        progress[job_id]["status"] = "게시물 수집 중"
-
         all_pks = set()
         collected_posts = 0
-        next_page = None
+        use_hiker = False
 
-        while collected_posts < requested_count:
-            try:
-                resp = cl.private_request(
-                    f"tags/{hashtag}/sections/",
-                    data={"max_id": next_page or "", "page": 1, "surface": "grid", "count": 18, "_uuid": cl.uuid}
-                )
-            except Exception as e:
-                log.warning(f"fallback to hashtag_medias_recent: {e}")
+        # ① HikerAPI로 해시태그 게시물 수집
+        hiker_medias = _hiker_hashtag_medias(hashtag, amount=requested_count)
+        if hiker_medias:
+            use_hiker = True
+            progress[job_id]["status"] = "게시물 수집 중 (HikerAPI)"
+            for m in hiker_medias:
+                user_data = m.get("user", {})
+                pk = user_data.get("pk")
+                if pk:
+                    all_pks.add(str(pk))
+                collected_posts += 1
+            progress[job_id].update({"posts": collected_posts,
+                                      "status": f"게시물 수집 완료 ({collected_posts}개)"})
+            log.info(f"[{hashtag}] HikerAPI 게시물 {collected_posts}개 수집, 유저 {len(all_pks)}명")
+
+        # ② instagrapi 폴백
+        if not use_hiker:
+            progress[job_id]["status"] = "로그인 중"
+            if username:
+                cl = get_client(username, password, totp_secret, proxy_host, proxy_port, proxy_user, proxy_pass)
+                used_acc_id = None
+            else:
+                cl, used_acc_id = get_client_from_pool()
+            progress[job_id]["status"] = "게시물 수집 중"
+
+            next_page = None
+            while collected_posts < requested_count:
                 try:
-                    medias = cl.hashtag_medias_recent(hashtag, amount=min(requested_count - collected_posts, 50))
-                    for m in medias:
-                        all_pks.add(str(m.user.pk))
-                    collected_posts += len(medias)
+                    resp = cl.private_request(
+                        f"tags/{hashtag}/sections/",
+                        data={"max_id": next_page or "", "page": 1, "surface": "grid", "count": 18, "_uuid": cl.uuid}
+                    )
+                except Exception as e:
+                    log.warning(f"fallback to hashtag_medias_recent: {e}")
+                    try:
+                        medias = cl.hashtag_medias_recent(hashtag, amount=min(requested_count - collected_posts, 50))
+                        for m in medias:
+                            all_pks.add(str(m.user.pk))
+                        collected_posts += len(medias)
+                        break
+                    except Exception as e2:
+                        raise Exception(f"게시물 수집 실패: {e2}")
+
+                sections = resp.get("sections", [])
+                page_pks = set()
+                page_posts = 0
+                for sec in sections:
+                    lc = sec.get("layout_content", {})
+                    for item in lc.get("fill_items", []):
+                        pk = item.get("media", {}).get("user", {}).get("pk")
+                        if pk: page_pks.add(str(pk)); page_posts += 1
+                    for item in lc.get("one_by_two_item", {}).get("clips", {}).get("items", []):
+                        pk = item.get("media", {}).get("user", {}).get("pk")
+                        if pk: page_pks.add(str(pk)); page_posts += 1
+                    for item in lc.get("medias", []):
+                        pk = item.get("media", {}).get("user", {}).get("pk")
+                        if pk: page_pks.add(str(pk)); page_posts += 1
+
+                all_pks.update(page_pks)
+                collected_posts += page_posts
+                next_page = resp.get("next_max_id")
+                progress[job_id].update({"posts": collected_posts, "status": f"게시물 수집 중 ({collected_posts}/{requested_count})"})
+                if not next_page or page_posts == 0:
                     break
-                except Exception as e2:
-                    raise Exception(f"게시물 수집 실패: {e2}")
-
-            sections = resp.get("sections", [])
-            page_pks = set()
-            page_posts = 0
-            for sec in sections:
-                lc = sec.get("layout_content", {})
-                for item in lc.get("fill_items", []):
-                    pk = item.get("media", {}).get("user", {}).get("pk")
-                    if pk: page_pks.add(str(pk)); page_posts += 1
-                for item in lc.get("one_by_two_item", {}).get("clips", {}).get("items", []):
-                    pk = item.get("media", {}).get("user", {}).get("pk")
-                    if pk: page_pks.add(str(pk)); page_posts += 1
-                for item in lc.get("medias", []):
-                    pk = item.get("media", {}).get("user", {}).get("pk")
-                    if pk: page_pks.add(str(pk)); page_posts += 1
-
-            all_pks.update(page_pks)
-            collected_posts += page_posts
-            next_page = resp.get("next_max_id")
-            progress[job_id].update({"posts": collected_posts, "status": f"게시물 수집 중 ({collected_posts}/{requested_count})"})
-            if not next_page or page_posts == 0:
-                break
-            time.sleep(1)
+                time.sleep(1)
 
         # 유저 상세 정보 조회
         total_pks = len(all_pks)
@@ -575,31 +969,58 @@ def crawl_hashtag(hashtag: str, requested_count: int,
 
         for i, pk in enumerate(all_pks):
             try:
-                u = cl.user_info(pk)
-                data = {
-                    "pk": str(u.pk),
-                    "username": u.username,
-                    "full_name": u.full_name,
-                    "biography": u.biography,
-                    "follower_count": u.follower_count,
-                    "following_count": u.following_count,
-                    "media_count": u.media_count,
-                    "is_private": u.is_private,
-                    "is_verified": u.is_verified,
-                    "is_business": u.is_business,
-                    "category": u.category,
-                    "public_email": getattr(u, "public_email", None) or "",
-                    "public_phone": getattr(u, "public_phone_number", None) or "",
-                    "external_url": str(u.external_url) if u.external_url else "",
-                    "profile_pic_url": str(u.profile_pic_url) if u.profile_pic_url else "",
-                    "hashtag": hashtag,
-                }
+                # HikerAPI로 유저 정보 조회
+                u_data = _hiker_user_info_by_id(pk)
+                if u_data:
+                    data = {
+                        "pk": str(u_data["pk"]),
+                        "username": u_data.get("username", ""),
+                        "full_name": u_data.get("full_name", ""),
+                        "biography": u_data.get("biography", ""),
+                        "follower_count": u_data.get("follower_count", 0),
+                        "following_count": u_data.get("following_count", 0),
+                        "media_count": u_data.get("media_count", 0),
+                        "is_private": u_data.get("is_private", False),
+                        "is_verified": u_data.get("is_verified", False),
+                        "is_business": u_data.get("is_business", False),
+                        "category": u_data.get("category", ""),
+                        "public_email": u_data.get("public_email", "") or "",
+                        "public_phone": u_data.get("public_phone_number", "") or "",
+                        "external_url": str(u_data.get("external_url", "") or ""),
+                        "profile_pic_url": str(u_data.get("profile_pic_url", "") or ""),
+                        "hashtag": hashtag,
+                    }
+                elif not use_hiker:
+                    # instagrapi 폴백
+                    u = cl.user_info(pk)
+                    data = {
+                        "pk": str(u.pk),
+                        "username": u.username,
+                        "full_name": u.full_name,
+                        "biography": u.biography,
+                        "follower_count": u.follower_count,
+                        "following_count": u.following_count,
+                        "media_count": u.media_count,
+                        "is_private": u.is_private,
+                        "is_verified": u.is_verified,
+                        "is_business": u.is_business,
+                        "category": u.category,
+                        "public_email": getattr(u, "public_email", None) or "",
+                        "public_phone": getattr(u, "public_phone_number", None) or "",
+                        "external_url": str(u.external_url) if u.external_url else "",
+                        "profile_pic_url": str(u.profile_pic_url) if u.profile_pic_url else "",
+                        "hashtag": hashtag,
+                    }
+                else:
+                    log.warning(f"유저 {pk} 정보 조회 실패 (HikerAPI)")
+                    continue
+
                 result = upsert_influencer(data)
                 if result == "new": new_cnt += 1
                 else: updated_cnt += 1
                 progress[job_id].update({"new": new_cnt, "updated": updated_cnt,
                                           "status": f"유저 정보 조회 중 ({i+1}/{total_pks})"})
-                time.sleep(0.5)
+                time.sleep(0.3)
             except Exception as e:
                 log.warning(f"유저 {pk} 조회 실패: {e}")
                 time.sleep(1)
@@ -632,8 +1053,7 @@ def refresh_all(username: str = None, password: str = None, totp_secret: str = N
                 requests_per_account: int = 10):
     """
     전체 인플루언서 상세 갱신.
-    - 계정 풀 자동 사용 (라운드로빈, N건마다 계정 교체)
-    - requests_per_account: 계정당 처리 건수 (기본 10)
+    HikerAPI 우선 → instagrapi 폴백 (계정 풀 라운드로빈)
     """
     from database import get_influencers, update_collect_job
 
@@ -641,7 +1061,6 @@ def refresh_all(username: str = None, password: str = None, totp_secret: str = N
                                    "error": None, "current_account": ""}
 
     try:
-        # 24시간 이상 지난 계정 우선
         cutoff = time.time() - 86400
         all_infs = get_influencers(per_page=99999, page=1)
         rows = [r for r in all_infs.get("items", [])
@@ -649,6 +1068,11 @@ def refresh_all(username: str = None, password: str = None, totp_secret: str = N
 
         total = len(rows)
         refresh_progress["current"]["total"] = total
+
+        use_hiker = _get_hiker() is not None
+        if use_hiker:
+            refresh_progress["current"]["current_account"] = "HikerAPI"
+            log.info("전체 갱신: HikerAPI 모드")
 
         request_count = 0
         cl = None
@@ -660,23 +1084,24 @@ def refresh_all(username: str = None, password: str = None, totp_secret: str = N
             followers = row.get("follower_count", 0)
             refresh_progress["current"]["current_user"] = uname
 
-            # 계정 교체 타이밍
-            if cl is None or request_count >= requests_per_account:
-                try:
-                    if username:
-                        cl = get_client(username, password, totp_secret,
-                                        proxy_host, proxy_port, proxy_user, proxy_pass)
-                        used_acc_id = None
-                    else:
-                        cl, used_acc_id = get_client_from_pool()
-                    request_count = 0
-                    acc_name = username or (cl.account_info().username if cl else "?")
-                    refresh_progress["current"]["current_account"] = acc_name
-                    log.info(f"계정 전환: {acc_name}")
-                except Exception as e:
-                    log.error(f"계정 로그인 실패: {e}")
-                    refresh_progress["current"]["error"] = str(e)
-                    break
+            # HikerAPI 사용 시 instagrapi 로그인 불필요
+            if not use_hiker:
+                if cl is None or request_count >= requests_per_account:
+                    try:
+                        if username:
+                            cl = get_client(username, password, totp_secret,
+                                            proxy_host, proxy_port, proxy_user, proxy_pass)
+                            used_acc_id = None
+                        else:
+                            cl, used_acc_id = get_client_from_pool()
+                        request_count = 0
+                        acc_name = username or (cl.account_info().username if cl else "?")
+                        refresh_progress["current"]["current_account"] = acc_name
+                        log.info(f"계정 전환: {acc_name}")
+                    except Exception as e:
+                        log.error(f"계정 로그인 실패: {e}")
+                        refresh_progress["current"]["error"] = str(e)
+                        break
 
             log.info(f"갱신 중 [{i+1}/{total}]: @{uname}")
             try:
@@ -684,12 +1109,11 @@ def refresh_all(username: str = None, password: str = None, totp_secret: str = N
                 request_count += 1
             except Exception as e:
                 log.warning(f"갱신 실패 {uname}: {e}")
-                # rate limit 감지 → 즉시 계정 교체
                 if "rate" in str(e).lower() or "wait" in str(e).lower():
                     cl = None
 
             refresh_progress["current"]["done"] = i + 1
-            time.sleep(2)
+            time.sleep(1 if use_hiker else 2)
 
         refresh_progress["current"]["running"] = False
         log.info(f"전체 갱신 완료: {total}개")
