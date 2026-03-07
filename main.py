@@ -1607,7 +1607,7 @@ def collect_progress(job_id: str,
                     })
 
                 p.update({"posts": posts_count, "new": new_cnt, "updated": updated_cnt,
-                          "status": f"페이지 {page_num} — 신규 {new_cnt}명 / 목표 {target_users}명",
+                          "status": f"페이지 {page_num} — 신규 {new_cnt}명 / 중복 {updated_cnt}명 / 목표 {target_users}명",
                           "page": page_num, "page_items": len(items),
                           "has_next": bool(next_id),
                           "next_id": next_id or "",
