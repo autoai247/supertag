@@ -21,8 +21,6 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       get_hashtags, get_collect_jobs, add_hashtag as db_add_hashtag,
                       delete_hashtag as db_delete_hashtag, update_hashtag_status,
                       add_collect_job, update_collect_job,
-                      get_accounts, upsert_account, update_account_sessionid, delete_account, update_account_status,
-                      reset_account_errors,
                       get_influencer_by_username, update_influencer_profile,
                       get_favorites, get_favorite_pks, toggle_favorite,
                       get_campaigns, create_campaign, get_campaign, get_campaign_influencers,
@@ -107,7 +105,7 @@ _RATE_LIMIT_AUTH = 120  # 분당 최대 요청 수 (인증된 사용자)
 _WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico"}
 # 데이터 페이지 경로 (검색엔진 봇 차단 대상)
 _DATA_PATHS = ["/influencers", "/api/", "/advertiser", "/export", "/collect",
-               "/hashtags", "/accounts", "/settings", "/refresh"]
+               "/hashtags", "/settings", "/refresh"]
 
 def _get_client_ip(request: Request) -> str:
     """클라이언트 IP 추출 (프록시 지원)"""
@@ -455,7 +453,6 @@ Disallow: /advertiser/
 Disallow: /export/
 Disallow: /collect/
 Disallow: /trap/
-Disallow: /accounts/
 Disallow: /settings/
 """
     return Response(content, media_type="text/plain")
@@ -525,10 +522,6 @@ INSTA_CFG = {
     "username": os.getenv("INSTA_USERNAME", "jannat160304"),
     "password": os.getenv("INSTA_PASSWORD", "jug@575"),
     "totp":     os.getenv("INSTA_TOTP", "YQ754N2HTC7IDAT5BQIPNA5RHQA75JFY"),
-    "proxy_host": os.getenv("INSTA_PROXY_HOST", ""),
-    "proxy_port": os.getenv("INSTA_PROXY_PORT", ""),
-    "proxy_user": os.getenv("INSTA_PROXY_USER", ""),
-    "proxy_pass": os.getenv("INSTA_PROXY_PASS", ""),
 }
 
 # 구독 플랜 정의
@@ -992,7 +985,7 @@ def refresh_one(pk: str, background_tasks: BackgroundTasks,
     def do_refresh():
         from crawler import get_client, crawl_user_detail
         try:
-            cl = get_client(INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"], INSTA_CFG.get("proxy_host",""), INSTA_CFG.get("proxy_port",""), INSTA_CFG.get("proxy_user",""), INSTA_CFG.get("proxy_pass",""))
+            cl = get_client(INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"])
             crawl_user_detail(cl, pk, inf["username"], inf.get("follower_count", 0))
         except Exception as e:
             log.error(f"단일 갱신 실패: {e}")
@@ -1184,9 +1177,7 @@ def refresh_start(background_tasks: BackgroundTasks,
     if refresh_progress.get("current", {}).get("running"):
         return JSONResponse({"error": "이미 실행 중"}, 400)
     background_tasks.add_task(refresh_all,
-                              INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"],
-                              INSTA_CFG.get("proxy_host",""), INSTA_CFG.get("proxy_port",""),
-                              INSTA_CFG.get("proxy_user",""), INSTA_CFG.get("proxy_pass",""))
+                              INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"])
     return JSONResponse({"ok": True})
 
 @app.get("/refresh/status")
@@ -1275,8 +1266,6 @@ def collect_start(hashtag: str = Form(...), requested_count: int = Form(default=
     from crawler import crawl_hashtag
     background_tasks.add_task(crawl_hashtag, hashtag, requested_count,
                                INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"], job_id,
-                               INSTA_CFG.get("proxy_host",""), INSTA_CFG.get("proxy_port",""),
-                               INSTA_CFG.get("proxy_user",""), INSTA_CFG.get("proxy_pass",""),
                                target_users=target_users, search_type=search_type)
     return HTMLResponse(job_id)
 
@@ -1605,235 +1594,6 @@ def adv_influencer_detail(pk: str, request: Request,
     })
 
 
-# ═══════════════════════════════════════════════════════
-# ═══════════════════════════════════════════════════════
-# 인스타그램 계정 관리
-# ═══════════════════════════════════════════════════════
-
-@app.get("/accounts", response_class=HTMLResponse)
-def accounts_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
-    user = get_user(session_id)
-    if not user: return RedirectResponse("/login", 302)
-    accs = get_accounts()
-    return templates.TemplateResponse("accounts.html", {
-        "request": request, "user": user,
-        "accounts": [dict(a) if not isinstance(a, dict) else a for a in accs],
-    })
-
-@app.post("/accounts/add")
-def account_add(
-    username: str = Form(...), password: str = Form(...),
-    totp_secret: str = Form(default=""),
-    proxy_host: str = Form(default=""), proxy_port: str = Form(default=""),
-    proxy_user: str = Form(default=""), proxy_pass: str = Form(default=""),
-    sessionid_cookie: str = Form(default=""),
-    session_id: Optional[str] = Cookie(default=None)
-):
-    user = get_user(session_id)
-    if not user: return RedirectResponse("/login", 302)
-    try:
-        upsert_account(username.strip(), password, totp_secret.strip(),
-                       proxy_host, proxy_port, proxy_user, proxy_pass,
-                       sessionid_cookie.strip())
-    except Exception as e:
-        log.error(f"계정 추가 실패: {e}")
-    return RedirectResponse("/accounts?added=1", 302)
-
-
-@app.post("/accounts/{account_id}/sessionid")
-async def account_update_sessionid(
-    request: Request,
-    account_id: int,
-    sessionid_cookie: str = Form(...),
-    session_id: Optional[str] = Cookie(default=None)
-):
-    # 관리자 세션 또는 확장 프로그램 API 키 인증
-    if not get_user(session_id) and not _check_ext_key(request):
-        return JSONResponse({"error": "인증 필요"}, 403)
-    try:
-        update_account_sessionid(account_id, sessionid_cookie.strip())
-        return JSONResponse({"ok": True})
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)})
-
-
-@app.get("/api/accounts")
-async def api_accounts_list(request: Request, session_id: Optional[str] = Cookie(default=None)):
-    """확장 프로그램용 계정 목록 API"""
-    if not get_user(session_id) and not _check_ext_key(request):
-        return JSONResponse({"error": "인증 필요"}, 403)
-    accs = get_accounts()
-    return JSONResponse([{"id": a["id"], "username": a["username"]} for a in accs])
-
-@app.post("/accounts/upload")
-async def account_upload(
-    file: UploadFile = File(default=None),
-    session_id: Optional[str] = Cookie(default=None)
-):
-    """TXT/CSV/XLSX 파일로 다중 계정 업로드"""
-    user = get_user(session_id)
-    if not user: return JSONResponse({"error": "인증 필요"}, 403)
-
-    if not file:
-        return JSONResponse({"error": "파일 없음"}, 400)
-
-    content = await file.read()
-    filename = file.filename.lower()
-    accounts_parsed = []
-
-    try:
-        if filename.endswith(".xlsx") or filename.endswith(".xls"):
-            # Excel 파싱
-            import openpyxl, io
-            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
-            ws = wb.active
-            rows = list(ws.iter_rows(values_only=True))
-            # 첫 행이 헤더인지 확인
-            header = [str(c).lower().strip() if c else "" for c in rows[0]] if rows else []
-            col_map = {}
-            for i, h in enumerate(header):
-                for field in ["username","id","아이디"]:
-                    if field in h: col_map["username"] = i
-                for field in ["password","pw","비밀번호"]:
-                    if field in h: col_map["password"] = i
-                for field in ["totp","2fa","otp","secret"]:
-                    if field in h: col_map["totp_secret"] = i
-                for field in ["proxy_host","proxy","프록시"]:
-                    if field in h: col_map["proxy_host"] = i
-                for field in ["proxy_port","port","포트"]:
-                    if field in h: col_map["proxy_port"] = i
-                for field in ["proxy_user","proxy_id"]:
-                    if field in h: col_map["proxy_user"] = i
-                for field in ["proxy_pass","proxy_pw","proxy_password"]:
-                    if field in h: col_map["proxy_pass"] = i
-
-            start_row = 1 if col_map else 0
-            for row in rows[start_row:]:
-                if not row or not row[col_map.get("username", 0)]:
-                    continue
-                def _get(field, default=""):
-                    idx = col_map.get(field)
-                    if idx is None: return default
-                    return str(row[idx]).strip() if idx < len(row) and row[idx] else default
-                accounts_parsed.append({
-                    "username": _get("username"),
-                    "password": _get("password"),
-                    "totp_secret": _get("totp_secret").replace(" ", "").upper(),
-                    "proxy_host": _get("proxy_host"),
-                    "proxy_port": _get("proxy_port"),
-                    "proxy_user": _get("proxy_user"),
-                    "proxy_pass": _get("proxy_pass"),
-                })
-
-        else:
-            # TXT/CSV 파싱
-            # 지원 형식:
-            # username:password
-            # username:password:totp_secret
-            # username:password:totp_secret:proxy_host:proxy_port
-            # username:password:totp_secret:proxy_host:proxy_port:proxy_user:proxy_pass
-            # 탭 또는 콤마 구분도 지원
-            text = content.decode("utf-8-sig", errors="replace")
-            for line in text.splitlines():
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                # 구분자 감지
-                if "\t" in line:
-                    parts = line.split("\t")
-                elif "," in line:
-                    parts = line.split(",")
-                else:
-                    parts = line.split(":")
-                parts = [p.strip() for p in parts]
-                if len(parts) < 2:
-                    continue
-                # TOTP 시크릿은 스페이스 포함 가능 (e.g. "LMT7 GEDD OE5A ...")
-                # username:password:TOTP(스페이스 포함) 형식 처리
-                # 3번째 필드 이후가 proxy가 아닌 경우 TOTP로 합침
-                # proxy는 보통 ip/domain 형식이라 구분 가능
-                totp_raw = parts[2] if len(parts) > 2 else ""
-                proxy_host, proxy_port, proxy_user, proxy_pass = "", "", "", ""
-
-                if len(parts) > 3:
-                    # 4번째 필드가 숫자(포트)거나 ip처럼 보이면 proxy_host:proxy_port
-                    # 그 외엔 totp 시크릿이 스페이스 없이 단일 필드로 있는 경우
-                    fourth = parts[3]
-                    if fourth.isdigit() or (len(fourth) <= 5 and fourth.isdigit()):
-                        # parts[2]=host, parts[3]=port 형태
-                        proxy_host = parts[2]
-                        proxy_port = parts[3]
-                        totp_raw = ""
-                        proxy_user = parts[4] if len(parts) > 4 else ""
-                        proxy_pass = parts[5] if len(parts) > 5 else ""
-                    else:
-                        proxy_host = parts[3] if len(parts) > 3 else ""
-                        proxy_port = parts[4] if len(parts) > 4 else ""
-                        proxy_user = parts[5] if len(parts) > 5 else ""
-                        proxy_pass = parts[6] if len(parts) > 6 else ""
-
-                # TOTP 시크릿 스페이스 제거 (base32는 공백 없어야 함)
-                totp_clean = totp_raw.replace(" ", "").upper()
-
-                accounts_parsed.append({
-                    "username": parts[0],
-                    "password": parts[1],
-                    "totp_secret": totp_clean,
-                    "proxy_host": proxy_host,
-                    "proxy_port": proxy_port,
-                    "proxy_user": proxy_user,
-                    "proxy_pass": proxy_pass,
-                })
-
-    except Exception as e:
-        return JSONResponse({"error": f"파일 파싱 오류: {e}"}, 400)
-
-    if not accounts_parsed:
-        return JSONResponse({"error": "유효한 계정 데이터 없음"}, 400)
-
-    added = 0
-    errors = []
-    for acc in accounts_parsed:
-        if not acc["username"] or not acc["password"]:
-            continue
-        try:
-            upsert_account(
-                acc["username"], acc["password"], acc.get("totp_secret",""),
-                acc.get("proxy_host",""), acc.get("proxy_port",""),
-                acc.get("proxy_user",""), acc.get("proxy_pass","")
-            )
-            added += 1
-        except Exception as e:
-            errors.append(f"{acc['username']}: {e}")
-
-    return JSONResponse({
-        "ok": True, "added": added,
-        "total": len(accounts_parsed),
-        "errors": errors[:5]
-    })
-
-@app.post("/accounts/{account_id}/delete")
-def account_delete(account_id: int, session_id: Optional[str] = Cookie(default=None)):
-    user = get_user(session_id)
-    if not user: return RedirectResponse("/login", 302)
-    delete_account(account_id)
-    return RedirectResponse("/accounts", 302)
-
-@app.post("/accounts/{account_id}/test")
-async def account_test(account_id: int, session_id: Optional[str] = Cookie(default=None)):
-    user = get_user(session_id)
-    if not user: return JSONResponse({"error": "인증 필요"}, 403)
-    from crawler import login_test_account
-    result = login_test_account(account_id)
-    return JSONResponse(result)
-
-@app.post("/accounts/reset-errors")
-def account_reset_errors(session_id: Optional[str] = Cookie(default=None)):
-    user = get_user(session_id)
-    if not user: return RedirectResponse("/login", 302)
-    reset_account_errors()
-    return RedirectResponse("/accounts?reset=1", 302)
-
 
 # ═══════════════════════════════════════════════════════
 # 설정
@@ -1846,9 +1606,6 @@ def settings_page(request: Request, session_id: Optional[str] = Cookie(default=N
     return templates.TemplateResponse("settings.html", {
         "request": request, "user": user,
         "insta_username": INSTA_CFG["username"],
-        "proxy_host": INSTA_CFG.get("proxy_host",""),
-        "proxy_port": INSTA_CFG.get("proxy_port",""),
-        "proxy_user": INSTA_CFG.get("proxy_user",""),
         "extension_api_key": EXTENSION_API_KEY,
         "plans": PLANS,
     })
@@ -1858,10 +1615,6 @@ def settings_save(
     insta_username: str = Form(...),
     insta_password: str = Form(...),
     insta_totp: str = Form(default=""),
-    proxy_host: str = Form(default=""),
-    proxy_port: str = Form(default=""),
-    proxy_user: str = Form(default=""),
-    proxy_pass: str = Form(default=""),
     admin_password: str = Form(default=""),
     session_id: Optional[str] = Cookie(default=None)
 ):
@@ -1871,10 +1624,6 @@ def settings_save(
     INSTA_CFG["username"] = insta_username
     INSTA_CFG["password"] = insta_password
     INSTA_CFG["totp"] = insta_totp
-    INSTA_CFG["proxy_host"] = proxy_host
-    INSTA_CFG["proxy_port"] = proxy_port
-    INSTA_CFG["proxy_user"] = proxy_user
-    INSTA_CFG["proxy_pass"] = proxy_pass
     if admin_password:
         ADMIN_PW_HASH = bcrypt.hashpw(admin_password.encode(), bcrypt.gensalt())
 
@@ -1883,8 +1632,6 @@ def settings_save(
     keys = {
         "INSTA_USERNAME": insta_username, "INSTA_PASSWORD": insta_password,
         "INSTA_TOTP": insta_totp,
-        "INSTA_PROXY_HOST": proxy_host, "INSTA_PROXY_PORT": proxy_port,
-        "INSTA_PROXY_USER": proxy_user, "INSTA_PROXY_PASS": proxy_pass,
     }
     if admin_password:
         keys["ADMIN_PASSWORD"] = admin_password
