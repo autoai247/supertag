@@ -148,7 +148,8 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, hashtag TEXT, status TEXT DEFAULT 'running',
         requested_count INTEGER DEFAULT 0, collected_posts INTEGER DEFAULT 0,
         new_users INTEGER DEFAULT 0, updated_users INTEGER DEFAULT 0,
-        started_at REAL, finished_at REAL, error_msg TEXT
+        started_at REAL, finished_at REAL, error_msg TEXT,
+        collected_pks TEXT DEFAULT '[]'
     )""")
     c.execute(f"""CREATE TABLE IF NOT EXISTS {T_ADV} (
         id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT,
@@ -259,6 +260,11 @@ def _migrate(conn):
         if "sessionid_cookie" not in acc_existing:
             conn.execute(f"ALTER TABLE {T_ACC} ADD COLUMN sessionid_cookie TEXT DEFAULT ''")
     except: pass
+
+    cjob_existing = {row[1] for row in conn.execute(f"PRAGMA table_info({T_CJOB})").fetchall()}
+    if "collected_pks" not in cjob_existing:
+        try: conn.execute(f"ALTER TABLE {T_CJOB} ADD COLUMN collected_pks TEXT DEFAULT '[]'")
+        except: pass
 
     rj_existing = {row[1] for row in conn.execute(f"PRAGMA table_info({T_RJOB})").fetchall()}
     if "current_user_pk" not in rj_existing and "current_user" in rj_existing:
@@ -949,6 +955,31 @@ def get_collect_jobs(limit=30):
     if _USE_SUPABASE:
         return _sb_get(T_CJOB, {"order": "started_at.desc", "limit": str(limit)}) or []
     return _sq_all(f"SELECT * FROM {T_CJOB} ORDER BY started_at DESC LIMIT {limit}")
+
+def get_collect_job(job_id: int):
+    if _USE_SUPABASE:
+        rows = _sb_get(T_CJOB, {"id": f"eq.{job_id}"})
+        return rows[0] if rows else None
+    rows = _sq_all(f"SELECT * FROM {T_CJOB} WHERE id=?", (job_id,))
+    return rows[0] if rows else None
+
+def get_collect_job_users(job_id: int):
+    """수집 작업에서 수집된 유저 목록 반환."""
+    job = get_collect_job(job_id)
+    if not job:
+        return []
+    pks_json = job.get("collected_pks", "[]")
+    try:
+        pks = json.loads(pks_json) if isinstance(pks_json, str) else (pks_json or [])
+    except Exception:
+        return []
+    if not pks:
+        return []
+    if _USE_SUPABASE:
+        users = _sb_get(T_INF, {"pk": f"in.({','.join(pks)})", "select": "pk,username,full_name,profile_pic_url,follower_count"})
+        return users or []
+    placeholders = ",".join(["?"] * len(pks))
+    return _sq_all(f"SELECT pk,username,full_name,profile_pic_url,follower_count FROM {T_INF} WHERE pk IN ({placeholders})", tuple(pks))
 
 def add_hashtag(name: str, requested_count: int = 500, auto_collect: int = 1):
     now = time.time()

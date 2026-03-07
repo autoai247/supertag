@@ -1014,6 +1014,14 @@ def banned_page(request: Request, session_id: Optional[str] = Cookie(default=Non
         "request": request, "user": user, "banned": banned,
     })
 
+@app.get("/api/collect-job/{job_id}/users")
+def collect_job_users(job_id: int, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import get_collect_job_users
+    users = get_collect_job_users(job_id)
+    return JSONResponse(users)
+
 
 @app.post("/influencers/{pk}/refresh")
 def refresh_one(pk: str, background_tasks: BackgroundTasks,
@@ -1512,6 +1520,7 @@ def collect_progress(job_id: str,
 
             # ① 해시태그 게시물을 페이지 단위로 스크롤하며 유저 수집
             seen_pks = set()
+            collected_pk_list = []  # 수집된 PK 목록 (이력 저장용)
             posts_count = 0
             new_cnt = updated_cnt = 0
             max_id = None
@@ -1558,6 +1567,7 @@ def collect_progress(job_id: str,
                             "full_name": fname, "profile_pic_url": pic,
                             "hashtag": hashtag,
                         })
+                        collected_pk_list.append(pk_str)
                         if is_new:
                             new_cnt += 1
                             page_new += 1
@@ -1600,7 +1610,8 @@ def collect_progress(job_id: str,
             try:
                 update_collect_job(job_db_id, status="done",
                     collected_posts=posts_count, new_users=new_cnt,
-                    updated_users=updated_cnt, finished_at=time.time())
+                    updated_users=updated_cnt, finished_at=time.time(),
+                    collected_pks=json.dumps(collected_pk_list))
                 update_hashtag_status(hashtag, "idle")
             except Exception:
                 pass
