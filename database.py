@@ -534,7 +534,7 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
     if exclude_private: inf_params["is_private"] = "eq.0"
 
     if need_manual_filter:
-        man_params["limit"] = "5000"
+        man_params["limit"] = "50000"
         man_rows = _sb_get(T_MAN, man_params)
         pks = [r["pk"] for r in man_rows] if man_rows else []
         if not pks:
