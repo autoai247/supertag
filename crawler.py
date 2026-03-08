@@ -36,7 +36,7 @@ def _get_hiker():
         return None
     try:
         from hikerapi import Client as HikerClient
-        _hiker_client = HikerClient(token=token, timeout=15)
+        _hiker_client = HikerClient(token=token, timeout=30)
         log.info("HikerAPI 클라이언트 초기화 완료")
         return _hiker_client
     except Exception as e:
@@ -131,7 +131,7 @@ def _hiker_hashtag_medias_page(hashtag: str, endpoint: str = "recent", max_id: s
             f"https://api.hikerapi.com/v2/hashtag/medias/{endpoint}",
             params=params,
             headers={"x-access-key": token, "accept": "application/json"},
-            timeout=15,
+            timeout=30,
         )
         if r.status_code == 402:
             raise Exception("HikerAPI 크레딧 소진")
@@ -183,7 +183,7 @@ def _hiker_location_search(query: str) -> list:
             "https://api.hikerapi.com/v1/fbsearch/places",
             params={"query": query},
             headers={"x-access-key": token, "accept": "application/json"},
-            timeout=15,
+            timeout=30,
         )
         if r.status_code != 200:
             return []
