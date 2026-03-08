@@ -1019,8 +1019,10 @@ def get_public_influencers(page=1, per_page=30, sort="follower_count",
         total = int(s) if s.isdigit() else len(rows)
         if excluded_pks:
             excluded_str = {str(p) for p in excluded_pks}
+            before = len(rows)
             rows = [row for row in rows if str(row.get("pk","")) not in excluded_str]
-            total = max(0, total - len(excluded_pks))
+            removed = before - len(rows)
+            total = max(0, total - removed)
             rows = rows[:per_page]  # 원래 페이지 크기로 자르기
         return total, rows
 
