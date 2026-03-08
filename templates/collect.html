@@ -942,15 +942,24 @@ function showCompletedPanel(jobId) {
   const panel = document.createElement('div');
   panel.id = 'historyPanel';
   panel.className = 'card overflow-hidden';
+  const targetU = cached ? (cached.target_users || 1000) : 1000;
+  const statusLabel = cached && cached.status === 'error'
+    ? '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:rgba(239,68,68,.1);color:#ef4444;">에러</span>'
+    : '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:rgba(16,185,129,.1);color:#10b981;">완료</span>';
   panel.innerHTML = `
     <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <span class="font-semibold text-gray-800 text-sm">#${label}</span>
-        <span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:rgba(16,185,129,.1);color:#10b981;">완료</span>
+        ${statusLabel}
       </div>
-      <button onclick="document.getElementById('historyPanel').remove()" class="text-gray-400 hover:text-gray-600">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-      </button>
+      <div class="flex items-center gap-2">
+        <button onclick="restartFromHistory('${label}', ${targetU})" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-500 hover:bg-indigo-50 transition" style="border:1px solid #c7d2fe;">
+          재수집
+        </button>
+        <button onclick="document.getElementById('historyPanel').remove()" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
     </div>
     ${info ? '<div class="px-4 py-2 text-xs text-gray-500 border-b border-gray-50">'+info+'</div>' : ''}
     <div class="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-gray-50 border-b border-gray-50" onclick="toggleUserList(this)">
@@ -1011,6 +1020,43 @@ function showCompletedPanel(jobId) {
     .catch(e => {
       panel.querySelector('.h-userList').innerHTML = '<div class="py-6 text-center text-red-400 text-sm">로드 실패</div>';
     });
+}
+
+function restartFromHistory(hashtag, targetUsers) {
+  // 히스토리 패널 닫기
+  document.getElementById('historyPanel')?.remove();
+
+  // 해시태그 입력 설정 후 수집 시작
+  const mode = 'hashtag';
+  const searchType = 'recent';
+  const formData = {
+    requested_count: '500',
+    target_users: targetUsers,
+    search_type: searchType,
+    collect_mode: mode,
+    hashtag: hashtag
+  };
+
+  const form = new URLSearchParams(formData);
+  fetch('/collect/start', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
+    .then(r => r.text())
+    .then(resp => {
+      resp = resp.trim();
+      let jobId, collectMode = 'hashtag', locPk = '';
+      if (resp.includes('|')) {
+        const parts = resp.split('|');
+        jobId = parts[0];
+        collectMode = parts[1];
+        locPk = parts[2] || '';
+      } else {
+        jobId = resp;
+      }
+      const job = new CollectJob(jobId, hashtag, targetUsers, searchType, collectMode, locPk);
+      jobs[jobId] = job;
+      job.listen();
+      setTimeout(refreshHistory, 1000);
+    })
+    .catch(e => { alert('재수집 시작 실패: ' + e); });
 }
 
 function filterJobUsers(btn, type) {

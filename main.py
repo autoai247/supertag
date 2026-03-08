@@ -2354,7 +2354,9 @@ def collect_progress(job_id: str,
                     collected_posts=total_medias, new_users=new_cnt,
                     updated_users=updated_cnt,
                     collected_pks=json.dumps(all_pks),
-                    new_pks=json.dumps(all_new_pks))
+                    new_pks=json.dumps(all_new_pks),
+                    last_next_id=last_next_id or "",
+                    last_page=page_num)
                 if is_truly_done:
                     save_data["status"] = "done"
                     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
