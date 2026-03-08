@@ -138,12 +138,24 @@
           <h2 class="font-semibold text-gray-800 text-sm">수집 이력</h2>
           <span id="historyRefreshDot" class="w-2 h-2 rounded-full" style="background:#10b981;" title="실시간 갱신 중"></span>
         </div>
-        <div class="flex gap-1.5">
+        <div class="flex gap-1.5 flex-wrap">
           <button onclick="filterHistory('all')" class="hist-chip active px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer" data-filter="all">전체</button>
           <button onclick="filterHistory('running')" class="hist-chip px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer" data-filter="running">진행중</button>
           <button onclick="filterHistory('done')" class="hist-chip px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer" data-filter="done">완료</button>
           <button onclick="filterHistory('stopped')" class="hist-chip px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer" data-filter="stopped">중지</button>
           <button onclick="filterHistory('error')" class="hist-chip px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer" data-filter="error">에러</button>
+        </div>
+        <!-- 일괄 선택 모드 -->
+        <div class="flex items-center gap-2 mt-2">
+          <label class="flex items-center gap-1 cursor-pointer text-xs text-gray-500">
+            <input type="checkbox" id="histBatchMode" onchange="toggleBatchMode(this.checked)" class="accent-indigo-500">
+            <span>일괄 선택</span>
+          </label>
+          <div id="batchActions" class="hidden flex items-center gap-1.5 ml-auto">
+            <span id="batchCount" class="text-xs text-gray-400">0개 선택</span>
+            <button onclick="batchStopSelected()" class="px-2 py-1 rounded text-xs font-semibold text-red-500 hover:bg-red-50 transition" style="border:1px solid #fecaca;">일괄 중지</button>
+            <button onclick="batchRestartSelected()" class="px-2 py-1 rounded text-xs font-semibold text-indigo-500 hover:bg-indigo-50 transition" style="border:1px solid #c7d2fe;">일괄 재시작</button>
+          </div>
         </div>
       </div>
       <div id="historyList" class="divide-y divide-gray-50" style="max-height:400px;overflow-y:auto;">
@@ -464,6 +476,18 @@ class CollectJob {
   stop() {
     this.stopped = true;
     if (this.sse) { this.sse.close(); this.sse = null; }
+    // 최종 수치를 서버에 저장
+    fetch(`/collect/stop/${this.jobId}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        collected_posts: this.lastPosts,
+        new_users: this.lastNew,
+        updated_users: this.lastUpdated,
+        last_next_id: this.lastNextId,
+        last_page: this.lastPage
+      })
+    }).catch(() => {});
     this.finish('stopped');
   }
 
@@ -594,6 +618,64 @@ function filterHistory(status) {
   });
 }
 
+// ═══ 일괄 선택 모드 ═══
+function toggleBatchMode(on) {
+  document.querySelectorAll('.hist-check').forEach(cb => {
+    cb.classList.toggle('hidden', !on);
+    if (!on) cb.checked = false;
+  });
+  document.getElementById('batchActions').classList.toggle('hidden', !on);
+  updateBatchCount();
+}
+
+function updateBatchCount() {
+  const checked = document.querySelectorAll('.hist-check:checked');
+  document.getElementById('batchCount').textContent = `${checked.length}개 선택`;
+}
+
+function getSelectedJobIds() {
+  return Array.from(document.querySelectorAll('.hist-check:checked')).map(cb => cb.dataset.jobId);
+}
+
+async function batchStopSelected() {
+  const ids = getSelectedJobIds();
+  if (!ids.length) { alert('선택된 항목이 없습니다'); return; }
+  const runningIds = ids.filter(id => {
+    const row = document.querySelector(`[data-job-id="${id}"]`);
+    return row && row.dataset.status === 'running';
+  });
+  if (!runningIds.length) { alert('진행 중인 항목만 중지할 수 있습니다'); return; }
+  if (!confirm(`${runningIds.length}개 작업을 일괄 중지하시겠습니까?`)) return;
+  for (const id of runningIds) {
+    try {
+      // 이 탭의 active job이면 stop() 사용
+      if (jobs[id]) { jobs[id].stop(); continue; }
+      await fetch(`/collect/stop/${id}`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: '{}' });
+    } catch(e) {}
+  }
+  setTimeout(refreshHistory, 1000);
+}
+
+async function batchRestartSelected() {
+  const ids = getSelectedJobIds();
+  if (!ids.length) { alert('선택된 항목이 없습니다'); return; }
+  const restartableIds = ids.filter(id => {
+    const row = document.querySelector(`[data-job-id="${id}"]`);
+    return row && (row.dataset.status === 'stopped' || row.dataset.status === 'done' || row.dataset.status === 'error');
+  });
+  if (!restartableIds.length) { alert('중지/완료/에러 항목만 재시작할 수 있습니다'); return; }
+  if (!confirm(`${restartableIds.length}개 작업을 일괄 재시작하시겠습니까?`)) return;
+  for (const id of restartableIds) {
+    const prev = _historyJobs[id];
+    if (!prev) continue;
+    const hashtag = prev.hashtag || '';
+    const targetUsers = prev.requested_count || 1000;
+    restartFromHistory(hashtag, targetUsers, id);
+    // 순차 실행 (API 부하 방지)
+    await new Promise(r => setTimeout(r, 500));
+  }
+}
+
 // ═══ 수집 이력 + 실시간 모니터 ═══
 const _historyJobs = {};
 const _monitors = {};  // jobId → { timer, panelId }
@@ -626,7 +708,8 @@ function renderHistory(jobsList) {
       info = j.status || '에러';
       statusBadge = '<span class="text-red-500 font-semibold">에러</span>';
     }
-    return `<div class="px-4 py-2.5 text-xs flex items-center gap-3 cursor-pointer hover:bg-indigo-50 transition" onclick="loadJobUsers(${j.id}, this)" data-job-id="${j.id}" data-status="${j.status}">
+    return `<div class="px-4 py-2.5 text-xs flex items-center gap-3 cursor-pointer hover:bg-indigo-50 transition" onclick="loadJobUsers(${j.id}, this)" data-job-id="${j.id}" data-status="${j.status}" data-hashtag="${(j.hashtag||'').replace(/"/g,'&quot;')}" data-target="${j.requested_count||1000}">
+      <input type="checkbox" class="hist-check accent-indigo-500 hidden flex-shrink-0" onclick="event.stopPropagation();updateBatchCount()" data-job-id="${j.id}">
       <div class="flex-1">
         <span class="text-gray-400 font-mono mr-1">${j.id}</span>
         <span class="font-bold text-gray-800">#${j.hashtag}</span> ${typeBadge}
@@ -642,6 +725,11 @@ function renderHistory(jobsList) {
   }).join('');
   // 현재 필터 재적용
   if (_historyFilter !== 'all') filterHistory(_historyFilter);
+  // 일괄 선택 모드 유지
+  const batchOn = document.getElementById('histBatchMode')?.checked;
+  if (batchOn) {
+    document.querySelectorAll('.hist-check').forEach(cb => cb.classList.remove('hidden'));
+  }
 }
 
 function updateTotalStats() {
@@ -880,7 +968,15 @@ function stopMonitor(jobId) {
 }
 
 function remoteStopJob(jobId) {
-  fetch(`/collect/stop/${jobId}`, { method: 'POST' })
+  // 모니터 패널에서 현재 수치 읽어서 함께 전송
+  const mp = document.getElementById(`monitor-${jobId}`);
+  const stopBody = {};
+  if (mp) {
+    stopBody.collected_posts = parseInt((mp.querySelector('.mon-posts')?.textContent||'0').replace(/,/g,'')) || 0;
+    stopBody.new_users = parseInt((mp.querySelector('.mon-new')?.textContent||'0').replace(/,/g,'')) || 0;
+    stopBody.updated_users = parseInt((mp.querySelector('.mon-dup')?.textContent||'0').replace(/,/g,'')) || 0;
+  }
+  fetch(`/collect/stop/${jobId}`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(stopBody) })
     .then(r => r.json())
     .then(d => {
       if (d.ok) {
@@ -1031,7 +1127,7 @@ function showCompletedPanel(jobId) {
   const panel = document.createElement('div');
   panel.id = 'historyPanel';
   panel.className = 'card overflow-hidden';
-  const targetU = cached ? (cached.target_users || 1000) : 1000;
+  const targetU = cached ? (cached.requested_count || cached.target_users || 1000) : 1000;
   const statusLabel = cached && cached.status === 'error'
     ? '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:rgba(239,68,68,.1);color:#ef4444;">에러</span>'
     : '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:rgba(16,185,129,.1);color:#10b981;">완료</span>';

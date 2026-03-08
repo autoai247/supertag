@@ -2126,12 +2126,30 @@ def collect_start(hashtag: str = Form(default=""), requested_count: int = Form(d
         return HTMLResponse(str(job_db_id))
 
 @app.post("/collect/stop/{job_id}")
-def collect_stop(job_id: str, session_id: Optional[str] = Cookie(default=None)):
+async def collect_stop(request: Request, job_id: str, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return JSONResponse({"error": "인증 필요"}, 403)
     try:
         jid = int(job_id)
-        update_collect_job(jid, status="stopped")
+        # 클라이언트에서 최종 수치 전달 시 함께 저장
+        save_data = {"status": "stopped"}
+        try:
+            body = await request.json()
+            if body.get("collected_posts") is not None:
+                save_data["collected_posts"] = int(body["collected_posts"])
+            if body.get("new_users") is not None:
+                save_data["new_users"] = int(body["new_users"])
+            if body.get("updated_users") is not None:
+                save_data["updated_users"] = int(body["updated_users"])
+            if body.get("last_next_id"):
+                save_data["last_next_id"] = str(body["last_next_id"])
+            if body.get("last_page") is not None:
+                save_data["last_page"] = int(body["last_page"])
+        except Exception:
+            pass
+        from datetime import datetime, timezone, timedelta
+        save_data["finished_at"] = datetime.now(timezone(timedelta(hours=9))).isoformat()
+        update_collect_job(jid, **save_data)
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, 500)
@@ -2234,6 +2252,20 @@ def collect_progress(job_id: str,
                     from database import get_collect_job as _gcj2
                     _job_check = _gcj2(job_db_id)
                     if _job_check and _job_check.get("status") == "stopped":
+                        # 최종 수치 DB 저장
+                        try:
+                            _stop_pks = list(set((json.loads(_job_check.get("collected_pks","[]")) if isinstance(_job_check.get("collected_pks"), str) else (_job_check.get("collected_pks") or [])) + collected_pk_list))
+                            _stop_new_pks = list(set((json.loads(_job_check.get("new_pks","[]")) if isinstance(_job_check.get("new_pks"), str) else (_job_check.get("new_pks") or [])) + new_pk_list))
+                            from datetime import datetime as _dt3, timezone as _tz3, timedelta as _td3
+                            update_collect_job(job_db_id,
+                                collected_posts=total_medias, new_users=new_cnt,
+                                updated_users=updated_cnt, last_next_id=last_next_id or "",
+                                last_page=page_num,
+                                collected_pks=json.dumps(_stop_pks),
+                                new_pks=json.dumps(_stop_new_pks),
+                                finished_at=_dt3.now(_tz3(_td3(hours=9))).isoformat())
+                        except Exception:
+                            pass
                         p.update({"done": True, "status": f"중지됨 — 신규 {new_cnt}명 저장됨",
                                   "new": new_cnt, "updated": updated_cnt, "posts": total_medias})
                         yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
