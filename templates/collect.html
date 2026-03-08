@@ -660,11 +660,11 @@ function updateTotalStats() {
   Object.keys(_monitors).forEach(mid => {
     const p = document.getElementById(_monitors[mid].panelId);
     if (p) {
-      posts += parseInt(p.querySelector('.mon-posts')?.textContent) || 0;
-      newU += parseInt(p.querySelector('.mon-new')?.textContent) || 0;
-      dup += parseInt(p.querySelector('.mon-dup')?.textContent) || 0;
+      posts += parseInt((p.querySelector('.mon-posts')?.textContent||'0').replace(/,/g,'')) || 0;
+      newU += parseInt((p.querySelector('.mon-new')?.textContent||'0').replace(/,/g,'')) || 0;
+      dup += parseInt((p.querySelector('.mon-dup')?.textContent||'0').replace(/,/g,'')) || 0;
       const t = p.querySelector('.grid .text-emerald-600');
-      if (t) target += parseInt(t.textContent) || 0;
+      if (t) target += parseInt((t.textContent||'0').replace(/,/g,'')) || 0;
       running++;
     }
   });
