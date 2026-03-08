@@ -30,7 +30,7 @@
     (stats.verified,   '인증',     '#3b82f6', '/influencers?verified=1'),
     (stats.business,   '비즈',     '#10b981', '/influencers?public_only=0'),
     (stats.with_stats, '통계완료',  '#8b5cf6', '/influencers?sort=stats_updated_at'),
-    (stats.live_ok,    '라이브가능','#f59e0b', '/influencers?can_live=1'),
+    (stats.live_ok,    '쇼호스트','#f59e0b', '/influencers?can_live=1'),
     (stats.approved,   '배포승인',  '#ef4444', '/influencers?only_approved=1'),
     (stats.hidden|default(0), '숨김', '#9ca3af', '/hidden'),
     (stats.banned|default(0), '밴', '#ef4444', '/banned'),
@@ -156,7 +156,7 @@
       <input type="checkbox" name="public_only" value="1" {% if public_only %}checked{% endif %} class="rounded">공개만
     </label>
     <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer pb-2">
-      <input type="checkbox" name="can_live" value="1" {% if can_live %}checked{% endif %} class="rounded">📡 라이브가능
+      <input type="checkbox" name="can_live" value="1" {% if can_live %}checked{% endif %} class="rounded">📡 쇼호스트
     </label>
     <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer pb-2">
       <input type="checkbox" name="only_approved" value="1" {% if only_approved %}checked{% endif %} class="rounded">✅ 승인됨
