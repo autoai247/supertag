@@ -130,13 +130,13 @@ async function startRefresh() {
       const done = p.done || 0;
       const pct = Math.round((done / total) * 100);
 
-      document.getElementById('cntTotal').textContent = total;
-      document.getElementById('cntDone').textContent = done;
-      document.getElementById('cntSuccess').textContent = p.success || 0;
-      document.getElementById('cntFail').textContent = p.fail || 0;
+      document.getElementById('cntTotal').textContent = total.toLocaleString();
+      document.getElementById('cntDone').textContent = done.toLocaleString();
+      document.getElementById('cntSuccess').textContent = (p.success || 0).toLocaleString();
+      document.getElementById('cntFail').textContent = (p.fail || 0).toLocaleString();
       document.getElementById('progressBar').style.width = pct + '%';
       document.getElementById('progressPct').textContent = pct + '%';
-      document.getElementById('progressLabel').textContent = `${done} / ${total}`;
+      document.getElementById('progressLabel').textContent = `${done.toLocaleString()} / ${total.toLocaleString()}`;
 
       if (p.current_username) {
         document.getElementById('currentUser').textContent = `현재: @${p.current_username}`;

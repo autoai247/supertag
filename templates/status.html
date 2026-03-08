@@ -64,16 +64,16 @@
             {% endfor %}
           </div>
         </td>
-        <td class="px-4 py-3 text-right text-gray-600">{{ ns.req | int }}</td>
+        <td class="px-4 py-3 text-right text-gray-600">{{ ns.req | int | comma }}</td>
         <td class="px-4 py-3 text-right">
-          <div class="text-gray-900 font-medium">{{ ns.col | int }}</div>
+          <div class="text-gray-900 font-medium">{{ ns.col | int | comma }}</div>
           {% if ns.req > 0 %}
           <div class="w-20 h-1.5 rounded-full mt-1 ml-auto" style="background:#e2e8f0;">
             <div class="h-1.5 rounded-full" style="background:#6366f1; width:{{ [((ns.col/ns.req)*100)|int, 100]|min }}%;"></div>
           </div>
           {% endif %}
         </td>
-        <td class="px-4 py-3 text-right font-semibold text-gray-900">{{ ns.usr | int }}</td>
+        <td class="px-4 py-3 text-right font-semibold text-gray-900">{{ ns.usr | int | comma }}</td>
         <td class="px-4 py-3 text-center">
           <span class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
             style="color:{{ sl[1] }}; background:{{ sl[2] }};">
@@ -112,9 +112,9 @@
               {% set ssl = status_label.get(sub.status, ('알수없음', '#94a3b8', '#f1f5f9')) %}
               <tr class="border-t border-gray-200">
                 <td class="py-2 px-3 font-medium text-gray-700">#{{ sub.keyword }}</td>
-                <td class="py-2 text-right text-gray-500">{{ sub.requested_post_count or 0 }}</td>
-                <td class="py-2 text-right text-gray-700">{{ sub.collected_post_count or 0 }}</td>
-                <td class="py-2 text-right font-semibold text-gray-900">{{ sub.collected_user_count or 0 }}</td>
+                <td class="py-2 text-right text-gray-500">{{ (sub.requested_post_count or 0) | comma }}</td>
+                <td class="py-2 text-right text-gray-700">{{ (sub.collected_post_count or 0) | comma }}</td>
+                <td class="py-2 text-right font-semibold text-gray-900">{{ (sub.collected_user_count or 0) | comma }}</td>
                 <td class="py-2 text-center">
                   <span class="px-2 py-0.5 rounded-full text-xs font-medium" style="color:{{ ssl[1] }}; background:{{ ssl[2] }};">{{ ssl[0] }}</span>
                 </td>

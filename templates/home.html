@@ -198,12 +198,12 @@
 
   <!-- stat pills -->
   <div class="flex justify-center gap-2 flex-wrap">
-    <div class="stat-pill"><span style="color:#6366f1;font-weight:700;">{{ stats.total | int }}</span> 인플루언서</div>
-    <div class="stat-pill"><span style="color:#f59e0b;font-weight:700;">{{ stats.hashtags }}</span> 해시태그</div>
+    <div class="stat-pill"><span style="color:#6366f1;font-weight:700;">{{ stats.total | int | comma }}</span> 인플루언서</div>
+    <div class="stat-pill"><span style="color:#f59e0b;font-weight:700;">{{ stats.hashtags | comma }}</span> 해시태그</div>
     <div class="stat-pill">
       <span style="color:#8b5cf6;font-weight:700;">
         {% set tf = stats.total_followers | int %}
-        {% if tf >= 100000000 %}{{ tf // 100000000 }}억{% elif tf >= 10000 %}{{ tf // 10000 }}만{% else %}{{ tf }}{% endif %}
+        {% if tf >= 100000000 %}{{ (tf // 100000000) | comma }}억{% elif tf >= 10000 %}{{ (tf // 10000) | comma }}만{% else %}{{ tf | comma }}{% endif %}
       </span> 총 팔로워
     </div>
   </div>
@@ -506,7 +506,7 @@ async function loadList(page, sort, filters={}, append=false) {
     const res = await fetch(`/api/public?${p}`);
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
-    document.getElementById('totalCount').textContent = data.total;
+    document.getElementById('totalCount').textContent = data.total.toLocaleString();
     if (data.last_updated) document.getElementById('lastUpdated').textContent = '업데이트 ' + data.last_updated;
     _totalPages = data.total_pages || 1;
     _currentPage = page;
@@ -520,7 +520,7 @@ async function loadList(page, sort, filters={}, append=false) {
     if (!IS_ADMIN && data.total > data.rows.length && page === 1) {
       html += renderBlurCards(3);
       lb.classList.remove('hidden');
-      document.getElementById('lockCount').textContent = (data.total - data.rows.length)+'명이 더 있습니다';
+      document.getElementById('lockCount').textContent = (data.total - data.rows.length).toLocaleString()+'명이 더 있습니다';
     } else if (page === 1) { lb.classList.add('hidden'); }
 
     if (append) {

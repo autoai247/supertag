@@ -142,8 +142,8 @@
             {% set d = d | fromjson %}
           {% endif %}
           {% if d %}
-            {% if d.new is defined %}신규 {{ d.new }}명, 업데이트 {{ d.updated }}명{% endif %}
-            {% if d.success is defined %}성공 {{ d.success }}, 실패 {{ d.fail }}, 잔여 {{ d.remaining }}{% endif %}
+            {% if d.new is defined %}신규 {{ d.new | comma }}명, 업데이트 {{ d.updated | comma }}명{% endif %}
+            {% if d.success is defined %}성공 {{ d.success | comma }}, 실패 {{ d.fail | comma }}, 잔여 {{ d.remaining | comma }}{% endif %}
             {% if d.error is defined %}<span class="text-red-400">{{ d.error[:80] }}</span>{% endif %}
           {% endif %}
         </div>

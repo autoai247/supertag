@@ -17,11 +17,11 @@
         <div class="p-3 rounded-lg text-sm" style="background:#f8fafc;">
           <div class="flex justify-between mb-1">
             <span class="text-gray-500">전체 인플루언서</span>
-            <span class="font-bold text-gray-900">{{ total_count }}명</span>
+            <span class="font-bold text-gray-900">{{ total_count | comma }}명</span>
           </div>
           <div class="flex justify-between">
             <span class="text-gray-500">갱신 대상 (30일+)</span>
-            <span class="font-bold text-indigo-600">{{ stale_count }}명</span>
+            <span class="font-bold text-indigo-600">{{ stale_count | comma }}명</span>
           </div>
         </div>
         <button id="startBtn" onclick="startRefresh()"
@@ -176,14 +176,14 @@ function listenStream() {
   sse.onmessage = function(e) {
     const p = JSON.parse(e.data);
 
-    document.getElementById('cntTotal').textContent = p.total || 0;
-    document.getElementById('cntDone').textContent = p.done || 0;
-    document.getElementById('cntSuccess').textContent = p.success || 0;
-    document.getElementById('cntFail').textContent = p.fail || 0;
+    document.getElementById('cntTotal').textContent = (p.total || 0).toLocaleString();
+    document.getElementById('cntDone').textContent = (p.done || 0).toLocaleString();
+    document.getElementById('cntSuccess').textContent = (p.success || 0).toLocaleString();
+    document.getElementById('cntFail').textContent = (p.fail || 0).toLocaleString();
 
     const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
     document.getElementById('progressBar').style.width = pct + '%';
-    document.getElementById('progressNum').textContent = `${p.done || 0} / ${p.total || 0}`;
+    document.getElementById('progressNum').textContent = `${(p.done || 0).toLocaleString()} / ${(p.total || 0).toLocaleString()}`;
 
     if (p.current_username && p.done > prevDone) {
       const wasSuccess = (p.success > (prevDone > 0 ? parseInt(document.getElementById('cntSuccess').dataset.prev || 0) : 0));

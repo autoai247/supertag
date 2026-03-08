@@ -217,13 +217,13 @@ function startExtract() {
   sse.onmessage = function(e) {
     const p = JSON.parse(e.data);
 
-    if (p.extracted !== undefined) document.getElementById('cntExtracted').textContent = p.extracted;
-    if (p.new_cnt !== undefined) document.getElementById('cntNew').textContent = p.new_cnt;
-    if (p.dup_cnt !== undefined) document.getElementById('cntDup').textContent = p.dup_cnt;
+    if (p.extracted !== undefined) document.getElementById('cntExtracted').textContent = p.extracted.toLocaleString();
+    if (p.new_cnt !== undefined) document.getElementById('cntNew').textContent = p.new_cnt.toLocaleString();
+    if (p.dup_cnt !== undefined) document.getElementById('cntDup').textContent = p.dup_cnt.toLocaleString();
 
     const pct = p.max_count ? Math.min(100, Math.round((p.extracted / p.max_count) * 100)) : 0;
     document.getElementById('progressBar').style.width = pct + '%';
-    document.getElementById('progressNum').textContent = `${p.extracted || 0}명`;
+    document.getElementById('progressNum').textContent = `${(p.extracted || 0).toLocaleString()}명`;
 
     if (p.status) setStatus(p.status, p.done ? (p.error ? 'error' : 'done') : 'running');
     if (p.label) document.getElementById('progressLabel').textContent = p.label;

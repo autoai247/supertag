@@ -112,10 +112,10 @@
       {% set sc = {'running':'amber','done':'emerald','error':'red'}.get(j.status,'gray') %}
       <tr class="border-t border-gray-50 hover:bg-gray-50">
         <td class="px-4 py-2 font-medium text-gray-800">#{{ j.hashtag }}</td>
-        <td class="px-4 py-2 text-right text-gray-500">{{ j.requested_count }}</td>
-        <td class="px-4 py-2 text-right text-gray-700">{{ j.collected_posts }}</td>
-        <td class="px-4 py-2 text-right font-semibold text-indigo-600">{{ j.new_users }}</td>
-        <td class="px-4 py-2 text-right text-emerald-600">{{ j.updated_users }}</td>
+        <td class="px-4 py-2 text-right text-gray-500">{{ j.requested_count | comma }}</td>
+        <td class="px-4 py-2 text-right text-gray-700">{{ j.collected_posts | comma }}</td>
+        <td class="px-4 py-2 text-right font-semibold text-indigo-600">{{ j.new_users | comma }}</td>
+        <td class="px-4 py-2 text-right text-emerald-600">{{ j.updated_users | comma }}</td>
         <td class="px-4 py-2 text-center">
           <span class="badge text-{{ sc }}-700">{{ {'running':'수집 중','done':'완료','error':'오류'}.get(j.status, j.status) }}</span>
         </td>

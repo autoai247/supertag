@@ -487,6 +487,10 @@ def _fmtn(n):
     if v >= 1_000: return f"{v/1_000:.1f}".rstrip('0').rstrip('.') + "K"
     return str(v)
 templates.env.filters["fmtn"] = _fmtn
+def _comma(n):
+    try: return f"{int(n or 0):,}"
+    except: return str(n)
+templates.env.filters["comma"] = _comma
 def _fromjson(s):
     try: return json.loads(s) if isinstance(s, str) else s
     except: return {}
@@ -1680,7 +1684,7 @@ def target_extract_stream(
                     if not media_id:
                         continue
 
-                    p["status"] = f"게시물 {mi+1}/{len(media_items)} 댓글 추출 중 — {extracted}명"
+                    p["status"] = f"게시물 {mi+1:,}/{len(media_items):,} 댓글 추출 중 — {extracted:,}명"
                     p["users"] = []
                     yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
@@ -1739,7 +1743,7 @@ def target_extract_stream(
                         if page_users:
                             p.update({"extracted": extracted, "new_cnt": new_cnt, "dup_cnt": dup_cnt,
                                       "users": page_users,
-                                      "status": f"게시물 {mi+1}/{len(media_items)} — {extracted}명"})
+                                      "status": f"게시물 {mi+1:,}/{len(media_items):,} — {extracted:,}명"})
                             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
                         if not comment_cursor: break
@@ -1800,7 +1804,7 @@ def target_extract_stream(
 
             # 완료
             p.update({"done": True, "users": [],
-                      "status": f"완료 — 추출 {extracted}명 (신규 {new_cnt} / 중복 {dup_cnt})"})
+                      "status": f"완료 — 추출 {extracted:,}명 (신규 {new_cnt:,} / 중복 {dup_cnt:,})"})
             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
         except Exception as e:
@@ -2266,7 +2270,7 @@ def collect_progress(job_id: str,
                                 finished_at=_dt3.now(_tz3(_td3(hours=9))).isoformat())
                         except Exception:
                             pass
-                        p.update({"done": True, "status": f"중지됨 — 신규 {new_cnt}명 저장됨",
+                        p.update({"done": True, "status": f"중지됨 — 신규 {new_cnt:,}명 저장됨",
                                   "new": new_cnt, "updated": updated_cnt, "posts": total_medias})
                         yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
                         return
@@ -2371,7 +2375,7 @@ def collect_progress(job_id: str,
                     })
 
                 p.update({"posts": total_medias, "new": new_cnt, "updated": updated_cnt,
-                          "status": f"페이지 {page_num} — 신규 {new_cnt}명 / 중복 {updated_cnt}명 / 목표 {target_users}명",
+                          "status": f"페이지 {page_num:,} — 신규 {new_cnt:,}명 / 중복 {updated_cnt:,}명 / 목표 {target_users:,}명",
                           "page": page_num, "page_items": len(items),
                           "has_next": bool(next_id),
                           "next_id": next_id or "",
@@ -2456,13 +2460,13 @@ def collect_progress(job_id: str,
             if is_truly_done:
                 reason = "목표 달성" if new_cnt >= target_users else f"해시태그 끝 ({page_num}페이지)"
                 p.update({"done": True, "new": new_cnt, "updated": updated_cnt,
-                          "status": f"완료 — 신규 {new_cnt}명 / 중복 {updated_cnt}명 ({reason})",
+                          "status": f"완료 — 신규 {new_cnt:,}명 / 중복 {updated_cnt:,}명 ({reason})",
                           "page": page_num})
             else:
                 p.update({"done": False, "has_more": True, "new": new_cnt, "updated": updated_cnt,
                           "next_id": last_next_id or "", "page": page_num,
                           "posts": total_medias,
-                          "status": f"배치 {page_num}페이지 완료 — 신규 {new_cnt}명 / 중복 {updated_cnt}명 / 목표 {target_users}명 (자동 계속)"})
+                          "status": f"배치 {page_num:,}페이지 완료 — 신규 {new_cnt:,}명 / 중복 {updated_cnt:,}명 / 목표 {target_users:,}명 (자동 계속)"})
             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
         except Exception as e:

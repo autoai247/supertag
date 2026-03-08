@@ -19,7 +19,7 @@
 {% if refresh and refresh.status == 'running' %}
 <div class="mb-4 px-4 py-3 rounded-xl flex items-center gap-3" style="background:#fefce8;border:1px solid #fde047;">
   <div class="animate-spin w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full"></div>
-  <span class="text-sm text-yellow-700 font-medium">상세 정보 갱신 중... ({{ refresh.done or 0 }}/{{ refresh.total or '?' }}명 완료)</span>
+  <span class="text-sm text-yellow-700 font-medium">상세 정보 갱신 중... ({{ (refresh.done or 0) | comma }}/{{ (refresh.total or '?') | comma }}명 완료)</span>
 </div>
 {% endif %}
 

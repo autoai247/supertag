@@ -165,11 +165,25 @@
   </div>
 
   <!-- 실시간 진행 패널들 (다중) -->
-  <div class="col-span-3 space-y-4" id="jobPanels">
-    <div id="emptyState" class="card p-8 text-center text-gray-400 text-sm">
-      <div class="text-3xl mb-2">📡</div>
-      해시태그를 입력하고 수집을 시작하세요.<br>
-      <span class="text-xs text-gray-300">여러 해시태그를 동시에 수집할 수 있습니다.</span>
+  <div class="col-span-3 space-y-4">
+    <!-- 패널 일괄 작업 -->
+    <div id="panelBatchBar" class="hidden flex items-center gap-2 px-3 py-2 rounded-lg" style="background:#f8fafc;border:1px solid #e2e8f0;">
+      <label class="flex items-center gap-1 cursor-pointer text-xs text-gray-500">
+        <input type="checkbox" id="panelSelectAll" onchange="panelToggleAll(this.checked)" class="accent-indigo-500">
+        <span>전체 선택</span>
+      </label>
+      <span id="panelSelCount" class="text-xs text-gray-400 ml-1">0개</span>
+      <div class="ml-auto flex items-center gap-1.5">
+        <button onclick="panelBatchStop()" class="px-2.5 py-1 rounded text-xs font-semibold text-red-500 hover:bg-red-50 transition" style="border:1px solid #fecaca;">일괄 중지</button>
+        <button onclick="panelBatchRestart()" class="px-2.5 py-1 rounded text-xs font-semibold text-indigo-500 hover:bg-indigo-50 transition" style="border:1px solid #c7d2fe;">일괄 재시작</button>
+      </div>
+    </div>
+    <div id="jobPanels" class="space-y-4">
+      <div id="emptyState" class="card p-8 text-center text-gray-400 text-sm">
+        <div class="text-3xl mb-2">📡</div>
+        해시태그를 입력하고 수집을 시작하세요.<br>
+        <span class="text-xs text-gray-300">여러 해시태그를 동시에 수집할 수 있습니다.</span>
+      </div>
     </div>
   </div>
 </div>
@@ -288,6 +302,7 @@ class CollectJob {
     panel.innerHTML = `
       <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
         <div class="flex items-center gap-2">
+          <input type="checkbox" class="panel-check accent-indigo-500" data-job-id="${this.jobId}" onchange="updatePanelBatchBar()" onclick="event.stopPropagation()">
           <span class="font-bold text-gray-800 text-sm">#${this.hashtag}</span>
           <span class="badge text-xs j-badge" style="background:rgba(245,158,11,.1);color:#d97706;">수집 중</span>
         </div>
@@ -676,6 +691,62 @@ async function batchRestartSelected() {
   }
 }
 
+// ═══ 오른쪽 패널 일괄 작업 ═══
+function updatePanelBatchBar() {
+  const checks = document.querySelectorAll('.panel-check');
+  const checked = document.querySelectorAll('.panel-check:checked');
+  const bar = document.getElementById('panelBatchBar');
+  if (checks.length > 0) {
+    bar.classList.remove('hidden');
+    document.getElementById('panelSelCount').textContent = `${checked.length}개`;
+    document.getElementById('panelSelectAll').checked = checks.length === checked.length && checks.length > 0;
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+function panelToggleAll(on) {
+  document.querySelectorAll('.panel-check').forEach(cb => { cb.checked = on; });
+  updatePanelBatchBar();
+}
+function panelBatchStop() {
+  const ids = Array.from(document.querySelectorAll('.panel-check:checked')).map(cb => cb.dataset.jobId);
+  if (!ids.length) { alert('선택된 항목이 없습니다'); return; }
+  if (!confirm(`${ids.length}개 작업을 일괄 중지하시겠습니까?`)) return;
+  ids.forEach(id => {
+    if (jobs[id] && !jobs[id].stopped) { jobs[id].stop(); }
+    else { fetch(`/collect/stop/${id}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' }).catch(()=>{}); }
+  });
+  setTimeout(() => { refreshHistory(); updatePanelBatchBar(); }, 1000);
+}
+async function panelBatchRestart() {
+  const checks = Array.from(document.querySelectorAll('.panel-check:checked'));
+  const ids = checks.map(cb => cb.dataset.jobId);
+  if (!ids.length) { alert('선택된 항목이 없습니다'); return; }
+  // 중지된 것만 재시작
+  const restartIds = ids.filter(id => jobs[id] && jobs[id].stopped);
+  const monitorIds = ids.filter(id => !jobs[id]);
+  if (!restartIds.length && !monitorIds.length) { alert('재시작 가능한 항목이 없습니다'); return; }
+  if (!confirm(`${restartIds.length + monitorIds.length}개 작업을 일괄 재시작하시겠습니까?`)) return;
+  for (const id of restartIds) {
+    jobs[id].restart();
+    await new Promise(r => setTimeout(r, 300));
+  }
+  for (const id of monitorIds) {
+    const prev = _historyJobs[id];
+    if (prev) {
+      remoteRestartJob(id, prev.hashtag || '', prev.requested_count || 1000);
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  setTimeout(updatePanelBatchBar, 1000);
+}
+// 패널 변화 감시 — 패널 추가/제거 시 bar 업데이트
+const _panelObserver = new MutationObserver(() => { setTimeout(updatePanelBatchBar, 100); });
+document.addEventListener('DOMContentLoaded', () => {
+  const jp = document.getElementById('jobPanels');
+  if (jp) _panelObserver.observe(jp, { childList: true });
+});
+
 // ═══ 수집 이력 + 실시간 모니터 ═══
 const _historyJobs = {};
 const _monitors = {};  // jobId → { timer, panelId }
@@ -736,13 +807,11 @@ function updateTotalStats() {
   let posts=0, newU=0, dup=0, target=0, running=0;
   // 활성 SSE 수집 (이 탭)
   Object.values(jobs).forEach(j => {
-    if (!j.stopped) {
-      posts += j.lastPosts || 0;
-      newU += j.lastNew || 0;
-      dup += j.lastUpdated || 0;
-      target += j.targetUsers || 0;
-      running++;
-    }
+    posts += j.lastPosts || 0;
+    newU += j.lastNew || 0;
+    dup += j.lastUpdated || 0;
+    target += j.targetUsers || 0;
+    if (!j.stopped) running++;
   });
   // 모니터 패널 (다른 탭 수집)
   Object.keys(_monitors).forEach(mid => {
@@ -757,18 +826,19 @@ function updateTotalStats() {
     }
   });
   const box = document.getElementById('totalStats');
-  if (running >= 2) {
+  const hasJobs = Object.keys(jobs).length > 0 || Object.keys(_monitors).length > 0;
+  if (hasJobs) {
     box.classList.remove('hidden');
     document.getElementById('totalPosts').textContent = posts.toLocaleString();
     document.getElementById('totalNew').textContent = newU.toLocaleString();
     document.getElementById('totalDup').textContent = dup.toLocaleString();
     document.getElementById('totalTarget').textContent = target.toLocaleString();
-    document.getElementById('totalRunning').textContent = `${running}개 작업 진행 중`;
+    document.getElementById('totalRunning').textContent = running > 0 ? `${running}개 작업 진행 중` : '수집 완료';
   } else {
     box.classList.add('hidden');
   }
 }
-setInterval(updateTotalStats, 1000);
+setInterval(updateTotalStats, 500);
 
 function refreshHistory() {
   fetch('/api/collect-jobs')
@@ -805,6 +875,7 @@ function createMonitorPanel(jobId, job) {
   panel.innerHTML = `
     <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
       <div class="flex items-center gap-2">
+        <input type="checkbox" class="panel-check accent-indigo-500" data-job-id="${jobId}" data-is-monitor="true" onchange="updatePanelBatchBar()" onclick="event.stopPropagation()">
         <span class="font-bold text-gray-800 text-sm">#${job.hashtag || '?'}</span>
         <span class="mon-badge px-1.5 py-0.5 rounded text-xs font-bold" style="background:rgba(245,158,11,.1);color:#d97706;">수집 중</span>
       </div>
@@ -894,7 +965,7 @@ function createMonitorPanel(jobId, job) {
             .then(users => {
               if (!Array.isArray(users) || users.length === 0) return;
               const list = p.querySelector('.mon-userList');
-              p.querySelector('.mon-userCount').textContent = users.length + '명';
+              p.querySelector('.mon-userCount').textContent = users.length.toLocaleString() + '명';
               list.innerHTML = '';
               users.forEach((u, i) => {
                 const badge = u.is_new
@@ -1177,7 +1248,7 @@ function showCompletedPanel(jobId) {
         panel.querySelector('.h-userCount').textContent = '0명';
         return;
       }
-      panel.querySelector('.h-userCount').textContent = users.length + '명';
+      panel.querySelector('.h-userCount').textContent = users.length.toLocaleString() + '명';
       users.forEach((u, i) => {
         const div = document.createElement('div');
         div.className = 'flex items-center gap-3 px-4 py-2 hover:bg-gray-50 ju-item';
