@@ -895,14 +895,17 @@ def get_stats():
 
         # hidden/banned 수 차감
         n_excl_inf = 0
+        n_excl_verified = 0
         if excluded:
-            all_pks = _sb_get(T_INF, {"select": "pk"})
+            all_pks = _sb_get(T_INF, {"select": "pk,is_verified"})
             if isinstance(all_pks, list):
-                n_excl_inf = sum(1 for r in all_pks if r.get("pk") in excluded)
+                excl_rows = [r for r in all_pks if r.get("pk") in excluded]
+                n_excl_inf = len(excl_rows)
+                n_excl_verified = sum(1 for r in excl_rows if r.get("is_verified"))
 
         return {
             "total":      cnt(T_INF) - n_excl_inf,
-            "verified":   cnt(T_INF, {"is_verified": "eq.1"}) - n_excl_inf,  # 근사치
+            "verified":   cnt(T_INF, {"is_verified": "eq.1"}) - n_excl_verified,
             "business":   cnt(T_INF, {"is_business": "eq.1"}),
             "hashtags":   cnt(T_HASH),
             "with_stats": cnt(T_INF, {"stats_updated_at": "gt.0"}),
@@ -917,6 +920,7 @@ def get_stats():
             "is_married": cnt_excl(T_MAN, {"is_married": "eq.1"}),
             "is_visual":  cnt_excl(T_MAN, {"is_visual": "eq.1"}),
             "hidden":     len(hidden_pks),
+            "banned":     len(banned_pks),
         }
     conn = get_conn()
     try:
@@ -941,6 +945,7 @@ def get_stats():
             "is_married": cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_married=1 AND {man_excl}"),
             "is_visual":  cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_visual=1 AND {man_excl}"),
             "hidden":     cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_hidden=1"),
+            "banned":     cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_banned=1"),
         }
     finally: conn.close()
 

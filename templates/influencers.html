@@ -24,7 +24,7 @@
 {% endif %}
 
 <!-- 상단 통계 (클릭 가능 필터) -->
-<div class="grid grid-cols-8 gap-3 mb-5">
+<div class="grid grid-cols-9 gap-3 mb-5">
   {% set stat_items = [
     (stats.total,      '전체',     '#6366f1', '/influencers'),
     (stats.verified,   '인증',     '#3b82f6', '/influencers?verified=1'),
@@ -33,6 +33,7 @@
     (stats.live_ok,    '라이브가능','#f59e0b', '/influencers?can_live=1'),
     (stats.approved,   '배포승인',  '#ef4444', '/influencers?only_approved=1'),
     (stats.hidden|default(0), '숨김', '#9ca3af', '/hidden'),
+    (stats.banned|default(0), '밴', '#ef4444', '/banned'),
     (stats.hashtags,   '해시태그',  '#6b7280', '/hashtags'),
   ] %}
   {% for val, label, color, href in stat_items %}
