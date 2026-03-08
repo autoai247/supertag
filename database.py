@@ -816,11 +816,16 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
             inf_params["follower_count"] = f"lte.{max_f}"
     if only_verified: inf_params["is_verified"] = "eq.1"
     if exclude_private: inf_params["is_private"] = "eq.0"
-    if url_domain: inf_params["external_url"] = f"ilike.*{url_domain}*"
-
-    # has_url: URL이 있는 사람만 (별도 처리 — pk 목록으로 필터)
+    # has_url / url_domain: pk 목록으로 필터 (Content-Range 문제 방지)
     _has_url_pks = None
-    if has_url and not url_domain:
+    if url_domain:
+        url_rows = _sb_get_all(T_INF, {"select": "pk,external_url", "external_url": f"ilike.*{url_domain}*"})
+        _has_url_pks = set()
+        for ur in (url_rows or []):
+            eu = ur.get("external_url", "") or ""
+            if eu.strip():
+                _has_url_pks.add(ur["pk"])
+    elif has_url:
         url_rows = _sb_get_all(T_INF, {"select": "pk,external_url", "external_url": "not.is.null"})
         _has_url_pks = set()
         for ur in (url_rows or []):
