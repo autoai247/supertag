@@ -324,6 +324,17 @@
 </div>
 
 <script>
+// Challenge 토큰
+window.__challengeReady = fetch('/api/challenge-token').then(r=>r.json()).then(d=>{if(d.token)window.__challengeToken=d.token;}).catch(()=>{});
+const _origFetch=window.fetch;
+window.fetch=function(url,opts){
+  if(typeof url==='string'&&url.indexOf('/api/')===0&&window.__challengeToken){
+    opts=opts||{};opts.headers=opts.headers||{};
+    if(!opts.headers['X-Challenge-Token'])opts.headers['X-Challenge-Token']=window.__challengeToken;
+  }
+  return _origFetch.call(this,url,opts);
+};
+
 const IS_ADMIN = {{ 'true' if user else 'false' }};
 let currentSort = 'follower_count';
 let currentFilters = { q:'', min_f:0, max_f:0, category:'', hashtag:'', public_only:false, no_biz:false, biz_only:false, verified_only:false };
@@ -618,7 +629,7 @@ window.addEventListener('scroll', () => {
   }
 });
 
-loadList(1,'follower_count',currentFilters);
+window.__challengeReady.then(()=>loadList(1,'follower_count',currentFilters));
 </script>
 </body>
 </html>
