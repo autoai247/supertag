@@ -330,7 +330,14 @@ class CollectJob {
             <svg class="toggle-arrow w-3.5 h-3.5 text-gray-400 transition-transform" style="transform:rotate(90deg);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
             <span class="text-xs font-semibold text-gray-600">수집된 인플루언서</span>
           </div>
-          <span class="j-userCount text-xs text-gray-400">0명</span>
+          <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1 j-userFilter">
+              <button onclick="event.stopPropagation();filterJobUsers(this,'all')" class="juf-chip active px-2 py-0.5 rounded-full text-xs font-semibold transition" style="background:#eef2ff;color:#4f46e5;">전체</button>
+              <button onclick="event.stopPropagation();filterJobUsers(this,'new')" class="juf-chip px-2 py-0.5 rounded-full text-xs font-semibold text-gray-400 hover:bg-gray-100 transition">신규</button>
+              <button onclick="event.stopPropagation();filterJobUsers(this,'existing')" class="juf-chip px-2 py-0.5 rounded-full text-xs font-semibold text-gray-400 hover:bg-gray-100 transition">기존</button>
+            </div>
+            <span class="j-userCount text-xs text-gray-400">0명</span>
+          </div>
         </div>
         <div class="user-list-wrap">
           <div class="j-userList divide-y divide-gray-50" style="max-height:300px;overflow-y:auto;"></div>
@@ -370,6 +377,7 @@ class CollectJob {
       this.totalUsers++;
       const div = document.createElement('div');
       div.className = 'flex items-center gap-3 px-4 py-1.5 hover:bg-gray-50 animate-fadeIn';
+      div.setAttribute('data-is-new', u.is_new ? 'true' : 'false');
       const badge = u.is_new
         ? '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#eef2ff;color:#4f46e5;">NEW</span>'
         : '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:#f0fdf4;color:#059669;">기존</span>';
@@ -1092,7 +1100,7 @@ function filterJobUsers(btn, type) {
   btn.classList.add('active');
   btn.style.background = '#eef2ff'; btn.style.color = '#4f46e5';
 
-  const items = panel.querySelectorAll('.ju-item');
+  const items = panel.querySelectorAll('.ju-item, [data-is-new]');
   let count = 0;
   items.forEach(item => {
     const isNew = item.getAttribute('data-is-new') === 'true';
@@ -1100,7 +1108,8 @@ function filterJobUsers(btn, type) {
     item.style.display = show ? '' : 'none';
     if (show) count++;
   });
-  panel.querySelector('.h-userCount').textContent = count + '명';
+  const countEl = panel.querySelector('.h-userCount') || panel.querySelector('.j-userCount');
+  if (countEl) countEl.textContent = count + '명';
 }
 </script>
 
