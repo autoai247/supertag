@@ -953,7 +953,7 @@ function showCompletedPanel(jobId) {
         ${statusLabel}
       </div>
       <div class="flex items-center gap-2">
-        <button onclick="restartFromHistory('${label}', ${targetU})" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-500 hover:bg-indigo-50 transition" style="border:1px solid #c7d2fe;">
+        <button onclick="restartFromHistory('${label}', ${targetU}, '${jobId}')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-500 hover:bg-indigo-50 transition" style="border:1px solid #c7d2fe;">
           재수집
         </button>
         <button onclick="document.getElementById('historyPanel').remove()" class="text-gray-400 hover:text-gray-600">
@@ -1022,7 +1022,15 @@ function showCompletedPanel(jobId) {
     });
 }
 
-function restartFromHistory(hashtag, targetUsers) {
+function restartFromHistory(hashtag, targetUsers, prevJobId) {
+  // 이전 작업 수치 가져오기
+  const prev = prevJobId ? _historyJobs[prevJobId] : null;
+  const prevPosts = prev ? (prev.collected_posts || 0) : 0;
+  const prevNew = prev ? (prev.new_users || 0) : 0;
+  const prevUpdated = prev ? (prev.updated_users || 0) : 0;
+  const prevNextId = prev ? (prev.last_next_id || '') : '';
+  const prevPage = prev ? (prev.last_page || 0) : 0;
+
   // 히스토리 패널 닫기
   document.getElementById('historyPanel')?.remove();
 
@@ -1052,6 +1060,22 @@ function restartFromHistory(hashtag, targetUsers) {
         jobId = resp;
       }
       const job = new CollectJob(jobId, hashtag, targetUsers, searchType, collectMode, locPk);
+      // 이전 수치 이어받기
+      job.lastPosts = prevPosts;
+      job.lastNew = prevNew;
+      job.lastUpdated = prevUpdated;
+      job.lastNextId = prevNextId;
+      job.lastPage = prevPage;
+      // UI에 이전 수치 반영
+      if (prevPosts || prevNew || prevUpdated) {
+        job.$('.j-posts').textContent = prevPosts;
+        job.$('.j-new').textContent = prevNew;
+        job.$('.j-dup').textContent = prevUpdated;
+        job.$('.j-num').textContent = `신규 ${prevNew}명 / 중복 ${prevUpdated}명 / 목표 ${targetUsers}명`;
+        const pct = Math.min(100, Math.round((prevNew / targetUsers) * 100));
+        job.$('.j-bar').style.width = pct + '%';
+        job.setStatus(`이전 수집 이어서 재시작 — 신규 ${prevNew}명부터`, 'running');
+      }
       jobs[jobId] = job;
       job.listen();
       setTimeout(refreshHistory, 1000);
