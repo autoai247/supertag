@@ -1161,7 +1161,7 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
 
 @app.get("/api/debug/version")
 def debug_version():
-    return JSONResponse({"version": "20260308-v9", "deployed": True})
+    return JSONResponse({"version": "20260308-v10", "deployed": True})
 
 @app.get("/api/debug/excluded-pks")
 def debug_excluded_pks(session_id: Optional[str] = Cookie(default=None)):

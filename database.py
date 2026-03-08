@@ -784,7 +784,7 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
             inf_params["follower_count"] = f"lte.{max_f}"
     if only_verified: inf_params["is_verified"] = "eq.1"
     if exclude_private: inf_params["is_private"] = "eq.0"
-    if has_url: inf_params["external_url"] = "not.is.null"
+    if has_url and not url_domain: inf_params["external_url"] = "neq."
     if url_domain: inf_params["external_url"] = f"ilike.*{url_domain}*"
 
     if need_manual_filter:
