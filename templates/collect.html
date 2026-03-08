@@ -960,6 +960,11 @@ function showCompletedPanel(jobId) {
       </div>
       <span class="h-userCount text-xs text-gray-400"></span>
     </div>
+    <div class="px-4 py-1.5 flex gap-1.5 border-b border-gray-50">
+      <button onclick="filterJobUsers(this,'all')" class="juf-chip active px-2 py-0.5 rounded-full text-xs font-semibold transition" style="background:#eef2ff;color:#4f46e5;">전체</button>
+      <button onclick="filterJobUsers(this,'new')" class="juf-chip px-2 py-0.5 rounded-full text-xs font-semibold text-gray-400 hover:bg-gray-100 transition">신규</button>
+      <button onclick="filterJobUsers(this,'existing')" class="juf-chip px-2 py-0.5 rounded-full text-xs font-semibold text-gray-400 hover:bg-gray-100 transition">기존</button>
+    </div>
     <div class="user-list-wrap">
       <div class="h-userList divide-y divide-gray-50" style="max-height:400px;overflow-y:auto;">
         <div class="py-6 text-center text-gray-400 text-sm">불러오는 중...</div>
@@ -981,7 +986,8 @@ function showCompletedPanel(jobId) {
       panel.querySelector('.h-userCount').textContent = users.length + '명';
       users.forEach((u, i) => {
         const div = document.createElement('div');
-        div.className = 'flex items-center gap-3 px-4 py-2 hover:bg-gray-50';
+        div.className = 'flex items-center gap-3 px-4 py-2 hover:bg-gray-50 ju-item';
+        div.setAttribute('data-is-new', u.is_new ? 'true' : 'false');
         const fc = u.follower_count;
         const fcStr = fc ? (fc >= 1000000 ? (fc/1000000).toFixed(1).replace(/\.0$/,'')+'M' : fc >= 1000 ? (fc/1000).toFixed(1).replace(/\.0$/,'')+'K' : fc) : '';
         const badge = u.is_new
@@ -1005,6 +1011,26 @@ function showCompletedPanel(jobId) {
     .catch(e => {
       panel.querySelector('.h-userList').innerHTML = '<div class="py-6 text-center text-red-400 text-sm">로드 실패</div>';
     });
+}
+
+function filterJobUsers(btn, type) {
+  const panel = btn.closest('.card');
+  panel.querySelectorAll('.juf-chip').forEach(c => {
+    c.classList.remove('active');
+    c.style.background = ''; c.style.color = '#9ca3af';
+  });
+  btn.classList.add('active');
+  btn.style.background = '#eef2ff'; btn.style.color = '#4f46e5';
+
+  const items = panel.querySelectorAll('.ju-item');
+  let count = 0;
+  items.forEach(item => {
+    const isNew = item.getAttribute('data-is-new') === 'true';
+    const show = type === 'all' || (type === 'new' && isNew) || (type === 'existing' && !isNew);
+    item.style.display = show ? '' : 'none';
+    if (show) count++;
+  });
+  panel.querySelector('.h-userCount').textContent = count + '명';
 }
 </script>
 
