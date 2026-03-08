@@ -2182,6 +2182,7 @@ def collect_progress(job_id: str,
         except Exception:
             pass
 
+        log.info(f"[{_label}] SSE 시작 — resume_from={resume_from}, resume_new={resume_new}, resume_posts={resume_posts}, resume_page={resume_page}")
         p = {"hashtag": _label, "posts": resume_posts, "new": resume_new,
              "updated": resume_updated, "done": False, "error": None,
              "status": "게시물 검색 중", "target": target_users}
@@ -2211,10 +2212,8 @@ def collect_progress(job_id: str,
             while new_cnt < target_users and batch_done < BATCH_PAGES:
                 # 다른 탭에서 중지 요청 확인
                 try:
-                    _job_check = _gcj(job_db_id) if '_gcj' in dir() else None
-                    if not _job_check:
-                        from database import get_collect_job as _gcj
-                        _job_check = _gcj(job_db_id)
+                    from database import get_collect_job as _gcj2
+                    _job_check = _gcj2(job_db_id)
                     if _job_check and _job_check.get("status") == "stopped":
                         p.update({"done": True, "status": f"중지됨 — 신규 {new_cnt}명 저장됨",
                                   "new": new_cnt, "updated": updated_cnt, "posts": total_medias})
@@ -2246,9 +2245,17 @@ def collect_progress(job_id: str,
                 if not items and not max_id:
                     _src = "위치" if _is_location else "해시태그"
                     raise Exception(f"HikerAPI {_src} 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
-                if not items:
+                if not items and max_id:
+                    # 커서가 만료됐을 수 있음 → 처음부터 재시도
                     time.sleep(1)
                     items, next_id = _fetch_page(max_id)
+                    if not items and resume_from:
+                        # resume 커서 만료 → 처음부터 시작
+                        max_id = None
+                        p.update({"status": "커서 만료 — 처음부터 다시 수집"})
+                        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                        time.sleep(0.5)
+                        items, next_id = _fetch_page(None)
                     if not items:
                         no_data = True
                         break
