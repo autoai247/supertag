@@ -789,7 +789,7 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
     # has_url: URL이 있는 사람만 (별도 처리 — pk 목록으로 필터)
     _has_url_pks = None
     if has_url and not url_domain:
-        url_rows = _sb_get_all(T_INF, {"select": "pk", "external_url": "not.is.null"})
+        url_rows = _sb_get_all(T_INF, {"select": "pk,external_url", "external_url": "not.is.null"})
         _has_url_pks = set()
         for ur in (url_rows or []):
             eu = ur.get("external_url", "") or ""

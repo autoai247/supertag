@@ -2249,6 +2249,7 @@ def collect_progress(job_id: str,
                     fname = user_data.get("full_name", "")
                     pic = str(user_data.get("profile_pic_url", "") or "")
                     is_new = pk_str not in existing_pks
+                    pic_local = ""
 
                     if is_new:
                         # 신규 유저만 프로필 사진 업로드 + DB 저장
