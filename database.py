@@ -5,6 +5,22 @@
 """
 import os, time, json, requests as _req
 
+# ── 간단한 메모리 캐시 ──
+_cache = {}
+_CACHE_TTL = 30  # 초
+
+def _cached(key, fn, ttl=_CACHE_TTL):
+    now = time.time()
+    if key in _cache and now - _cache[key][0] < ttl:
+        return _cache[key][1]
+    val = fn()
+    _cache[key] = (now, val)
+    return val
+
+def invalidate_cache(*keys):
+    for k in keys:
+        _cache.pop(k, None)
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://ysqnixgdpltguatvjjcb.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")  # service_role key
 _USE_SUPABASE = bool(os.environ.get("SUPABASE_KEY"))
@@ -380,6 +396,9 @@ def upsert_influencer(data: dict) -> str:
     now = time.time()
     pk = str(data.get("pk", ""))
     new_tag = data.get("hashtag", "")
+    # 캐시에 pk 추가 (수집 중 중복 방지)
+    if "existing_pks" in _cache:
+        _cache["existing_pks"][1].add(pk)
 
     if _USE_SUPABASE:
         existing = _sb_get(T_INF, {"pk": f"eq.{pk}", "select": "pk,hashtags"})
@@ -486,6 +505,9 @@ def update_influencer_profile(pk: str, fields: dict):
 
 
 def get_existing_pks() -> set:
+    return _cached("existing_pks", _get_existing_pks_impl, ttl=120)
+
+def _get_existing_pks_impl() -> set:
     """DB에 이미 있는 인플루언서 pk 목록 반환."""
     if _USE_SUPABASE:
         pks = set()
@@ -591,13 +613,18 @@ def delete_influencer(pk: str):
 
 def ban_influencer(pk: str, reason: str = ""):
     save_manual(pk, {"is_banned": 1, "ban_reason": reason})
+    invalidate_cache("banned_pks", "stats", "url_stats")
 
 
 def unban_influencer(pk: str):
     save_manual(pk, {"is_banned": 0, "ban_reason": ""})
+    invalidate_cache("banned_pks", "stats", "url_stats")
 
 
 def get_banned_pks() -> set:
+    return _cached("banned_pks", _get_banned_pks_impl)
+
+def _get_banned_pks_impl() -> set:
     """밴된 인플루언서 pk 목록."""
     try:
         if _USE_SUPABASE:
@@ -641,11 +668,16 @@ def get_banned_list():
 
 def hide_influencer(pk: str):
     save_manual(pk, {"is_hidden": 1})
+    invalidate_cache("hidden_pks", "stats", "url_stats")
 
 def unhide_influencer(pk: str):
     save_manual(pk, {"is_hidden": 0})
+    invalidate_cache("hidden_pks", "stats", "url_stats")
 
 def get_hidden_pks() -> set:
+    return _cached("hidden_pks", _get_hidden_pks_impl)
+
+def _get_hidden_pks_impl() -> set:
     """숨김 처리된 인플루언서 pk 목록."""
     try:
         if _USE_SUPABASE:
@@ -904,6 +936,9 @@ def get_influencer_reels(pk: str, sort: str = "recent", limit: int = 20) -> list
 
 
 def get_stats():
+    return _cached("stats", _get_stats_impl)
+
+def _get_stats_impl():
     hidden_pks = get_hidden_pks()
     banned_pks = get_banned_pks()
     excluded = hidden_pks | banned_pks
@@ -983,6 +1018,9 @@ def get_stats():
 
 
 def get_url_stats():
+    return _cached("url_stats", _get_url_stats_impl, ttl=60)
+
+def _get_url_stats_impl():
     """외부 URL 도메인별 통계"""
     from urllib.parse import urlparse
     excluded = get_hidden_pks() | get_banned_pks()
