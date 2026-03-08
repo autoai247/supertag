@@ -2206,7 +2206,7 @@ def collect_progress(job_id: str,
 
         log.info(f"[{_label}] SSE 시작 — resume_from={resume_from}, resume_new={resume_new}, resume_posts={resume_posts}, resume_page={resume_page}")
 
-        BATCH_PAGES = 8  # 배치당 페이지 수 (Vercel 타임아웃 전에 완료)
+        BATCH_PAGES = 15  # 배치당 페이지 수 (최적화 후 증가)
 
         try:
             from crawler import _hiker_hashtag_medias_page, _hiker_location_medias_page
@@ -2251,31 +2251,27 @@ def collect_progress(job_id: str,
             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
             while new_cnt < target_users and batch_done < BATCH_PAGES:
-                # 다른 탭에서 중지 요청 확인
-                try:
-                    from database import get_collect_job as _gcj2
-                    _job_check = _gcj2(job_db_id)
-                    if _job_check and _job_check.get("status") == "stopped":
-                        # 최종 수치 DB 저장
-                        try:
-                            _stop_pks = list(set((json.loads(_job_check.get("collected_pks","[]")) if isinstance(_job_check.get("collected_pks"), str) else (_job_check.get("collected_pks") or [])) + collected_pk_list))
-                            _stop_new_pks = list(set((json.loads(_job_check.get("new_pks","[]")) if isinstance(_job_check.get("new_pks"), str) else (_job_check.get("new_pks") or [])) + new_pk_list))
-                            from datetime import datetime as _dt3, timezone as _tz3, timedelta as _td3
-                            update_collect_job(job_db_id,
-                                collected_posts=total_medias, new_users=new_cnt,
-                                updated_users=updated_cnt, last_next_id=last_next_id or "",
-                                last_page=page_num,
-                                collected_pks=json.dumps(_stop_pks),
-                                new_pks=json.dumps(_stop_new_pks),
-                                finished_at=_dt3.now(_tz3(_td3(hours=9))).isoformat())
-                        except Exception:
-                            pass
-                        p.update({"done": True, "status": f"중지됨 — 신규 {new_cnt:,}명 저장됨",
-                                  "new": new_cnt, "updated": updated_cnt, "posts": total_medias})
-                        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
-                        return
-                except Exception as _stop_err:
-                    log.warning(f"Stop check failed: {_stop_err}")
+                # 다른 탭에서 중지 요청 확인 (3페이지마다 — DB 호출 절약)
+                if batch_done % 3 == 0:
+                    try:
+                        from database import get_collect_job as _gcj2
+                        _job_check = _gcj2(job_db_id)
+                        if _job_check and _job_check.get("status") == "stopped":
+                            try:
+                                from datetime import datetime as _dt3, timezone as _tz3, timedelta as _td3
+                                update_collect_job(job_db_id,
+                                    collected_posts=total_medias, new_users=new_cnt,
+                                    updated_users=updated_cnt, last_next_id=last_next_id or "",
+                                    last_page=page_num, status="stopped",
+                                    finished_at=_dt3.now(_tz3(_td3(hours=9))).isoformat())
+                            except Exception:
+                                pass
+                            p.update({"done": True, "status": f"중지됨 — 신규 {new_cnt:,}명 저장됨",
+                                      "new": new_cnt, "updated": updated_cnt, "posts": total_medias})
+                            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                            return
+                    except Exception as _stop_err:
+                        log.warning(f"Stop check failed: {_stop_err}")
 
                 page_num += 1
                 batch_done += 1
@@ -2317,6 +2313,8 @@ def collect_progress(job_id: str,
 
                 total_medias += len(items)
                 page_users = []
+                _new_batch = []  # (pk_str, uname, fname, pic, hashtag) 배치 삽입용
+
                 for m in items:
                     if not isinstance(m, dict):
                         continue
@@ -2336,43 +2334,31 @@ def collect_progress(job_id: str,
                     fname = user_data.get("full_name", "")
                     pic = str(user_data.get("profile_pic_url", "") or "")
                     is_new = pk_str not in existing_pks
-                    pic_local = ""
 
                     if is_new:
-                        # 신규 유저만 프로필 사진 업로드 + DB 저장
-                        pic_local = ""
-                        if pic:
-                            try:
-                                from database import upload_profile_pic
-                                stored = upload_profile_pic(pk_str, pic)
-                                if stored:
-                                    pic_local = stored
-                            except Exception:
-                                pass
-
-                        try:
-                            inf_data = {
-                                "pk": pk_str, "username": uname,
-                                "full_name": fname, "profile_pic_url": pic,
-                                "hashtag": hashtag or _label,
-                            }
-                            if pic_local:
-                                inf_data["profile_pic_local"] = pic_local
-                            upsert_influencer(inf_data)
-                            new_cnt += 1
-                            new_pk_list.append(pk_str)
-                            existing_pks.add(pk_str)
-                        except Exception:
-                            pass
+                        _new_batch.append((pk_str, uname, fname, pic))
+                        new_cnt += 1
+                        new_pk_list.append(pk_str)
+                        existing_pks.add(pk_str)
                     else:
                         updated_cnt += 1
                     collected_pk_list.append(pk_str)
 
                     page_users.append({
                         "username": uname, "full_name": fname,
-                        "pic": _pic({"profile_pic_local": pic_local, "profile_pic_url": pic, "username": uname}),
+                        "pic": _pic({"profile_pic_url": pic, "username": uname}),
                         "is_new": is_new,
                     })
+
+                # ── 신규 유저 배치 DB 삽입 (프로필 사진 업로드는 나중에) ──
+                if _new_batch:
+                    from database import batch_insert_influencers
+                    _tag = hashtag or _label
+                    batch_insert_influencers([
+                        {"pk": nb[0], "username": nb[1], "full_name": nb[2],
+                         "profile_pic_url": nb[3], "hashtag": _tag}
+                        for nb in _new_batch
+                    ])
 
                 p.update({"posts": total_medias, "new": new_cnt, "updated": updated_cnt,
                           "status": f"페이지 {page_num:,} — 신규 {new_cnt:,}명 / 중복 {updated_cnt:,}명 / 목표 {target_users:,}명",
@@ -2382,27 +2368,15 @@ def collect_progress(job_id: str,
                           "users": page_users})
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
-                # 페이지마다 DB 통계 + collected_pks 실시간 업데이트
-                try:
-                    from database import get_collect_job as _gcj
-                    _prev = _gcj(job_db_id) or {}
-                    _pp = []
-                    _pn = []
+                # 3페이지마다 DB 통계 업데이트 (매 페이지 → 불필요한 오버헤드)
+                if batch_done % 3 == 0 or not next_id:
                     try:
-                        _pp = json.loads(_prev.get("collected_pks","[]")) if isinstance(_prev.get("collected_pks"), str) else (_prev.get("collected_pks") or [])
-                    except: pass
-                    try:
-                        _pn = json.loads(_prev.get("new_pks","[]")) if isinstance(_prev.get("new_pks"), str) else (_prev.get("new_pks") or [])
-                    except: pass
-                    _all_pks = list(set(_pp + collected_pk_list))
-                    _all_new = list(set(_pn + new_pk_list))
-                    update_collect_job(job_db_id,
-                        collected_posts=total_medias, new_users=new_cnt,
-                        updated_users=updated_cnt, status="running",
-                        collected_pks=json.dumps(_all_pks),
-                        new_pks=json.dumps(_all_new))
-                except Exception:
-                    pass
+                        update_collect_job(job_db_id,
+                            collected_posts=total_medias, new_users=new_cnt,
+                            updated_users=updated_cnt, status="running",
+                            last_next_id=last_next_id or "", last_page=page_num)
+                    except Exception:
+                        pass
 
                 if not next_id:
                     no_data = True
@@ -2410,11 +2384,12 @@ def collect_progress(job_id: str,
                 max_id = next_id
                 last_next_id = next_id
 
-                base_wait = min(0.3 + page_num * 0.05, 2.0)
+                # 적응형 대기: API 응답이 느리면 대기 줄임
                 elapsed = time.time() - _page_start
-                if elapsed > 5:
-                    base_wait = max(base_wait, elapsed * 0.5)
-                time.sleep(base_wait)
+                if elapsed > 3:
+                    time.sleep(0.1)  # API가 이미 느렸으면 최소 대기
+                else:
+                    time.sleep(max(0.2, 0.5 - elapsed * 0.1))
 
             # 목표 달성 or 더 이상 데이터 없음 → 진짜 완료
             is_truly_done = new_cnt >= target_users or no_data

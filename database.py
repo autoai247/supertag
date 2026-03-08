@@ -465,6 +465,60 @@ def upsert_influencer(data: dict) -> str:
         finally: conn.close()
 
 
+def batch_insert_influencers(users: list):
+    """신규 유저 배치 삽입 (수집 속도 최적화). 이미 존재하는 pk는 무시."""
+    if not users:
+        return
+    now = time.time()
+    if _USE_SUPABASE:
+        # existing_pks 캐시로 이미 필터링된 상태이므로 바로 삽입
+        # Supabase는 on_conflict로 중복 무시
+        rows = []
+        for u in users:
+            rows.append({
+                "pk": str(u["pk"]), "username": u.get("username"),
+                "full_name": u.get("full_name"),
+                "profile_pic_url": u.get("profile_pic_url"),
+                "hashtags": u.get("hashtag", ""),
+                "follower_count": 0, "following_count": 0, "media_count": 0,
+                "is_private": 0, "is_verified": 0, "is_business": 0,
+                "created_at": now, "updated_at": now,
+            })
+        # Supabase bulk upsert — 한번의 HTTP 요청으로 전부 삽입
+        try:
+            headers = _sb_headers()
+            headers["Prefer"] = "resolution=ignore-duplicates"
+            _req.post(_sb_url(T_INF), headers=headers, json=rows)
+        except Exception as e:
+            import logging
+            logging.getLogger("database").warning(f"batch_insert error: {e}")
+            # fallback: 개별 삽입
+            for u in users:
+                try:
+                    upsert_influencer(u)
+                except Exception:
+                    pass
+    else:
+        conn = get_conn()
+        try:
+            for u in users:
+                pk = str(u["pk"])
+                existing = conn.execute(f"SELECT pk FROM {T_INF} WHERE pk=?", (pk,)).fetchone()
+                if not existing:
+                    conn.execute(f"""INSERT INTO {T_INF} (pk,username,full_name,profile_pic_url,
+                        hashtags,follower_count,following_count,media_count,created_at,updated_at)
+                        VALUES (?,?,?,?,?,0,0,0,?,?)""", (
+                        pk, u.get("username"), u.get("full_name"), u.get("profile_pic_url"),
+                        u.get("hashtag",""), now, now))
+            conn.commit()
+        finally:
+            conn.close()
+    # 캐시 업데이트
+    if "existing_pks" in _cache:
+        for u in users:
+            _cache["existing_pks"][1].add(str(u["pk"]))
+
+
 def update_influencer_stats(pk: str, stats: dict):
     now = time.time()
     payload = {
