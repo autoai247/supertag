@@ -829,8 +829,12 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
     rows = r.json() if isinstance(r.json(), list) else []
     total_str = r.headers.get("Content-Range","0/0").split("/")[-1]
     total = int(total_str) if total_str.isdigit() else len(rows)
+    # has_url pk 필터 사용 시 total 직접 설정
+    if _has_url_pks is not None:
+        total = len(_has_url_pks)
     # 숨김/밴 pk 클라이언트 필터링 (need_manual_filter 없을 때만)
-    if not need_manual_filter and excluded_pks:
+    # _has_url_pks 사용 시 이미 excluded_pks 제거됨 → 이중 차감 방지
+    if not need_manual_filter and excluded_pks and _has_url_pks is None:
         excluded_str = {str(p) for p in excluded_pks}
         rows = [row for row in rows if str(row.get("pk","")) not in excluded_str]
         total = max(0, total - len(excluded_pks))
