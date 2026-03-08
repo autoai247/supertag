@@ -2125,6 +2125,17 @@ def collect_start(hashtag: str = Form(default=""), requested_count: int = Form(d
         job_db_id = add_collect_job(hashtag, "running", target_users, search_type)
         return HTMLResponse(str(job_db_id))
 
+@app.post("/collect/stop/{job_id}")
+def collect_stop(job_id: str, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    try:
+        jid = int(job_id)
+        update_collect_job(jid, status="stopped")
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, 500)
+
 @app.get("/collect/progress/{job_id}")
 def collect_progress(job_id: str,
                      hashtag: str = Query(default=""),
@@ -2198,6 +2209,20 @@ def collect_progress(job_id: str,
             no_data = False
 
             while new_cnt < target_users and batch_done < BATCH_PAGES:
+                # 다른 탭에서 중지 요청 확인
+                try:
+                    _job_check = _gcj(job_db_id) if '_gcj' in dir() else None
+                    if not _job_check:
+                        from database import get_collect_job as _gcj
+                        _job_check = _gcj(job_db_id)
+                    if _job_check and _job_check.get("status") == "stopped":
+                        p.update({"done": True, "status": f"중지됨 — 신규 {new_cnt}명 저장됨",
+                                  "new": new_cnt, "updated": updated_cnt, "posts": total_medias})
+                        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                        return
+                except Exception:
+                    pass
+
                 page_num += 1
                 batch_done += 1
                 _page_start = time.time()
