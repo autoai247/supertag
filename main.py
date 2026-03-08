@@ -2183,10 +2183,6 @@ def collect_progress(job_id: str,
             pass
 
         log.info(f"[{_label}] SSE 시작 — resume_from={resume_from}, resume_new={resume_new}, resume_posts={resume_posts}, resume_page={resume_page}")
-        p = {"hashtag": _label, "posts": resume_posts, "new": resume_new,
-             "updated": resume_updated, "done": False, "error": None,
-             "status": "게시물 검색 중", "target": target_users}
-        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
         BATCH_PAGES = 8  # 배치당 페이지 수 (Vercel 타임아웃 전에 완료)
 
@@ -2199,15 +2195,38 @@ def collect_progress(job_id: str,
             seen_pks = set()
             collected_pk_list = []
             new_pk_list = []
-            total_medias = resume_posts  # 검색한 게시물 총 수
+            # DB에 저장된 최신 값과 클라이언트 값 비교 → 큰 값 사용
+            total_medias = resume_posts
             new_cnt = resume_new
             updated_cnt = resume_updated
             max_id = resume_from or None
+            _resume_page = resume_page
+            try:
+                from database import get_collect_job as _gcj_init
+                _db_job = _gcj_init(job_db_id)
+                if _db_job:
+                    total_medias = max(resume_posts, _db_job.get("collected_posts", 0) or 0)
+                    new_cnt = max(resume_new, _db_job.get("new_users", 0) or 0)
+                    updated_cnt = max(resume_updated, _db_job.get("updated_users", 0) or 0)
+                    _db_next = _db_job.get("last_next_id", "") or ""
+                    _db_page = _db_job.get("last_page", 0) or 0
+                    if _db_page > _resume_page:
+                        _resume_page = _db_page
+                    if _db_next and not max_id:
+                        max_id = _db_next
+            except Exception:
+                pass
             endpoint = "top" if search_type == "top" else "recent"
-            page_num = resume_page
+            page_num = _resume_page
             batch_done = 0
             last_next_id = None
             no_data = False
+
+            # DB 보정된 값으로 첫 SSE 메시지 전송
+            p = {"hashtag": _label, "posts": total_medias, "new": new_cnt,
+                 "updated": updated_cnt, "done": False, "error": None,
+                 "status": "게시물 검색 중", "target": target_users}
+            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
             while new_cnt < target_users and batch_done < BATCH_PAGES:
                 # 다른 탭에서 중지 요청 확인
