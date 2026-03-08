@@ -2205,11 +2205,11 @@ def collect_progress(job_id: str,
                 from database import get_collect_job as _gcj_init
                 _db_job = _gcj_init(job_db_id)
                 if _db_job:
-                    total_medias = max(resume_posts, _db_job.get("collected_posts", 0) or 0)
-                    new_cnt = max(resume_new, _db_job.get("new_users", 0) or 0)
-                    updated_cnt = max(resume_updated, _db_job.get("updated_users", 0) or 0)
-                    _db_next = _db_job.get("last_next_id", "") or ""
-                    _db_page = _db_job.get("last_page", 0) or 0
+                    total_medias = max(resume_posts, int(_db_job.get("collected_posts", 0) or 0))
+                    new_cnt = max(resume_new, int(_db_job.get("new_users", 0) or 0))
+                    updated_cnt = max(resume_updated, int(_db_job.get("updated_users", 0) or 0))
+                    _db_next = str(_db_job.get("last_next_id", "") or "")
+                    _db_page = int(_db_job.get("last_page", 0) or 0)
                     if _db_page > _resume_page:
                         _resume_page = _db_page
                     if _db_next and not max_id:
@@ -2238,8 +2238,8 @@ def collect_progress(job_id: str,
                                   "new": new_cnt, "updated": updated_cnt, "posts": total_medias})
                         yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
                         return
-                except Exception:
-                    pass
+                except Exception as _stop_err:
+                    log.warning(f"Stop check failed: {_stop_err}")
 
                 page_num += 1
                 batch_done += 1
@@ -2318,7 +2318,7 @@ def collect_progress(job_id: str,
                             inf_data = {
                                 "pk": pk_str, "username": uname,
                                 "full_name": fname, "profile_pic_url": pic,
-                                "hashtag": hashtag,
+                                "hashtag": hashtag or _label,
                             }
                             if pic_local:
                                 inf_data["profile_pic_local"] = pic_local
@@ -2399,8 +2399,8 @@ def collect_progress(job_id: str,
                         pn = prev_job.get("new_pks", "[]")
                         prev_new_pks = json.loads(pn) if isinstance(pn, str) else (pn or [])
                     except: pass
-                all_pks = prev_pks + collected_pk_list
-                all_new_pks = prev_new_pks + new_pk_list
+                all_pks = list(set(prev_pks + collected_pk_list))
+                all_new_pks = list(set(prev_new_pks + new_pk_list))
 
                 save_data = dict(
                     collected_posts=total_medias, new_users=new_cnt,

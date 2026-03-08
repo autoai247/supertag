@@ -609,6 +609,7 @@ def delete_influencer(pk: str):
             conn.execute(f"DELETE FROM {T_MAN} WHERE pk=?", (pk,))
             conn.commit()
         finally: conn.close()
+    invalidate_cache("existing_pks", "stats", "url_stats", "banned_pks", "hidden_pks")
 
 
 def ban_influencer(pk: str, reason: str = ""):
@@ -873,8 +874,10 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
     # _has_url_pks 사용 시 이미 excluded_pks 제거됨 → 이중 차감 방지
     if not need_manual_filter and excluded_pks and _has_url_pks is None:
         excluded_str = {str(p) for p in excluded_pks}
+        before = len(rows)
         rows = [row for row in rows if str(row.get("pk","")) not in excluded_str]
-        total = max(0, total - len(excluded_pks))
+        removed = before - len(rows)
+        total = max(0, total - removed)
         rows = rows[:per_page]
 
     # manual 데이터 병합
@@ -1031,7 +1034,7 @@ def _get_url_stats_impl():
     excluded = get_hidden_pks() | get_banned_pks()
     excluded_str = {str(p) for p in excluded}
     if _USE_SUPABASE:
-        rows = _sb_get(T_INF, {"select": "pk,external_url", "external_url": "not.is.null"}) or []
+        rows = _sb_get_all(T_INF, {"select": "pk,external_url", "external_url": "not.is.null"}) or []
     else:
         conn = get_conn()
         try:

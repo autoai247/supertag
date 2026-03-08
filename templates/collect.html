@@ -898,9 +898,9 @@ function remoteStopJob(jobId) {
 
 function remoteRestartJob(jobId, hashtag, targetUsers) {
   const p = document.getElementById(`monitor-${jobId}`);
-  const prevPosts = parseInt(p?.querySelector('.mon-posts')?.textContent) || 0;
-  const prevNew = parseInt(p?.querySelector('.mon-new')?.textContent) || 0;
-  const prevUpdated = parseInt(p?.querySelector('.mon-dup')?.textContent) || 0;
+  const prevPosts = parseInt((p?.querySelector('.mon-posts')?.textContent||'0').replace(/,/g,'')) || 0;
+  const prevNew = parseInt((p?.querySelector('.mon-new')?.textContent||'0').replace(/,/g,'')) || 0;
+  const prevUpdated = parseInt((p?.querySelector('.mon-dup')?.textContent||'0').replace(/,/g,'')) || 0;
   const prev = _historyJobs[jobId];
   const prevNextId = prev ? (prev.last_next_id || '') : '';
   const prevPage = prev ? (prev.last_page || 0) : 0;
@@ -927,7 +927,7 @@ function remoteRestartJob(jobId, hashtag, targetUsers) {
         job.$('.j-new').textContent = prevNew.toLocaleString();
         job.$('.j-dup').textContent = prevUpdated.toLocaleString();
         job.$('.j-num').textContent = `신규 ${prevNew.toLocaleString()}명 / 중복 ${prevUpdated.toLocaleString()}명 / 목표 ${targetUsers.toLocaleString()}명`;
-        const pct = Math.min(100, Math.round((prevNew / targetUsers) * 100));
+        const pct = targetUsers > 0 ? Math.min(100, Math.round((prevNew / targetUsers) * 100)) : 0;
         job.$('.j-bar').style.width = pct + '%';
         job.setStatus(`이전 수집 이어서 재시작 — 신규 ${prevNew.toLocaleString()}명부터`, 'running');
       }
@@ -1161,7 +1161,7 @@ function restartFromHistory(hashtag, targetUsers, prevJobId) {
         job.$('.j-new').textContent = prevNew.toLocaleString();
         job.$('.j-dup').textContent = prevUpdated.toLocaleString();
         job.$('.j-num').textContent = `신규 ${prevNew.toLocaleString()}명 / 중복 ${prevUpdated.toLocaleString()}명 / 목표 ${targetUsers.toLocaleString()}명`;
-        const pct = Math.min(100, Math.round((prevNew / targetUsers) * 100));
+        const pct = targetUsers > 0 ? Math.min(100, Math.round((prevNew / targetUsers) * 100)) : 0;
         job.$('.j-bar').style.width = pct + '%';
         job.setStatus(`이전 수집 이어서 재시작 — 신규 ${prevNew.toLocaleString()}명부터`, 'running');
       }
@@ -1181,7 +1181,7 @@ function filterJobUsers(btn, type) {
   btn.classList.add('active');
   btn.style.background = '#eef2ff'; btn.style.color = '#4f46e5';
 
-  const items = panel.querySelectorAll('.ju-item, [data-is-new]');
+  const items = panel.querySelectorAll('[data-is-new]');
   let count = 0;
   items.forEach(item => {
     const isNew = item.getAttribute('data-is-new') === 'true';
