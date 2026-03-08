@@ -2245,35 +2245,35 @@ def collect_progress(job_id: str,
                     pic = str(user_data.get("profile_pic_url", "") or "")
                     is_new = pk_str not in existing_pks
 
-                    # 프로필 사진 Supabase Storage 업로드
-                    pic_local = ""
-                    if pic:
-                        try:
-                            from database import upload_profile_pic
-                            stored = upload_profile_pic(pk_str, pic)
-                            if stored:
-                                pic_local = stored
-                        except Exception:
-                            pass
+                    if is_new:
+                        # 신규 유저만 프로필 사진 업로드 + DB 저장
+                        pic_local = ""
+                        if pic:
+                            try:
+                                from database import upload_profile_pic
+                                stored = upload_profile_pic(pk_str, pic)
+                                if stored:
+                                    pic_local = stored
+                            except Exception:
+                                pass
 
-                    try:
-                        inf_data = {
-                            "pk": pk_str, "username": uname,
-                            "full_name": fname, "profile_pic_url": pic,
-                            "hashtag": hashtag,
-                        }
-                        if pic_local:
-                            inf_data["profile_pic_local"] = pic_local
-                        upsert_influencer(inf_data)
-                        collected_pk_list.append(pk_str)
-                        if is_new:
+                        try:
+                            inf_data = {
+                                "pk": pk_str, "username": uname,
+                                "full_name": fname, "profile_pic_url": pic,
+                                "hashtag": hashtag,
+                            }
+                            if pic_local:
+                                inf_data["profile_pic_local"] = pic_local
+                            upsert_influencer(inf_data)
                             new_cnt += 1
                             new_pk_list.append(pk_str)
                             existing_pks.add(pk_str)
-                        else:
-                            updated_cnt += 1
-                    except Exception:
-                        pass
+                        except Exception:
+                            pass
+                    else:
+                        updated_cnt += 1
+                    collected_pk_list.append(pk_str)
 
                     page_users.append({
                         "username": uname, "full_name": fname,

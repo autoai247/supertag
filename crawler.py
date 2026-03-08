@@ -1155,12 +1155,17 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         if not use_hiker:
             raise Exception("HikerAPI 해시태그 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
 
-        # 유저 상세 정보 조회
-        total_pks = len(all_pks)
-        progress[job_id]["status"] = f"유저 정보 조회 중 (0/{total_pks})"
-        new_cnt = updated_cnt = 0
+        # 유저 상세 정보 조회 (신규만)
+        from database import get_existing_pks
+        existing_pks = get_existing_pks()
+        new_pks = [pk for pk in all_pks if str(pk) not in existing_pks]
+        dup_cnt = len(all_pks) - len(new_pks)
+        total_new = len(new_pks)
+        progress[job_id]["status"] = f"신규 유저 정보 조회 중 (0/{total_new}) — 중복 {dup_cnt}명 스킵"
+        new_cnt = 0
+        updated_cnt = dup_cnt
 
-        for i, pk in enumerate(all_pks):
+        for i, pk in enumerate(new_pks):
             try:
                 # HikerAPI로 유저 정보 조회
                 u_data = _hiker_user_info_by_id(pk)
@@ -1186,11 +1191,10 @@ def crawl_hashtag(hashtag: str, requested_count: int,
                     "hashtag": hashtag,
                 }
 
-                result = upsert_influencer(data)
-                if result == "new": new_cnt += 1
-                else: updated_cnt += 1
+                upsert_influencer(data)
+                new_cnt += 1
                 progress[job_id].update({"new": new_cnt, "updated": updated_cnt,
-                                          "status": f"유저 정보 조회 중 ({i+1}/{total_pks})"})
+                                          "status": f"신규 유저 정보 조회 중 ({i+1}/{total_new}) — 중복 {dup_cnt}명 스킵"})
                 time.sleep(0.3)
             except Exception as e:
                 log.warning(f"유저 {pk} 조회 실패: {e}")
@@ -1302,8 +1306,13 @@ def cron_collect_batch(hashtag: str, target_users: int = 10, search_type: str = 
             if len(all_pks) >= target_users:
                 break
 
-        # 유저 상세 정보 조회
-        for pk in all_pks:
+        # 유저 상세 정보 조회 (신규만)
+        from database import get_existing_pks
+        existing_pks = get_existing_pks()
+        new_pks = [pk for pk in all_pks if str(pk) not in existing_pks]
+        updated_cnt = len(all_pks) - len(new_pks)
+
+        for pk in new_pks:
             try:
                 u_data = _hiker_user_info_by_id(pk)
                 if not u_data:
@@ -1326,11 +1335,8 @@ def cron_collect_batch(hashtag: str, target_users: int = 10, search_type: str = 
                     "profile_pic_url": str(u_data.get("profile_pic_url", "") or ""),
                     "hashtag": hashtag,
                 }
-                result = upsert_influencer(data)
-                if result == "new":
-                    new_cnt += 1
-                else:
-                    updated_cnt += 1
+                upsert_influencer(data)
+                new_cnt += 1
                 time.sleep(0.2)
             except Exception as e:
                 log.warning(f"[cron] 유저 {pk} 조회 실패: {e}")
