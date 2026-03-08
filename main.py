@@ -25,7 +25,8 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       get_favorites, get_favorite_pks, toggle_favorite,
                       get_campaigns, create_campaign, get_campaign, get_campaign_influencers,
                       add_to_campaign, remove_from_campaign, delete_campaign,
-                      add_cron_log, get_cron_logs, get_auto_hashtags)
+                      add_cron_log, get_cron_logs, get_auto_hashtags,
+                      get_url_stats)
 
 # ── 해시태그 활동 유형 분석 헬퍼 ──
 _SELLER_KW = {
@@ -795,6 +796,8 @@ def influencers(
     has_kids: int = 0,
     has_car: int = 0,
     is_visual: int = 0,
+    has_url: int = 0,
+    url_domain: str = "",
     sort: str = "follower_count",
     order: str = "desc",
     page: int = Query(1, gt=0),
@@ -817,6 +820,7 @@ def influencers(
         has_pet=bool(has_pet), is_married=bool(is_married),
         has_kids=bool(has_kids), has_car=bool(has_car),
         is_visual=bool(is_visual),
+        has_url=bool(has_url), url_domain=url_domain,
         sort=sort, order=order, page=page, per_page=per_page
     )
     stats = get_stats()
@@ -836,10 +840,11 @@ def influencers(
         "main_category": main_category,
         "can_live": can_live, "only_approved": only_approved,
         "has_pet": has_pet, "is_married": is_married, "has_kids": has_kids, "has_car": has_car,
-        "is_visual": is_visual,
+        "is_visual": is_visual, "has_url": has_url, "url_domain": url_domain,
         "sort": sort, "order": order,
         "stats": stats, "refresh": refresh,
         "instant_collect_target": instant_collect_target,
+        "url_stats": get_url_stats(),
     })
 
 

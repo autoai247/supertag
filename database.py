@@ -681,13 +681,14 @@ def get_influencers(keyword="", min_f=None, max_f=None,
                     hashtag_filter="", main_category="",
                     can_live=False, only_approved=False,
                     has_pet=False, is_married=False, has_kids=False, has_car=False,
-                    is_visual=False,
+                    is_visual=False, has_url=False, url_domain="",
                     sort="follower_count", order="desc",
                     page=1, per_page=50):
     if _USE_SUPABASE:
         return _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
                                     hashtag_filter, main_category, can_live, only_approved,
                                     has_pet, is_married, has_kids, has_car, is_visual,
+                                    has_url, url_domain,
                                     sort, order, page, per_page)
     # SQLite
     conditions, params = [], []
@@ -708,6 +709,8 @@ def get_influencers(keyword="", min_f=None, max_f=None,
     if has_kids: conditions.append("m.has_kids=1")
     if has_car: conditions.append("m.has_car=1")
     if is_visual: conditions.append("m.is_visual=1")
+    if has_url: conditions.append("i.external_url IS NOT NULL AND i.external_url != ''")
+    if url_domain: conditions.append("i.external_url LIKE ?"); params.append(f"%{url_domain}%")
     # 밴된/숨김 유저 제외
     conditions.append("COALESCE(m.is_hidden,0)!=1")
     conditions.append("COALESCE(m.is_banned,0)!=1")
@@ -739,6 +742,7 @@ def get_influencers(keyword="", min_f=None, max_f=None,
 def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
                          hashtag_filter, main_category, can_live, only_approved,
                          has_pet, is_married, has_kids, has_car, is_visual,
+                         has_url, url_domain,
                          sort, order, page, per_page):
     """Supabase PostgREST 필터링 - 조인이 없으므로 2단계 조회"""
     # Step 1: manual 필터로 pk 목록 가져오기
@@ -780,6 +784,8 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
             inf_params["follower_count"] = f"lte.{max_f}"
     if only_verified: inf_params["is_verified"] = "eq.1"
     if exclude_private: inf_params["is_private"] = "eq.0"
+    if has_url: inf_params["external_url"] = "not.is.null"
+    if url_domain: inf_params["external_url"] = f"ilike.*{url_domain}*"
 
     if need_manual_filter:
         man_rows = _sb_get_all(T_MAN, man_params)
@@ -948,6 +954,38 @@ def get_stats():
             "banned":     cnt(f"SELECT COUNT(*) FROM {T_MAN} WHERE is_banned=1"),
         }
     finally: conn.close()
+
+
+def get_url_stats():
+    """외부 URL 도메인별 통계"""
+    from urllib.parse import urlparse
+    excluded = get_hidden_pks() | get_banned_pks()
+    excluded_str = {str(p) for p in excluded}
+    if _USE_SUPABASE:
+        rows = _sb_get(T_INF, {"select": "pk,external_url", "external_url": "not.is.null"}) or []
+    else:
+        conn = get_conn()
+        try:
+            rows = [dict(r) for r in conn.execute(
+                f"SELECT pk, external_url FROM {T_INF} WHERE external_url IS NOT NULL AND external_url != ''").fetchall()]
+        finally:
+            conn.close()
+    domain_count = {}
+    for r in rows:
+        if str(r.get("pk","")) in excluded_str:
+            continue
+        url = r.get("external_url","") or ""
+        if not url:
+            continue
+        try:
+            d = urlparse(url if url.startswith("http") else "https://"+url).netloc.lower()
+            d = d.replace("www.","")
+            if d:
+                domain_count[d] = domain_count.get(d, 0) + 1
+        except:
+            pass
+    top = sorted(domain_count.items(), key=lambda x: -x[1])
+    return {"top": top[:10], "total": sum(domain_count.values())}
 
 
 def get_public_stats():

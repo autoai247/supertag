@@ -51,24 +51,33 @@
   <!-- URL / SNS 분석 -->
   <div class="card px-4 py-3">
     <div class="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">🔗 외부 URL · SNS 현황</div>
-    <div class="grid grid-cols-3 gap-2">
-      <a href="/influencers?q=linktree" class="text-center p-2 rounded-lg hover:bg-indigo-50 transition cursor-pointer">
+    <div class="grid grid-cols-4 gap-2 mb-2">
+      <a href="/influencers?has_url=1" class="text-center p-2 rounded-lg hover:bg-indigo-50 transition cursor-pointer">
+        <div class="font-bold text-indigo-600 text-lg">{{ url_stats.total | default(0) }}</div>
+        <div class="text-xs text-gray-400">URL 등록</div>
+      </a>
+      <a href="/influencers?url_domain=linktree" class="text-center p-2 rounded-lg hover:bg-indigo-50 transition cursor-pointer">
         <div class="font-bold text-indigo-600 text-lg">{{ stats.linktree | default(0) }}</div>
         <div class="text-xs text-gray-400">링크트리</div>
       </a>
-      <a href="/influencers?sort=follower_count" class="text-center p-2 rounded-lg hover:bg-indigo-50 transition cursor-pointer">
-        <div class="font-bold text-indigo-600 text-lg">{{ stats.has_url | default(0) }}</div>
-        <div class="text-xs text-gray-400">URL 등록</div>
-      </a>
-      <a href="/influencers" class="text-center p-2 rounded-lg hover:bg-pink-50 transition cursor-pointer">
+      <a href="/influencers?url_domain=tiktok" class="text-center p-2 rounded-lg hover:bg-pink-50 transition cursor-pointer">
         <div class="font-bold text-pink-500 text-lg">{{ stats.has_tiktok | default(0) }}</div>
-        <div class="text-xs text-gray-400">틱톡 계정</div>
+        <div class="text-xs text-gray-400">틱톡</div>
       </a>
-      <a href="/influencers" class="text-center p-2 rounded-lg hover:bg-red-50 transition cursor-pointer">
+      <a href="/influencers?url_domain=youtube" class="text-center p-2 rounded-lg hover:bg-red-50 transition cursor-pointer">
         <div class="font-bold text-red-500 text-lg">{{ stats.has_youtube | default(0) }}</div>
-        <div class="text-xs text-gray-400">유튜브 계정</div>
+        <div class="text-xs text-gray-400">유튜브</div>
       </a>
     </div>
+    {% if url_stats and url_stats.top %}
+    <div class="text-xs text-gray-400 mb-1">TOP 도메인</div>
+    {% for domain, cnt in url_stats.top[:3] %}
+    <a href="/influencers?url_domain={{ domain }}" class="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-50 transition text-xs">
+      <span class="text-gray-600">{{ domain }}</span>
+      <span class="font-bold text-indigo-600">{{ cnt }}</span>
+    </a>
+    {% endfor %}
+    {% endif %}
   </div>
   <!-- 인플루언서 특성 -->
   <div class="card px-4 py-3">
@@ -88,7 +97,7 @@
       </a>
       <a href="/influencers?can_live=1" class="text-center p-2 rounded-lg hover:bg-orange-50 transition cursor-pointer">
         <div class="font-bold text-orange-500 text-lg">{{ stats.live_ok }}</div>
-        <div class="text-xs text-gray-400">📡 라이브</div>
+        <div class="text-xs text-gray-400">📡 쇼호스트</div>
       </a>
       <a href="/influencers?is_visual=1" class="text-center p-2 rounded-lg hover:bg-pink-50 transition cursor-pointer">
         <div class="font-bold text-pink-500 text-lg">{{ stats.is_visual | default(0) }}</div>
