@@ -784,10 +784,32 @@ def _get_influencers_sb(keyword, min_f, max_f, only_verified, exclude_private,
             inf_params["follower_count"] = f"lte.{max_f}"
     if only_verified: inf_params["is_verified"] = "eq.1"
     if exclude_private: inf_params["is_private"] = "eq.0"
-    if has_url and not url_domain: inf_params["external_url"] = "neq."
     if url_domain: inf_params["external_url"] = f"ilike.*{url_domain}*"
 
-    if need_manual_filter:
+    # has_url: URL이 있는 사람만 (별도 처리 — pk 목록으로 필터)
+    _has_url_pks = None
+    if has_url and not url_domain:
+        url_rows = _sb_get_all(T_INF, {"select": "pk", "external_url": "not.is.null"})
+        _has_url_pks = set()
+        for ur in (url_rows or []):
+            eu = ur.get("external_url", "") or ""
+            if eu.strip():
+                _has_url_pks.add(ur["pk"])
+
+    if _has_url_pks is not None:
+        # has_url 필터: pk 목록으로 제한
+        _has_url_pks -= excluded_pks
+        if not _has_url_pks:
+            return 0, []
+        if need_manual_filter:
+            man_rows = _sb_get_all(T_MAN, man_params)
+            man_pks = set(r["pk"] for r in (man_rows or []))
+            _has_url_pks &= man_pks
+            if not _has_url_pks:
+                return 0, []
+        pk_list = list(_has_url_pks)
+        inf_params["pk"] = f"in.({','.join(pk_list)})"
+    elif need_manual_filter:
         man_rows = _sb_get_all(T_MAN, man_params)
         pks = [r["pk"] for r in man_rows] if man_rows else []
         if not pks:
