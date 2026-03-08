@@ -755,8 +755,13 @@ function createMonitorPanel(jobId, job) {
         <div class="flex items-center gap-2">
           <svg class="toggle-arrow w-3.5 h-3.5 text-gray-400 transition-transform" style="transform:rotate(90deg);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
           <span class="text-xs font-semibold text-gray-600">수집된 인플루언서</span>
+          <span class="mon-userCount text-xs text-gray-400">0명</span>
+          <div class="flex items-center gap-1" style="margin-left:4px;">
+            <button onclick="event.stopPropagation();filterJobUsers(this,'all')" class="juf-chip active px-2 py-0.5 rounded-full text-xs font-semibold transition" style="background:#eef2ff;color:#4f46e5;">전체</button>
+            <button onclick="event.stopPropagation();filterJobUsers(this,'new')" class="juf-chip px-2 py-0.5 rounded-full text-xs font-semibold text-gray-400 hover:bg-gray-100 transition">신규</button>
+            <button onclick="event.stopPropagation();filterJobUsers(this,'existing')" class="juf-chip px-2 py-0.5 rounded-full text-xs font-semibold text-gray-400 hover:bg-gray-100 transition">기존</button>
+          </div>
         </div>
-        <span class="mon-userCount text-xs text-gray-400">0명</span>
       </div>
       <div class="user-list-wrap">
         <div class="mon-userList divide-y divide-gray-50" style="max-height:300px;overflow-y:auto;">
@@ -802,6 +807,7 @@ function createMonitorPanel(jobId, job) {
                 const fcStr = fc ? (fc >= 1000000 ? (fc/1000000).toFixed(1).replace(/\.0$/,'')+'M' : fc >= 1000 ? (fc/1000).toFixed(1).replace(/\.0$/,'')+'K' : fc) : '';
                 const div = document.createElement('div');
                 div.className = 'flex items-center gap-3 px-4 py-1.5 hover:bg-gray-50';
+                div.setAttribute('data-is-new', u.is_new ? 'true' : 'false');
                 div.innerHTML = `
                   <span class="text-xs text-gray-300 w-5 text-right flex-shrink-0">${i+1}</span>
                   <img src="${u.profile_pic_resolved || u.profile_pic_url || 'https://ui-avatars.com/api/?name='+encodeURIComponent(u.username||'U')+'&background=6366f1&color=fff&size=32'}"
@@ -1106,7 +1112,7 @@ function filterJobUsers(btn, type) {
     item.style.display = show ? '' : 'none';
     if (show) count++;
   });
-  const countEl = panel.querySelector('.h-userCount') || panel.querySelector('.j-userCount');
+  const countEl = panel.querySelector('.h-userCount') || panel.querySelector('.j-userCount') || panel.querySelector('.mon-userCount');
   if (countEl) countEl.textContent = count + '명';
 }
 </script>
