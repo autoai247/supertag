@@ -478,8 +478,22 @@ os.makedirs(_STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
-templates.env.filters["dt"]    = lambda t: (datetime.fromtimestamp(float(t), tz=timezone(timedelta(hours=9)))).strftime("%m/%d %H:%M") if t else "-"
-templates.env.filters["comma"] = lambda n: f"{int(n or 0):,}"
+def _dt_filter(t):
+    if not t: return "-"
+    try:
+        return datetime.fromtimestamp(float(t), tz=timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
+    except (ValueError, TypeError, OSError):
+        # ISO 문자열 처리
+        try:
+            s = str(t)
+            if "T" in s:
+                from datetime import datetime as _dtc
+                dt = _dtc.fromisoformat(s.replace("Z", "+00:00"))
+                return dt.astimezone(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
+        except Exception:
+            pass
+    return str(t)[:16] if t else "-"
+templates.env.filters["dt"] = _dt_filter
 def _fmtn(n):
     v = int(n or 0)
     if v <= 0: return "0"
@@ -488,8 +502,10 @@ def _fmtn(n):
     return str(v)
 templates.env.filters["fmtn"] = _fmtn
 def _comma(n):
-    try: return f"{int(n or 0):,}"
-    except: return str(n)
+    try:
+        if n is None or n == '' or n == '?': return "0"
+        return f"{int(float(str(n).replace(',','')))  :,}"
+    except: return str(n) if n else "0"
 templates.env.filters["comma"] = _comma
 def _fromjson(s):
     try: return json.loads(s) if isinstance(s, str) else s
