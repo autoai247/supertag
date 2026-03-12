@@ -2214,7 +2214,7 @@ def cron_auto(request: Request):
         tag = auto_tags[0]
         tag_name = tag.get("name", "")
         try:
-            r = cron_collect_batch(tag_name, target_users=10, search_type="recent")
+            r = cron_collect_batch(tag_name, target_users=0, search_type="recent")
             results["collect"] = {"hashtag": tag_name, **r}
             add_cron_log("collect", "error" if r.get("error") else "ok",
                          hashtag=tag_name, details=r)
@@ -2265,7 +2265,7 @@ def cron_manual_run(session_id: Optional[str] = Cookie(default=None)):
         tag = auto_tags[0]
         tag_name = tag.get("name", "")
         try:
-            r = cron_collect_batch(tag_name, target_users=10, search_type="recent")
+            r = cron_collect_batch(tag_name, target_users=0, search_type="recent")
             results["collect"] = {"hashtag": tag_name, **r}
             add_cron_log("collect", "error" if r.get("error") else "ok",
                          hashtag=tag_name, details=r)

@@ -317,9 +317,13 @@ def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "r
             if len(all_items) >= amount:
                 break
             if not next_id:
+                log.info(f"[HikerAPI] #{hashtag} 페이지네이션 종료 (next_id 없음) — 최종 {len(all_items)}개")
                 break
             max_id = next_id
             time.sleep(0.3)
+
+        if len(all_items) >= amount:
+            log.info(f"[HikerAPI] #{hashtag} 요청량 도달 — {len(all_items)}개")
 
         # v1 top도 추가 (중복 제거)
         if search_type != "top":
@@ -1155,50 +1159,53 @@ def crawl_hashtag(hashtag: str, requested_count: int,
         if not use_hiker:
             raise Exception("HikerAPI 해시태그 조회 실패 — HIKERAPI_TOKEN을 확인하세요")
 
-        # 유저 상세 정보 조회 (신규만)
+        # 유저 정보 저장 — 게시물 내 user 필드에서 직접 추출 (추가 API 호출 없음)
         from database import get_existing_pks
         existing_pks = get_existing_pks()
-        new_pks = [pk for pk in all_pks if str(pk) not in existing_pks]
-        dup_cnt = len(all_pks) - len(new_pks)
-        total_new = len(new_pks)
-        progress[job_id]["status"] = f"신규 유저 정보 조회 중 (0/{total_new}) — 중복 {dup_cnt}명 스킵"
-        new_cnt = 0
-        updated_cnt = dup_cnt
 
-        for i, pk in enumerate(new_pks):
+        # 게시물에서 유저 정보 맵 구성 (pk → user_data)
+        user_map = {}
+        for m in hiker_medias:
+            u = m.get("user", {})
+            pk = str(u.get("pk", ""))
+            if pk and pk not in user_map:
+                user_map[pk] = u
+
+        new_cnt = 0
+        updated_cnt = 0
+        total_users = len(user_map)
+
+        progress[job_id]["status"] = f"유저 저장 중 (0/{total_users})"
+
+        for i, (pk, u_data) in enumerate(user_map.items()):
             try:
-                # HikerAPI로 유저 정보 조회
-                u_data = _hiker_user_info_by_id(pk)
-                if not u_data:
-                    log.warning(f"유저 {pk} 정보 조회 실패")
-                    continue
+                is_new = str(pk) not in existing_pks
                 data = {
-                    "pk": str(u_data["pk"]),
+                    "pk": str(pk),
                     "username": u_data.get("username", ""),
-                    "full_name": u_data.get("full_name", ""),
-                    "biography": u_data.get("biography", ""),
-                    "follower_count": u_data.get("follower_count", 0),
-                    "following_count": u_data.get("following_count", 0),
-                    "media_count": u_data.get("media_count", 0),
+                    "full_name": str(u_data.get("full_name", "") or ""),
+                    "follower_count": u_data.get("follower_count", 0) or 0,
+                    "following_count": u_data.get("following_count", 0) or 0,
+                    "media_count": u_data.get("media_count", 0) or 0,
                     "is_private": u_data.get("is_private", False),
                     "is_verified": u_data.get("is_verified", False),
-                    "is_business": u_data.get("is_business", False),
-                    "category": u_data.get("category", ""),
-                    "public_email": u_data.get("public_email", "") or "",
-                    "public_phone": u_data.get("public_phone_number", "") or "",
-                    "external_url": str(u_data.get("external_url", "") or ""),
+                    "is_business": u_data.get("is_business_account", False) or u_data.get("is_business", False),
                     "profile_pic_url": str(u_data.get("profile_pic_url", "") or ""),
                     "hashtag": hashtag,
                 }
-
                 upsert_influencer(data)
-                new_cnt += 1
-                progress[job_id].update({"new": new_cnt, "updated": updated_cnt,
-                                          "status": f"신규 유저 정보 조회 중 ({i+1}/{total_new}) — 중복 {dup_cnt}명 스킵"})
-                time.sleep(0.3)
+                if is_new:
+                    new_cnt += 1
+                else:
+                    updated_cnt += 1
+
+                if (i + 1) % 100 == 0 or (i + 1) == total_users:
+                    progress[job_id].update({
+                        "new": new_cnt, "updated": updated_cnt,
+                        "status": f"유저 저장 중 ({i+1}/{total_users}) — 신규 {new_cnt}, 기존 {updated_cnt}"
+                    })
             except Exception as e:
-                log.warning(f"유저 {pk} 조회 실패: {e}")
-                time.sleep(1)
+                log.warning(f"유저 {pk} 저장 실패: {e}")
 
         try:
             update_collect_job(job_db_id,
@@ -1291,55 +1298,46 @@ def cron_collect_batch(hashtag: str, target_users: int = 10, search_type: str = 
     new_cnt = updated_cnt = 0
     collected_posts = 0
     try:
-        # HikerAPI로 해시태그 게시물 수집
-        hiker_medias = _hiker_hashtag_medias(hashtag, amount=500, search_type=search_type)
+        # HikerAPI로 해시태그 게시물 수집 (페이징 한계까지 최대 수집)
+        hiker_medias = _hiker_hashtag_medias(hashtag, amount=5000, search_type=search_type)
         if not hiker_medias:
             raise Exception("HikerAPI 해시태그 조회 실패")
 
-        all_pks = set()
+        # 게시물 내 user 정보로 직접 저장 (추가 API 호출 없음)
+        user_map = {}
         for m in hiker_medias:
-            user_data = m.get("user", {})
-            pk = user_data.get("pk")
-            if pk:
-                all_pks.add(str(pk))
+            u = m.get("user", {})
+            pk = str(u.get("pk", ""))
+            if pk and pk not in user_map:
+                user_map[pk] = u
             collected_posts += 1
-            if len(all_pks) >= target_users:
-                break
 
-        # 유저 상세 정보 조회 (신규만)
         from database import get_existing_pks
         existing_pks = get_existing_pks()
-        new_pks = [pk for pk in all_pks if str(pk) not in existing_pks]
-        updated_cnt = len(all_pks) - len(new_pks)
 
-        for pk in new_pks:
+        for pk, u_data in user_map.items():
             try:
-                u_data = _hiker_user_info_by_id(pk)
-                if not u_data:
-                    continue
+                is_new = str(pk) not in existing_pks
                 data = {
-                    "pk": str(u_data["pk"]),
+                    "pk": str(pk),
                     "username": u_data.get("username", ""),
-                    "full_name": u_data.get("full_name", ""),
-                    "biography": u_data.get("biography", ""),
-                    "follower_count": u_data.get("follower_count", 0),
-                    "following_count": u_data.get("following_count", 0),
-                    "media_count": u_data.get("media_count", 0),
+                    "full_name": str(u_data.get("full_name", "") or ""),
+                    "follower_count": u_data.get("follower_count", 0) or 0,
+                    "following_count": u_data.get("following_count", 0) or 0,
+                    "media_count": u_data.get("media_count", 0) or 0,
                     "is_private": u_data.get("is_private", False),
                     "is_verified": u_data.get("is_verified", False),
-                    "is_business": u_data.get("is_business", False),
-                    "category": u_data.get("category", ""),
-                    "public_email": u_data.get("public_email", "") or "",
-                    "public_phone": u_data.get("public_phone_number", "") or "",
-                    "external_url": str(u_data.get("external_url", "") or ""),
+                    "is_business": u_data.get("is_business_account", False) or u_data.get("is_business", False),
                     "profile_pic_url": str(u_data.get("profile_pic_url", "") or ""),
                     "hashtag": hashtag,
                 }
                 upsert_influencer(data)
-                new_cnt += 1
-                time.sleep(0.2)
+                if is_new:
+                    new_cnt += 1
+                else:
+                    updated_cnt += 1
             except Exception as e:
-                log.warning(f"[cron] 유저 {pk} 조회 실패: {e}")
+                log.warning(f"[cron] 유저 {pk} 저장 실패: {e}")
 
         try:
             update_collect_job(job_db_id, status="done",
