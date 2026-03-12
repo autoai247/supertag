@@ -849,14 +849,23 @@ def _extract_media_fields(m, pk: str):
         try:
             # 1) 직접 thumbnail_url
             thumbnail_url = m.get("thumbnail_url", "") or ""
-            # 2) image_versions2.candidates
+            # 2) 캐러셀: resources/carousel_media 에서 첫 아이템 (최우선)
+            if not thumbnail_url and media_type == 8:
+                carousel = m.get("resources") or m.get("carousel_media") or []
+                if isinstance(carousel, list) and carousel and isinstance(carousel[0], dict):
+                    first = carousel[0]
+                    thumbnail_url = (first.get("thumbnail_url", "")
+                                     or _get_img_url(first, "image_versions2")
+                                     or _get_img_url(first, "image_versions")
+                                     or "")
+            # 3) image_versions2.candidates
             if not thumbnail_url:
                 thumbnail_url = _get_img_url(m, "image_versions2")
-            # 3) image_versions (HikerAPI: list 형태)
+            # 4) image_versions (HikerAPI: list 형태)
             if not thumbnail_url:
                 thumbnail_url = _get_img_url(m, "image_versions")
-            # 4) 캐러셀: carousel_media 또는 resources 에서 첫 아이템
-            if not thumbnail_url:
+            # 5) 비-캐러셀: carousel_media/resources 에서 첫 아이템
+            if not thumbnail_url and media_type != 8:
                 carousel = m.get("carousel_media") or m.get("resources") or []
                 if isinstance(carousel, list) and carousel and isinstance(carousel[0], dict):
                     first = carousel[0]
@@ -1081,8 +1090,8 @@ def _enrich_reel_views(medias: list):
         # 릴스: 조회수 0이면 보완 필요
         if is_reel and _extract_views(m) == 0:
             need_enrich.append(m)
-        # 캐러셀: thumbnail_url과 image_versions2 둘 다 없으면 보완 필요
-        elif is_carousel and not m.get("thumbnail_url") and not m.get("image_versions2"):
+        # 캐러셀: thumbnail_url 없으면 항상 보완 (resources에서 가져와야 함)
+        elif is_carousel and not m.get("thumbnail_url"):
             need_enrich.append(m)
     if not need_enrich:
         return
