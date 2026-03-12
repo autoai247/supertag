@@ -1181,11 +1181,7 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
 
 @app.get("/api/debug/version")
 def debug_version():
-    import subprocess
-    try:
-        commit = subprocess.check_output(["git","rev-parse","--short","HEAD"], stderr=subprocess.DEVNULL, timeout=3).decode().strip()
-    except Exception:
-        commit = "unknown"
+    commit = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")[:7] or "unknown"
     return JSONResponse({"commit": commit, "deployed": True})
 
 @app.get("/api/debug/excluded-pks")

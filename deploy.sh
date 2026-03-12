@@ -12,7 +12,7 @@ echo "[deploy] 현재 배포 commit: $OLD_COMMIT"
 # 2) git push
 echo "[deploy] git push origin master..."
 git push origin master
-NEW_COMMIT=$(git rev-parse --short HEAD)
+NEW_COMMIT=$(git rev-parse HEAD | cut -c1-7)
 echo "[deploy] 새 commit: $NEW_COMMIT"
 
 if [ "$OLD_COMMIT" = "$NEW_COMMIT" ]; then

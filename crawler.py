@@ -808,37 +808,38 @@ def _extract_media_fields(m, pk: str):
 
     # thumbnail — 여러 경로에서 추출 시도
     thumbnail_url = ""
+    def _get_cands_url(obj, key):
+        """obj[key]['candidates'][0]['url'] 안전 추출"""
+        v = obj.get(key) if isinstance(obj, dict) else None
+        if isinstance(v, dict):
+            cands = v.get("candidates", [])
+            if isinstance(cands, list) and cands and isinstance(cands[0], dict):
+                return cands[0].get("url", "")
+        return ""
+
     if isinstance(m, dict):
-        # 1) 직접 thumbnail_url
-        thumbnail_url = m.get("thumbnail_url", "") or ""
-        # 2) image_versions2.candidates (표준)
-        if not thumbnail_url:
-            img = m.get("image_versions2", {})
-            candidates = img.get("candidates", [])
-            if candidates:
-                thumbnail_url = candidates[0].get("url", "")
-        # 3) image_versions (구버전 API)
-        if not thumbnail_url:
-            img_v1 = m.get("image_versions", {})
-            cands_v1 = img_v1.get("candidates", [])
-            if cands_v1:
-                thumbnail_url = cands_v1[0].get("url", "")
-        # 4) 캐러셀(슬라이드) 게시물: 첫 번째 슬라이드에서 추출
-        if not thumbnail_url:
-            carousel = m.get("carousel_media", [])
-            if carousel and isinstance(carousel, list):
-                first = carousel[0]
-                for key in ("image_versions2", "image_versions"):
-                    c_img = first.get(key, {})
-                    c_cands = c_img.get("candidates", [])
-                    if c_cands:
-                        thumbnail_url = c_cands[0].get("url", "")
-                        break
-        # 5) 릴스/동영상: video_versions 첫 프레임
-        if not thumbnail_url:
-            video_vers = m.get("video_versions", [])
-            if video_vers and isinstance(video_vers, list):
-                thumbnail_url = video_vers[0].get("url", "")
+        try:
+            # 1) 직접 thumbnail_url
+            thumbnail_url = m.get("thumbnail_url", "") or ""
+            # 2) image_versions2.candidates
+            if not thumbnail_url:
+                thumbnail_url = _get_cands_url(m, "image_versions2")
+            # 3) image_versions (구버전)
+            if not thumbnail_url:
+                thumbnail_url = _get_cands_url(m, "image_versions")
+            # 4) 캐러셀: 첫 슬라이드에서 추출
+            if not thumbnail_url:
+                carousel = m.get("carousel_media", [])
+                if isinstance(carousel, list) and carousel and isinstance(carousel[0], dict):
+                    first = carousel[0]
+                    thumbnail_url = _get_cands_url(first, "image_versions2") or _get_cands_url(first, "image_versions")
+            # 5) 릴스/동영상: video_versions
+            if not thumbnail_url:
+                vv = m.get("video_versions", [])
+                if isinstance(vv, list) and vv and isinstance(vv[0], dict):
+                    thumbnail_url = vv[0].get("url", "")
+        except Exception as e:
+            log.debug(f"썸네일 추출 오류: {e}")
     else:
         try:
             if m.thumbnail_url:
