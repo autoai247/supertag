@@ -84,7 +84,7 @@ def _hiker_user_info_by_id(user_id: str) -> dict | None:
     return None
 
 
-def _hiker_user_medias(user_id: str, amount: int = 50) -> list | None:
+def _hiker_user_medias(user_id: str, amount: int = 12) -> list | None:
     """HikerAPI로 유저 게시물 조회 (페이징). 실패 시 None."""
     hk = _get_hiker()
     if not hk:
@@ -967,7 +967,7 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
         u_info = None
 
         # ① HikerAPI 시도
-        hiker_medias = _hiker_user_medias(pk, amount=50)
+        hiker_medias = _hiker_user_medias(pk, amount=12)
         if hiker_medias:
             medias = hiker_medias
             u_info = _hiker_user_info_by_id(pk)
@@ -975,7 +975,7 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
 
         # ② instagrapi 폴백
         if not medias and cl:
-            medias = cl.user_medias(int(pk), amount=50)
+            medias = cl.user_medias(int(pk), amount=12)
             try:
                 u_info = cl.user_info(int(pk))
             except Exception:
