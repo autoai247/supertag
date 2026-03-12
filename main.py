@@ -1242,23 +1242,20 @@ def debug_media_raw(username: str = ""):
 
 @app.get("/api/debug/db-posts/{pk}")
 def debug_db_posts(pk: str):
-    """DB에 저장된 recent_posts의 썸네일 상태 확인."""
+    """DB posts 테이블에서 게시물 썸네일 상태 확인."""
     inf = get_influencer(pk)
     if not inf:
         return JSONResponse({"error": "인플루언서 없음"})
-    posts_raw = inf.get("recent_posts") or "[]"
-    try:
-        posts = json.loads(posts_raw) if isinstance(posts_raw, str) else posts_raw
-    except:
-        posts = []
+    posts = get_influencer_posts(pk)
     result = []
     for p in posts[:12]:
         result.append({
             "code": p.get("code", ""),
-            "type": p.get("type", ""),
+            "post_type": p.get("post_type", ""),
             "has_thumbnail": bool(p.get("thumbnail_url")),
             "thumbnail_preview": (p.get("thumbnail_url") or "")[:80],
             "likes": p.get("likes", 0),
+            "views": p.get("views", 0),
         })
     return JSONResponse({"pk": pk, "username": inf.get("username"), "post_count": len(posts), "posts": result})
 
