@@ -537,6 +537,23 @@ def _pic(inf, size=128):
     return f"https://ui-avatars.com/api/?name={quote(name[:2])}&background=6366f1&color=fff&size={size}"
 templates.env.filters["pic"] = _pic
 
+@app.get("/api/img-proxy")
+def img_proxy(url: str = ""):
+    """Instagram CDN 이미지 프록시 — referrer 차단 및 만료 URL 우회"""
+    if not url or not url.startswith("https://"):
+        return Response(b"", status_code=400)
+    import requests as _req
+    try:
+        r = _req.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code == 200 and len(r.content) > 500:
+            ct = r.headers.get("content-type", "image/jpeg")
+            return Response(r.content, media_type=ct,
+                            headers={"Cache-Control": "public, max-age=86400"})
+    except Exception:
+        pass
+    return Response(b"", status_code=404)
+
+
 def _safe_cd(fname: str) -> str:
     """Content-Disposition 헤더용 RFC 5987 인코딩"""
     from urllib.parse import quote
