@@ -2671,6 +2671,8 @@ def collect_progress(job_id: str,
             batch_done = 0
             last_next_id = None
             no_data = False
+            _dup_streak = 0  # 연속 고중복 페이지 카운터
+            _switched_endpoint = False  # recent→top 전환 여부
 
             # DB 보정된 값으로 첫 SSE 메시지 전송
             p = {"hashtag": _label, "posts": total_medias, "new": new_cnt,
@@ -2807,10 +2809,46 @@ def collect_progress(job_id: str,
                         pass
 
                 if not next_id:
+                    # recent가 끝났으면 top으로 전환 시도
+                    if endpoint == "recent" and not _switched_endpoint:
+                        endpoint = "top"
+                        max_id = None
+                        _switched_endpoint = True
+                        _dup_streak = 0
+                        p.update({"status": f"top 게시물로 전환 — 신규 {new_cnt:,}명"})
+                        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                        continue
                     no_data = True
                     break
                 max_id = next_id
                 last_next_id = next_id
+
+                # 유저 중복률 체크 — 새 유저가 거의 안 나오면 전환/종료
+                _page_new = len(_new_batch)
+                _page_total = len([m for m in items if isinstance(m, dict) and isinstance(m.get("user"), dict) and m["user"].get("pk")])
+                if _page_total > 0 and _page_new == 0:
+                    _dup_streak += 1
+                elif _page_total > 0 and _page_new / _page_total < 0.05:
+                    _dup_streak += 1
+                else:
+                    _dup_streak = 0
+
+                if _dup_streak >= 5:
+                    if endpoint == "recent" and not _switched_endpoint:
+                        # recent에서 중복 과다 → top으로 전환
+                        endpoint = "top"
+                        max_id = None
+                        _switched_endpoint = True
+                        _dup_streak = 0
+                        log.info(f"[{_label}] recent 중복 과다 → top 전환 (신규 {new_cnt}, 중복 {updated_cnt})")
+                        p.update({"status": f"중복 과다 → top 게시물 전환 (신규 {new_cnt:,}명)"})
+                        yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                        continue
+                    else:
+                        # top에서도 중복 과다 → 조기 종료
+                        log.info(f"[{_label}] 양쪽 모두 중복 과다 → 조기 종료 (신규 {new_cnt}, 중복 {updated_cnt})")
+                        no_data = True
+                        break
 
                 # 적응형 대기: API 응답이 느리면 대기 줄임
                 elapsed = time.time() - _page_start
