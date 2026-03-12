@@ -171,59 +171,63 @@ def _hiker_user_medias(user_id: str, amount: int = 12) -> list | None:
     return None
 
 
-def _parse_section_medias(data) -> list:
-    """HikerAPI 응답에서 미디어 목록 추출 — v1/v2 공통 파서."""
-    medias = []
-    # v1 chunk: 리스트 형태 직접 반환
+def _parse_v1_chunk(data) -> tuple:
+    """HikerAPI v1 chunk 응답 파싱. (medias_list, next_max_id) 반환.
+
+    v1 chunk 응답 형식:
+      [미디어_리스트, next_max_id_문자열]  ← 가장 흔한 형태
+      또는 dict {response: {sections: [...]}, next_max_id: ...}  ← v2 형태
+      또는 단순 리스트 [미디어1, 미디어2, ...]
+    """
+    # 형태 1: [리스트, 커서문자열] — v1 chunk 표준 형태
+    if isinstance(data, list) and len(data) == 2:
+        first, second = data
+        if isinstance(first, list) and (isinstance(second, str) or second is None):
+            medias = [m for m in first if isinstance(m, dict) and (m.get("pk") or m.get("id"))]
+            return medias, second
+
+    # 형태 2: 단순 미디어 리스트 (next_id 없음)
     if isinstance(data, list):
-        for item in data:
-            if isinstance(item, dict) and (item.get("pk") or item.get("id")):
-                medias.append(item)
-        return medias
-    if not isinstance(data, dict):
-        return medias
-    # v1 chunk 형식: {response: {sections: [...]}} 또는 직접 sections
-    resp = data.get("response", data)
-    if isinstance(resp, list):
-        for item in resp:
-            if isinstance(item, dict) and (item.get("pk") or item.get("id")):
-                medias.append(item)
-        return medias
-    sections = resp.get("sections", [])
-    for sec in sections:
-        lc = sec.get("layout_content", {}) if isinstance(sec, dict) else {}
-        for row in lc.get("medias", []):
-            md = row.get("media") if isinstance(row, dict) else None
-            if isinstance(md, dict):
-                medias.append(md)
-        obt = lc.get("one_by_two_item")
-        if isinstance(obt, dict):
-            for ci in obt.get("clips", {}).get("items", []):
-                md = ci.get("media") if isinstance(ci, dict) else None
-                if isinstance(md, dict):
-                    medias.append(md)
-        for fi in lc.get("fill_items", []):
-            md = fi.get("media") if isinstance(fi, dict) else None
-            if isinstance(md, dict):
-                medias.append(md)
-    return medias
+        medias = [m for m in data if isinstance(m, dict) and (m.get("pk") or m.get("id"))]
+        return medias, None
 
+    # 형태 3: dict 응답 (v2 또는 다른 형태)
+    if isinstance(data, dict):
+        resp = data.get("response", data)
+        next_id = (data.get("next_page_id") or data.get("next_max_id")
+                   or (resp.get("next_page_id") if isinstance(resp, dict) else None)
+                   or (resp.get("next_max_id") if isinstance(resp, dict) else None))
 
-def _parse_next_id(data) -> str | None:
-    """HikerAPI 응답에서 다음 페이지 커서 추출."""
-    if not isinstance(data, dict):
-        return None
-    resp = data.get("response", data)
-    if not isinstance(resp, dict):
-        return None
-    next_id = (data.get("next_page_id")
-               or data.get("next_max_id")
-               or resp.get("next_page_id")
-               or resp.get("next_max_id")
-               or resp.get("next_media_ids", {}).get("default"))
-    if not next_id and resp.get("more_available"):
-        next_id = resp.get("next_max_id") or resp.get("max_id")
-    return next_id
+        # sections 형태
+        if isinstance(resp, dict) and "sections" in resp:
+            medias = []
+            for sec in resp.get("sections", []):
+                lc = sec.get("layout_content", {}) if isinstance(sec, dict) else {}
+                for row in lc.get("medias", []):
+                    md = row.get("media") if isinstance(row, dict) else None
+                    if isinstance(md, dict):
+                        medias.append(md)
+                obt = lc.get("one_by_two_item")
+                if isinstance(obt, dict):
+                    for ci in obt.get("clips", {}).get("items", []):
+                        md = ci.get("media") if isinstance(ci, dict) else None
+                        if isinstance(md, dict):
+                            medias.append(md)
+                for fi in lc.get("fill_items", []):
+                    md = fi.get("media") if isinstance(fi, dict) else None
+                    if isinstance(md, dict):
+                        medias.append(md)
+            if not next_id and isinstance(resp, dict) and resp.get("more_available"):
+                next_id = resp.get("next_max_id") or resp.get("max_id")
+            return medias, next_id
+
+        # items 형태
+        items = resp.get("items", []) if isinstance(resp, dict) else []
+        if items:
+            medias = [m for m in items if isinstance(m, dict)]
+            return medias, next_id
+
+    return [], None
 
 
 def _hiker_hashtag_medias_page(hashtag: str, endpoint: str = "recent", max_id: str = None) -> tuple:
@@ -263,8 +267,7 @@ def _hiker_hashtag_medias_page(hashtag: str, endpoint: str = "recent", max_id: s
             log.warning(f"[HikerAPI] {endpoint} 응답 {r.status_code}: {r.text[:200]}")
             return [], None
         data = r.json()
-        medias = _parse_section_medias(data)
-        next_id = _parse_next_id(data)
+        medias, next_id = _parse_v1_chunk(data)
         log.info(f"[HikerAPI] hashtag={hashtag} ep={endpoint} max_id={str(max_id)[:20]} → {len(medias)} medias, next={bool(next_id)}")
         return medias, next_id
     except Exception as e:
