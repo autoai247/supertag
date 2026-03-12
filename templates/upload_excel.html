@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}엑셀 업로드 - SuperTag{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-xl font-bold text-gray-800">엑셀 업로드</h1>
+  <p class="text-sm text-gray-500 mt-1">외부 보고서 엑셀 파일을 업로드하여 인플루언서 DB에 등록합니다.</p>
+</div>
+
+<div class="card p-6 max-w-2xl">
+  <!-- 해시태그 라벨 -->
+  <div class="mb-4">
+    <label class="block text-sm font-semibold text-gray-700 mb-1">해시태그 라벨 (선택)</label>
+    <input type="text" id="hashtagLabel" placeholder="예: 에르메스그릇" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+    <p class="text-xs text-gray-400 mt-1">입력하면 업로드된 인플루언서에 해시태그가 일괄 지정됩니다.</p>
+  </div>
+
+  <!-- 드래그&드롭 영역 -->
+  <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all">
+    <svg class="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+    <p class="text-sm font-medium text-gray-600">엑셀 파일을 여기에 드래그하거나</p>
+    <button type="button" onclick="fileInput.click()" class="btn btn-primary mt-3 text-sm">파일 선택</button>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden" />
+    <p id="fileName" class="text-xs text-gray-400 mt-2"></p>
+  </div>
+
+  <!-- 업로드 버튼 -->
+  <div class="mt-4 flex items-center gap-3">
+    <button id="uploadBtn" onclick="doUpload()" disabled class="btn btn-green text-sm opacity-50 cursor-not-allowed">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+      업로드 및 등록
+    </button>
+    <span id="uploadStatus" class="text-sm text-gray-500"></span>
+  </div>
+
+  <!-- 진행바 -->
+  <div id="progressWrap" class="mt-4 hidden">
+    <div class="w-full bg-gray-200 rounded-full h-2">
+      <div id="progressBar" class="h-2 rounded-full transition-all" style="width:0%;background:linear-gradient(135deg,#6366f1,#8b5cf6);"></div>
+    </div>
+    <p id="progressText" class="text-xs text-gray-500 mt-1">처리 중...</p>
+  </div>
+
+  <!-- 결과 -->
+  <div id="resultArea" class="mt-5 hidden">
+    <div class="bg-gray-50 rounded-lg p-4">
+      <h3 class="font-semibold text-sm text-gray-700 mb-2">업로드 결과</h3>
+      <div class="grid grid-cols-2 gap-2 text-sm" id="resultGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 양식 안내 -->
+<div class="card p-6 max-w-2xl mt-5">
+  <h3 class="font-semibold text-sm text-gray-700 mb-3">지원하는 엑셀 양식</h3>
+  <div class="overflow-x-auto">
+    <table class="text-xs text-gray-600 w-full">
+      <thead><tr class="border-b border-gray-200">
+        <th class="py-1 px-2 text-left font-semibold">열</th>
+        <th class="py-1 px-2 text-left font-semibold">항목</th>
+        <th class="py-1 px-2 text-left font-semibold">DB 매핑</th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="py-1 px-2">A</td><td>아이디</td><td>username</td></tr>
+        <tr class="bg-gray-50"><td class="py-1 px-2">B</td><td>닉네임</td><td>full_name</td></tr>
+        <tr><td class="py-1 px-2">C</td><td>총 팔로워 수</td><td>follower_count</td></tr>
+        <tr class="bg-gray-50"><td class="py-1 px-2">D</td><td>총 팔로잉 수</td><td>following_count</td></tr>
+        <tr><td class="py-1 px-2">G</td><td>총 게시물 수</td><td>media_count</td></tr>
+        <tr class="bg-gray-50"><td class="py-1 px-2">H</td><td>동영상 게시물 수</td><td>reel_count</td></tr>
+        <tr><td class="py-1 px-2">J</td><td>평균 좋아요 수</td><td>avg_likes</td></tr>
+        <tr class="bg-gray-50"><td class="py-1 px-2">K</td><td>평균 댓글 수</td><td>avg_comments</td></tr>
+        <tr><td class="py-1 px-2">M</td><td>계정 비공개 여부</td><td>is_private</td></tr>
+        <tr class="bg-gray-50"><td class="py-1 px-2">N</td><td>계정 카테고리</td><td>category</td></tr>
+        <tr><td class="py-1 px-2">O</td><td>비지니스 계정 여부</td><td>is_business</td></tr>
+        <tr class="bg-gray-50"><td class="py-1 px-2">S</td><td>공식 계정 여부</td><td>is_verified</td></tr>
+        <tr><td class="py-1 px-2">V</td><td>릴 조회수</td><td>avg_reel_views</td></tr>
+        <tr class="bg-gray-50"><td class="py-1 px-2">X</td><td>프로필 설명란</td><td>biography</td></tr>
+        <tr><td class="py-1 px-2">Z</td><td>프로필 대표 링크</td><td>external_url</td></tr>
+        <tr class="bg-gray-50"><td class="py-1 px-2">AB</td><td>페북 연결 링크</td><td>facebook_url</td></tr>
+        <tr><td class="py-1 px-2 font-bold">AE</td><td class="font-bold">pk (필수)</td><td class="font-bold">pk (기본키)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-gray-400 mt-2">* pk(AE열)가 있는 행만 처리됩니다. 이미 존재하는 pk는 업데이트됩니다.</p>
+</div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const uploadBtn = document.getElementById('uploadBtn');
+let selectedFile = null;
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-indigo-400','bg-indigo-50'); });
+dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.classList.remove('border-indigo-400','bg-indigo-50'); });
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('border-indigo-400','bg-indigo-50');
+  const f = e.dataTransfer.files[0];
+  if (f && (f.name.endsWith('.xlsx') || f.name.endsWith('.xls'))) selectFile(f);
+  else alert('xlsx 파일만 업로드 가능합니다.');
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) selectFile(e.target.files[0]); });
+
+function selectFile(f) {
+  selectedFile = f;
+  document.getElementById('fileName').textContent = f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)';
+  uploadBtn.disabled = false;
+  uploadBtn.classList.remove('opacity-50','cursor-not-allowed');
+}
+
+function doUpload() {
+  if (!selectedFile) return;
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  fd.append('mode', 'upsert');
+  fd.append('hashtag_label', document.getElementById('hashtagLabel').value);
+
+  uploadBtn.disabled = true;
+  uploadBtn.classList.add('opacity-50','cursor-not-allowed');
+  document.getElementById('uploadStatus').textContent = '업로드 중...';
+  document.getElementById('progressWrap').classList.remove('hidden');
+  document.getElementById('resultArea').classList.add('hidden');
+  document.getElementById('progressBar').style.width = '30%';
+  document.getElementById('progressText').textContent = '파일 전송 중...';
+
+  fetch('/api/upload-excel', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('progressBar').style.width = '100%';
+      document.getElementById('progressText').textContent = '완료!';
+      if (data.error) {
+        document.getElementById('uploadStatus').textContent = '';
+        showResult(data, true);
+      } else {
+        document.getElementById('uploadStatus').textContent = '';
+        showResult(data, false);
+      }
+      uploadBtn.disabled = false;
+      uploadBtn.classList.remove('opacity-50','cursor-not-allowed');
+    })
+    .catch(err => {
+      document.getElementById('uploadStatus').textContent = '오류: ' + err.message;
+      uploadBtn.disabled = false;
+      uploadBtn.classList.remove('opacity-50','cursor-not-allowed');
+    });
+}
+
+function showResult(data, isError) {
+  const area = document.getElementById('resultArea');
+  const grid = document.getElementById('resultGrid');
+  area.classList.remove('hidden');
+  if (isError) {
+    grid.innerHTML = '<div class="col-span-2 text-red-600 font-medium">' + (data.error||'알 수 없는 오류') + '</div>';
+    return;
+  }
+  grid.innerHTML = `
+    <div class="flex justify-between py-1"><span class="text-gray-500">전체 처리</span><span class="font-bold text-indigo-600">${data.total}건</span></div>
+    <div class="flex justify-between py-1"><span class="text-gray-500">등록/업데이트</span><span class="font-bold text-green-600">${data.inserted}건</span></div>
+    <div class="flex justify-between py-1"><span class="text-gray-500">건너뜀</span><span class="text-gray-600">${data.skipped}건</span></div>
+    <div class="flex justify-between py-1"><span class="text-gray-500">DB 오류</span><span class="${data.db_errors>0?'text-red-600 font-bold':'text-gray-600'}">${data.db_errors}건</span></div>
+    <div class="flex justify-between py-1"><span class="text-gray-500">파싱 오류</span><span class="${data.parse_errors>0?'text-red-600 font-bold':'text-gray-600'}">${data.parse_errors}건</span></div>
+  `;
+}
+</script>
+{% endblock %}

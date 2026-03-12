@@ -519,6 +519,101 @@ def batch_insert_influencers(users: list):
             _cache["existing_pks"][1].add(str(u["pk"]))
 
 
+def batch_upsert_from_excel(inf_rows: list, man_rows: list = None) -> dict:
+    """엑셀 업로드용 벌크 upsert. inf_rows: 인플루언서 테이블, man_rows: 매뉴얼 테이블.
+    Returns {"inserted": N, "updated": N, "errors": N}
+    """
+    result = {"inserted": 0, "updated": 0, "errors": 0}
+    if not inf_rows:
+        return result
+    now = time.time()
+    BATCH = 200
+
+    if _USE_SUPABASE:
+        # ── 인플루언서 테이블 upsert (merge-duplicates = 있으면 업데이트) ──
+        for i in range(0, len(inf_rows), BATCH):
+            batch = inf_rows[i:i+BATCH]
+            for r in batch:
+                r.setdefault("created_at", now)
+                r["updated_at"] = now
+            try:
+                headers = _sb_headers()
+                headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+                resp = _req.post(_sb_url(T_INF), headers=headers, json=batch)
+                if resp.status_code in (200, 201):
+                    result["inserted"] += len(batch)
+                else:
+                    import logging
+                    logging.getLogger("database").warning(
+                        f"excel bulk upsert error: {resp.status_code} {resp.text[:300]}")
+                    result["errors"] += len(batch)
+            except Exception as e:
+                import logging
+                logging.getLogger("database").warning(f"excel bulk upsert exception: {e}")
+                result["errors"] += len(batch)
+
+        # ── 매뉴얼 테이블 upsert ──
+        if man_rows:
+            for i in range(0, len(man_rows), BATCH):
+                batch = man_rows[i:i+BATCH]
+                for r in batch:
+                    r["updated_at"] = now
+                try:
+                    headers = _sb_headers()
+                    headers["Prefer"] = "resolution=merge-duplicates"
+                    _req.post(_sb_url(T_MAN), headers=headers, json=batch)
+                except Exception:
+                    pass
+    else:
+        conn = get_conn()
+        try:
+            for r in inf_rows:
+                pk = r.get("pk", "")
+                if not pk:
+                    result["errors"] += 1
+                    continue
+                existing = conn.execute(f"SELECT pk FROM {T_INF} WHERE pk=?", (pk,)).fetchone()
+                cols = [k for k in r if k != "pk"]
+                if existing:
+                    sets = ", ".join(f"{k}=?" for k in cols)
+                    conn.execute(f"UPDATE {T_INF} SET {sets}, updated_at=? WHERE pk=?",
+                                 [r[k] for k in cols] + [now, pk])
+                    result["updated"] += 1
+                else:
+                    all_cols = ["pk"] + cols + ["created_at", "updated_at"]
+                    placeholders = ",".join(["?"] * len(all_cols))
+                    conn.execute(f"INSERT INTO {T_INF} ({','.join(all_cols)}) VALUES ({placeholders})",
+                                 [pk] + [r[k] for k in cols] + [now, now])
+                    result["inserted"] += 1
+            if man_rows:
+                for r in man_rows:
+                    pk = r.get("pk", "")
+                    if not pk:
+                        continue
+                    existing = conn.execute(f"SELECT pk FROM {T_MAN} WHERE pk=?", (pk,)).fetchone()
+                    cols = [k for k in r if k != "pk"]
+                    if existing:
+                        sets = ", ".join(f"{k}=?" for k in cols)
+                        conn.execute(f"UPDATE {T_MAN} SET {sets}, updated_at=? WHERE pk=?",
+                                     [r[k] for k in cols] + [now, pk])
+                    else:
+                        all_cols = ["pk"] + cols + ["updated_at"]
+                        placeholders = ",".join(["?"] * len(all_cols))
+                        conn.execute(f"INSERT INTO {T_MAN} ({','.join(all_cols)}) VALUES ({placeholders})",
+                                     [pk] + [r[k] for k in cols] + [now])
+            conn.commit()
+        except Exception as e:
+            import logging
+            logging.getLogger("database").warning(f"excel sqlite upsert error: {e}")
+            result["errors"] += len(inf_rows)
+        finally:
+            conn.close()
+
+    # 캐시 무효화
+    invalidate_cache("existing_pks", "inf_count")
+    return result
+
+
 def update_influencer_stats(pk: str, stats: dict):
     now = time.time()
     payload = {

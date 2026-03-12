@@ -26,7 +26,7 @@ from database import (init_db, get_conn, get_influencers, get_influencer, get_in
                       get_campaigns, create_campaign, get_campaign, get_campaign_influencers,
                       add_to_campaign, remove_from_campaign, delete_campaign,
                       add_cron_log, get_cron_logs, get_auto_hashtags,
-                      get_url_stats)
+                      get_url_stats, batch_upsert_from_excel)
 
 # ── 해시태그 활동 유형 분석 헬퍼 ──
 _SELLER_KW = {
@@ -1455,6 +1455,165 @@ def export_excel(
     return Response(buf.read(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": _safe_cd(fname)})
+
+
+# ═══════════════════════════════════════════════════════
+# 엑셀 업로드 (외부 보고서 → DB 등록)
+# ═══════════════════════════════════════════════════════
+
+def _parse_kr_number(val) -> int:
+    """한국어 숫자 파싱: '1,234', '7,000만', '1.2억' 등"""
+    if val is None:
+        return 0
+    s = str(val).strip().replace(",", "")
+    if "억" in s:
+        try: return int(float(s.replace("억", "")) * 100_000_000)
+        except: return 0
+    if "만" in s:
+        try: return int(float(s.replace("만", "")) * 10_000)
+        except: return 0
+    try: return int(float(s))
+    except: return 0
+
+def _yn_to_int(val) -> int:
+    """Y/N → 1/0"""
+    if val is None: return 0
+    return 1 if str(val).strip().upper() in ("Y", "YES", "1", "TRUE") else 0
+
+@app.get("/upload-excel", response_class=HTMLResponse)
+def upload_excel_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = require_admin(session_id)
+    return templates.TemplateResponse("upload_excel.html", {"request": request, "user": user})
+
+@app.post("/api/upload-excel")
+async def upload_excel_process(
+    file: UploadFile = File(...),
+    mode: str = Form("upsert"),
+    hashtag_label: str = Form(""),
+    session_id: Optional[str] = Cookie(default=None),
+):
+    user = require_admin(session_id)
+    if not file.filename.endswith((".xlsx", ".xls")):
+        return JSONResponse({"error": "xlsx 파일만 업로드 가능합니다."}, status_code=400)
+
+    import openpyxl
+    from io import BytesIO
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        return JSONResponse({"error": "파일 크기가 10MB를 초과합니다."}, status_code=400)
+
+    try:
+        wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=True)
+        ws = wb.active
+    except Exception as e:
+        return JSONResponse({"error": f"엑셀 파일 읽기 실패: {e}"}, status_code=400)
+
+    # 헤더 확인 (1행)
+    header_row = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+
+    inf_rows = []
+    man_rows = []
+    skipped = 0
+    errors = 0
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        try:
+            # AE열(index 30) = pk, A열(index 0) = username
+            pk = str(row[30]).strip() if len(row) > 30 and row[30] else ""
+            username = str(row[0]).strip() if row[0] else ""
+            if not pk and not username:
+                skipped += 1
+                continue
+            # pk가 없으면 username 기반으로 임시 pk 생성
+            if not pk:
+                pk = f"excel_{username}"
+
+            follower = _parse_kr_number(row[2]) if len(row) > 2 else 0
+            following = _parse_kr_number(row[3]) if len(row) > 3 else 0
+            media = _parse_kr_number(row[6]) if len(row) > 6 else 0
+            reel_count = _parse_kr_number(row[7]) if len(row) > 7 else 0
+            avg_likes = _parse_kr_number(row[9]) if len(row) > 9 else 0
+            avg_comments = _parse_kr_number(row[10]) if len(row) > 10 else 0
+            is_private = int(bool(row[12])) if len(row) > 12 and row[12] else 0
+            category = str(row[13]).strip() if len(row) > 13 and row[13] else ""
+            is_business = _yn_to_int(row[14]) if len(row) > 14 else 0
+            biz_category = str(row[15]).strip() if len(row) > 15 and row[15] else ""
+            is_verified = _yn_to_int(row[18]) if len(row) > 18 else 0
+            avg_reel_views = _parse_kr_number(row[21]) if len(row) > 21 else 0
+            biography = str(row[23]).strip() if len(row) > 23 and row[23] else ""
+            external_url = str(row[25]).strip() if len(row) > 25 and row[25] else ""
+
+            # 카테고리: N열 우선, 없으면 P열(비지니스 카테고리)
+            if not category and biz_category:
+                category = biz_category
+
+            # engagement_rate 계산
+            engagement_rate = 0.0
+            if follower > 0 and avg_likes > 0:
+                engagement_rate = round((avg_likes + avg_comments) / follower * 100, 2)
+
+            # feed_count 계산
+            feed_count = max(0, media - reel_count)
+
+            inf_data = {
+                "pk": pk,
+                "username": username,
+                "full_name": str(row[1]).strip() if len(row) > 1 and row[1] else "",
+                "biography": biography,
+                "follower_count": follower,
+                "following_count": following,
+                "media_count": media,
+                "is_private": is_private,
+                "is_verified": is_verified,
+                "is_business": is_business,
+                "category": category,
+                "external_url": external_url,
+                "avg_likes": avg_likes,
+                "avg_comments": avg_comments,
+                "engagement_rate": engagement_rate,
+                "avg_reel_views": avg_reel_views,
+                "reel_count": reel_count,
+                "feed_count": feed_count,
+            }
+            # 해시태그 라벨이 있으면 추가
+            if hashtag_label.strip():
+                inf_data["hashtags"] = hashtag_label.strip()
+
+            inf_rows.append(inf_data)
+
+            # 매뉴얼 테이블 데이터 (페북, 스레드 등)
+            facebook_url = str(row[27]).strip() if len(row) > 27 and row[27] else ""
+            has_threads = _yn_to_int(row[17]) if len(row) > 17 else 0
+            if facebook_url or has_threads:
+                man_data = {"pk": pk}
+                if facebook_url:
+                    man_data["facebook_url"] = facebook_url
+                if has_threads:
+                    man_data["threads_url"] = "connected"
+                man_rows.append(man_data)
+
+        except Exception as e:
+            errors += 1
+            log.warning(f"엑셀 행 파싱 에러: {e}")
+            continue
+
+    wb.close()
+
+    if not inf_rows:
+        return JSONResponse({"error": "유효한 데이터가 없습니다.", "skipped": skipped, "errors": errors}, status_code=400)
+
+    # DB에 벌크 upsert
+    db_result = batch_upsert_from_excel(inf_rows, man_rows if man_rows else None)
+
+    return JSONResponse({
+        "ok": True,
+        "total": len(inf_rows),
+        "inserted": db_result.get("inserted", 0),
+        "updated": db_result.get("updated", 0),
+        "db_errors": db_result.get("errors", 0),
+        "skipped": skipped,
+        "parse_errors": errors,
+    })
 
 
 # ═══════════════════════════════════════════════════════
