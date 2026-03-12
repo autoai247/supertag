@@ -242,16 +242,21 @@ def _hiker_hashtag_medias_page(hashtag: str, endpoint: str = "recent", max_id: s
     token = os.environ.get("HIKERAPI_TOKEN", "").strip()
     if not token:
         return [], None
-    # 엔드포인트 매핑
+    # 엔드포인트 매핑 — v1 top/chunk가 가장 다양한 유저 반환
+    # v1 recent/chunk는 빈 결과 반환 → v2 recent 사용
     url_map = {
-        "recent": "https://api.hikerapi.com/v1/hashtag/medias/recent/chunk",
         "top": "https://api.hikerapi.com/v1/hashtag/medias/top/chunk",
         "clips": "https://api.hikerapi.com/v1/hashtag/medias/clips/chunk",
         "top_recent": "https://api.hikerapi.com/v1/hashtag/medias/top/recent/chunk",
     }
-    url = url_map.get(endpoint)
-    if not url:
-        url = url_map["recent"]
+    # recent는 v2 사용 (v1 recent/chunk가 빈 결과)
+    _use_v2 = endpoint == "recent"
+    if _use_v2:
+        url = "https://api.hikerapi.com/v2/hashtag/medias/recent"
+    else:
+        url = url_map.get(endpoint)
+        if not url:
+            url = url_map["top"]
     params = {"name": hashtag}
     if max_id:
         params["max_id"] = max_id
@@ -353,10 +358,10 @@ def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "r
     try:
         all_items = []
         seen_pks = set()
-        # 여러 엔드포인트 순환: top_recent(통합) → recent → top → clips
-        endpoints = ["top_recent", "recent", "top", "clips"]
-        if search_type == "top":
-            endpoints = ["top", "top_recent", "recent", "clips"]
+        # v1 top이 가장 다양한 유저 반환 → top 우선
+        endpoints = ["top", "clips", "top_recent", "recent"]
+        if search_type == "recent":
+            endpoints = ["recent", "top", "clips", "top_recent"]
         max_pages_per_ep = max(amount // 20, 5)
 
         for ep in endpoints:

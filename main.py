@@ -2666,10 +2666,11 @@ def collect_progress(job_id: str,
                         max_id = _db_next
             except Exception:
                 pass
-            # v1 공식 엔드포인트 순환: top_recent(통합) → recent → top → clips
-            _ENDPOINTS = ["top_recent", "recent", "top", "clips"]
-            if search_type == "top":
-                _ENDPOINTS = ["top", "top_recent", "recent", "clips"]
+            # v1 top이 가장 다양한 유저 반환 (10p=212명 vs v2 recent 10p=43명)
+            # top → clips → top_recent → recent 순서
+            _ENDPOINTS = ["top", "clips", "top_recent", "recent"]
+            if search_type == "recent":
+                _ENDPOINTS = ["recent", "top", "clips", "top_recent"]
             _ep_idx = 0
             endpoint = _ENDPOINTS[_ep_idx]
             page_num = _resume_page
