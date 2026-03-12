@@ -28,7 +28,7 @@ for i in $(seq 1 36); do
     if [ "$DEPLOYED" = "$NEW_COMMIT" ]; then
         echo "[deploy] 배포 완료! ($((i*5))초 소요)"
         # TTS 알림
-        powershell.exe 'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Volume = 100; $s.Rate = 0; [Console]::Beep(600,300); [Console]::Beep(800,300); [Console]::Beep(1000,500); Start-Sleep -Milliseconds 200; $s.Speak("레일웨이 배포 완료")' 2>/dev/null &
+        (sleep 5; powershell.exe 'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Volume = 100; $s.Rate = 0; [Console]::Beep(600,300); [Console]::Beep(800,300); [Console]::Beep(1000,500); Start-Sleep -Milliseconds 200; $s.Speak("레일웨이 배포 완료")') 2>/dev/null &
         exit 0
     fi
     printf "\r[deploy] 대기 중... %ds" $((i*5))
@@ -36,5 +36,5 @@ done
 
 echo ""
 echo "[deploy] 3분 경과 — 타임아웃. 수동 확인 필요"
-powershell.exe 'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Volume = 100; [Console]::Beep(400,800); $s.Speak("배포 타임아웃. 확인 필요합니다")' 2>/dev/null &
+(sleep 5; powershell.exe 'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Volume = 100; [Console]::Beep(400,800); $s.Speak("배포 타임아웃. 확인 필요합니다")') 2>/dev/null &
 exit 1

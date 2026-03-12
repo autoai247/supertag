@@ -834,13 +834,15 @@ def _extract_media_fields(m, pk: str):
 
     # thumbnail — 여러 경로에서 추출 시도
     thumbnail_url = ""
-    def _get_cands_url(obj, key):
-        """obj[key]['candidates'][0]['url'] 안전 추출"""
+    def _get_img_url(obj, key):
+        """obj[key]에서 이미지 URL 추출. dict(candidates) 또는 list 형태 모두 지원."""
         v = obj.get(key) if isinstance(obj, dict) else None
         if isinstance(v, dict):
             cands = v.get("candidates", [])
             if isinstance(cands, list) and cands and isinstance(cands[0], dict):
                 return cands[0].get("url", "")
+        elif isinstance(v, list) and v and isinstance(v[0], dict):
+            return v[0].get("url", "")
         return ""
 
     if isinstance(m, dict):
@@ -849,29 +851,26 @@ def _extract_media_fields(m, pk: str):
             thumbnail_url = m.get("thumbnail_url", "") or ""
             # 2) image_versions2.candidates
             if not thumbnail_url:
-                thumbnail_url = _get_cands_url(m, "image_versions2")
-            # 3) image_versions (구버전)
+                thumbnail_url = _get_img_url(m, "image_versions2")
+            # 3) image_versions (HikerAPI: list 형태)
             if not thumbnail_url:
-                thumbnail_url = _get_cands_url(m, "image_versions")
-            # 4) 캐러셀: 첫 슬라이드에서 추출
+                thumbnail_url = _get_img_url(m, "image_versions")
+            # 4) 캐러셀: carousel_media 또는 resources 에서 첫 아이템
             if not thumbnail_url:
-                carousel = m.get("carousel_media", [])
+                carousel = m.get("carousel_media") or m.get("resources") or []
                 if isinstance(carousel, list) and carousel and isinstance(carousel[0], dict):
                     first = carousel[0]
-                    thumbnail_url = _get_cands_url(first, "image_versions2") or _get_cands_url(first, "image_versions")
+                    thumbnail_url = (first.get("thumbnail_url", "")
+                                     or _get_img_url(first, "image_versions2")
+                                     or _get_img_url(first, "image_versions")
+                                     or "")
             # 5) 릴스/동영상: video_versions
             if not thumbnail_url:
                 vv = m.get("video_versions", [])
                 if isinstance(vv, list) and vv and isinstance(vv[0], dict):
                     thumbnail_url = vv[0].get("url", "")
-            # 디버그: 썸네일 추출 실패 시 구조 로깅
             if not thumbnail_url and media_type == 8:
-                carousel = m.get("carousel_media", [])
-                log.warning(f"[DEBUG] 캐러셀 썸네일 실패 code={m.get('code','')} | "
-                           f"has_thumbnail_url={bool(m.get('thumbnail_url'))} "
-                           f"has_iv2={bool(m.get('image_versions2'))} "
-                           f"carousel_len={len(carousel) if isinstance(carousel, list) else 'N/A'} "
-                           f"carousel_first_keys={sorted(carousel[0].keys())[:10] if carousel and isinstance(carousel[0], dict) else 'N/A'}")
+                log.warning(f"[DEBUG] 캐러셀 썸네일 실패 code={m.get('code','')} keys={sorted(m.keys())[:15]}")
         except Exception as e:
             log.debug(f"썸네일 추출 오류: {e}")
     else:
@@ -1113,12 +1112,13 @@ def _enrich_reel_views(medias: list):
                     log.info(f"[enrich] 릴스 {code} → clips_metadata.play_count={cm['play_count']}")
         # 캐러셀/사진 썸네일 보완
         if mt == 8 or (not m.get("thumbnail_url") and not m.get("image_versions2")):
-            for field in ("thumbnail_url", "image_versions2", "carousel_media"):
+            for field in ("thumbnail_url", "image_versions2", "image_versions",
+                          "carousel_media", "resources"):
                 if detail.get(field):
                     m[field] = detail[field]
             log.info(f"[enrich] 캐러셀 {code} → thumbnail={bool(detail.get('thumbnail_url'))} "
-                     f"iv2={bool(detail.get('image_versions2'))} "
-                     f"carousel={len(detail.get('carousel_media', []))}개")
+                     f"iv={bool(detail.get('image_versions'))} iv2={bool(detail.get('image_versions2'))} "
+                     f"resources={len(detail.get('resources', []))}개")
         time.sleep(0.3)  # rate limit
 
 
