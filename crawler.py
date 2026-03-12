@@ -356,6 +356,23 @@ def _media_get_str(m, key, default=""):
     val = _media_get(m, key, default)
     return str(val) if val else default
 
+def _extract_views(m):
+    """게시물에서 조회수 추출 — 여러 필드명 시도."""
+    for key in ("view_count", "play_count", "video_play_count",
+                "video_view_count", "ig_play_count", "fb_play_count"):
+        v = _media_get(m, key, 0)
+        if v:
+            return int(v)
+    # clips_metadata.play_count (릴스)
+    if isinstance(m, dict):
+        cm = m.get("clips_metadata")
+        if isinstance(cm, dict):
+            v = cm.get("play_count", 0)
+            if v:
+                return int(v)
+    return 0
+
+
 SPONSOR_KEYWORDS = re.compile(
     r'#(ad|advertisement|sponsored|협찬|광고|제공|유료광고|ppㅣ|ppl|협찬제품|제품협찬|협업|파트너십|홍보)',
     re.IGNORECASE
@@ -777,6 +794,15 @@ def _extract_media_fields(m, pk: str):
     is_reel = (media_type == 2 and product_type == "clips")
     post_type = "reel" if is_reel else ("video" if media_type == 2 else ("carousel" if media_type == 8 else "photo"))
 
+    # 디버그: 릴스 조회수 관련 필드 로깅
+    if is_reel and isinstance(m, dict):
+        view_fields = {k: m.get(k) for k in ("view_count","play_count","video_play_count",
+                       "video_view_count","ig_play_count","fb_play_count") if m.get(k)}
+        cm = m.get("clips_metadata")
+        if isinstance(cm, dict) and cm.get("play_count"):
+            view_fields["clips_metadata.play_count"] = cm["play_count"]
+        log.info(f"[DEBUG] 릴스 {_media_get_str(m,'code','')} view_fields={view_fields} | all_keys={sorted(m.keys())[:20]}")
+
     # taken_at: int/float(timestamp), datetime, 또는 ISO문자열 모두 처리
     taken_at = _media_get(m, "taken_at", None)
     # HikerAPI는 taken_at_ts (unix timestamp)도 제공
@@ -838,6 +864,14 @@ def _extract_media_fields(m, pk: str):
                 vv = m.get("video_versions", [])
                 if isinstance(vv, list) and vv and isinstance(vv[0], dict):
                     thumbnail_url = vv[0].get("url", "")
+            # 디버그: 썸네일 추출 실패 시 구조 로깅
+            if not thumbnail_url and media_type == 8:
+                carousel = m.get("carousel_media", [])
+                log.warning(f"[DEBUG] 캐러셀 썸네일 실패 code={m.get('code','')} | "
+                           f"has_thumbnail_url={bool(m.get('thumbnail_url'))} "
+                           f"has_iv2={bool(m.get('image_versions2'))} "
+                           f"carousel_len={len(carousel) if isinstance(carousel, list) else 'N/A'} "
+                           f"carousel_first_keys={sorted(carousel[0].keys())[:10] if carousel and isinstance(carousel[0], dict) else 'N/A'}")
         except Exception as e:
             log.debug(f"썸네일 추출 오류: {e}")
     else:
@@ -868,7 +902,7 @@ def _extract_media_fields(m, pk: str):
         "post_type": post_type,
         "likes": _media_get(m, "like_count", 0) or 0,
         "comments": _media_get(m, "comment_count", 0) or 0,
-        "views": _media_get(m, "view_count", 0) or _media_get(m, "play_count", 0) or 0,
+        "views": _extract_views(m),
         "caption": caption_text[:500],
         "hashtags_used": hashtags_in_post,
         "is_sponsored": is_sponsored,
@@ -923,7 +957,7 @@ def _extract_top_posts(medias: list):
         code = _media_get_str(m, "code", "")
         top_reels.append({
             "url": f"https://www.instagram.com/p/{code}/" if code else "",
-            "views": _media_get(m, "view_count", 0) or _media_get(m, "play_count", 0) or 0,
+            "views": _extract_views(m),
             "thumbnail": _thumb(m),
             "post_id": str(_media_get(m, "pk", "")),
         })
@@ -944,6 +978,13 @@ def _update_profile_from_info(u_info, pk: str, username: str):
             is_biz = 1 if u_info.get("is_business") else 0
             cat = u_info.get("category", "") or ""
             pic_url = u_info.get("profile_pic_url", "") or u_info.get("profile_pic_url_hd", "") or ""
+            ext_url = u_info.get("external_url", "") or ""
+            if not ext_url:
+                bio_links = u_info.get("bio_links", [])
+                if isinstance(bio_links, list) and bio_links and isinstance(bio_links[0], dict):
+                    ext_url = bio_links[0].get("url", "") or ""
+            email = u_info.get("public_email", "") or ""
+            phone = u_info.get("public_phone_number", "") or u_info.get("contact_phone_number", "") or ""
         else:
             fc = getattr(u_info, "follower_count", 0)
             foc = getattr(u_info, "following_count", 0)
@@ -953,6 +994,9 @@ def _update_profile_from_info(u_info, pk: str, username: str):
             is_biz = 1 if getattr(u_info, "is_business", False) else 0
             cat = str(getattr(u_info, "category", "") or "")
             pic_url = str(u_info.profile_pic_url) if u_info.profile_pic_url else ""
+            ext_url = str(getattr(u_info, "external_url", "") or "")
+            email = str(getattr(u_info, "public_email", "") or "")
+            phone = str(getattr(u_info, "public_phone_number", "") or getattr(u_info, "contact_phone_number", "") or "")
 
         profile_updates = {}
         if fc: profile_updates["follower_count"] = fc
@@ -962,6 +1006,9 @@ def _update_profile_from_info(u_info, pk: str, username: str):
         if fn: profile_updates["full_name"] = fn
         profile_updates["is_business"] = is_biz
         if cat: profile_updates["category"] = cat
+        if ext_url: profile_updates["external_url"] = ext_url
+        if email: profile_updates["public_email"] = email
+        if phone: profile_updates["public_phone"] = phone
         if pic_url:
             profile_updates["profile_pic_url"] = pic_url
             # Supabase Storage에 프로필 사진 영구 저장 (기존 파일 자동 교체)
@@ -997,6 +1044,59 @@ def _update_profile_from_info(u_info, pk: str, username: str):
     return pic_local
 
 
+def _hiker_media_info(media_pk: str) -> dict | None:
+    """HikerAPI로 개별 미디어 상세 조회 (view_count 포함)."""
+    token = os.environ.get("HIKERAPI_TOKEN", "").strip()
+    if not token:
+        return None
+    try:
+        r = req_lib.get(
+            "https://api.hikerapi.com/v1/media/by/id",
+            params={"id": str(media_pk)},
+            headers={"x-access-key": token, "accept": "application/json"},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        log.debug(f"[HikerAPI] media_info 실패 {media_pk}: {e}")
+        return None
+
+
+def _enrich_reel_views(medias: list):
+    """릴스 조회수가 0인 경우 media_info API로 개별 조회하여 보완."""
+    if not medias or not isinstance(medias, list):
+        return
+    reels = [m for m in medias if isinstance(m, dict)
+             and m.get("media_type") == 2 and m.get("product_type") == "clips"]
+    if not reels:
+        return
+    # 모든 릴스의 view_count가 0인지 확인
+    has_views = any(_extract_views(r) > 0 for r in reels)
+    if has_views:
+        return  # 이미 조회수 있음
+    log.info(f"[enrich] 릴스 {len(reels)}개 조회수 0 → media_info 개별 조회 시도")
+    for r in reels:
+        mpk = r.get("pk") or r.get("id")
+        if not mpk:
+            continue
+        detail = _hiker_media_info(str(mpk))
+        if detail:
+            for vk in ("view_count", "play_count", "video_play_count", "video_view_count"):
+                v = detail.get(vk, 0)
+                if v:
+                    r[vk] = v
+                    log.info(f"[enrich] 릴스 {r.get('code','')} → {vk}={v}")
+                    break
+            cm = detail.get("clips_metadata")
+            if isinstance(cm, dict) and cm.get("play_count") and not _extract_views(r):
+                r.setdefault("clips_metadata", {})["play_count"] = cm["play_count"]
+                log.info(f"[enrich] 릴스 {r.get('code','')} → clips_metadata.play_count={cm['play_count']}")
+        time.sleep(0.2)  # rate limit
+
+
 def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
     """단일 인플루언서 게시물 수집 + 통계 계산 + 사진 저장.
     HikerAPI 우선, 실패 시 instagrapi(cl) 폴백.
@@ -1023,6 +1123,9 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
 
         if not medias:
             return False
+
+        # 릴스 조회수 보완: user_medias_chunk_v1이 view_count를 안 줄 때 media_info로 개별 조회
+        _enrich_reel_views(medias)
 
         # 게시물 DB 저장
         for m in medias:

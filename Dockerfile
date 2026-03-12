@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 한국어 폰트 설치
+COPY fonts/ ./fonts/
+
 # 앱 코드 복사 (DB 제외)
 COPY *.py ./
 COPY templates/ ./templates/

@@ -659,7 +659,8 @@ def update_influencer_profile(pk: str, fields: dict):
     if not fields:
         return
     allowed = {"follower_count", "following_count", "media_count", "biography", "full_name",
-                "is_business", "category", "profile_pic_url", "profile_pic_local"}
+                "is_business", "category", "profile_pic_url", "profile_pic_local",
+                "external_url", "public_email", "public_phone"}
     payload = {k: v for k, v in fields.items() if k in allowed}
     if not payload:
         return

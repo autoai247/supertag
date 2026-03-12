@@ -14,15 +14,22 @@ from PIL import Image as PILImage
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
-# 폰트 등록 (Nanum Gothic 사용, 없으면 Helvetica)
+# 폰트 등록 (NanumGothic 사용)
 FONT_NAME = "Helvetica"
 FONT_BOLD = "Helvetica-Bold"
+_FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
 try:
-    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-    pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJoStd-Medium'))
-    FONT_NAME = 'HYSMyeongJoStd-Medium'
-    FONT_BOLD = 'HYSMyeongJoStd-Medium'
-except:
+    _ng = os.path.join(_FONT_DIR, "NanumGothic.ttf")
+    _ngb = os.path.join(_FONT_DIR, "NanumGothicBold.ttf")
+    if not os.path.exists(_ng):
+        _ng = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+        _ngb = "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"
+    if os.path.exists(_ng):
+        pdfmetrics.registerFont(TTFont('NanumGothic', _ng))
+        pdfmetrics.registerFont(TTFont('NanumGothicBold', _ngb if os.path.exists(_ngb) else _ng))
+        FONT_NAME = 'NanumGothic'
+        FONT_BOLD = 'NanumGothicBold'
+except Exception:
     pass
 
 C_PURPLE   = colors.HexColor("#6366f1")

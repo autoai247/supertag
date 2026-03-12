@@ -104,7 +104,7 @@ _rate_store_cleanup_ts: float = 0.0  # 마지막 정리 시간
 _honeypot_ips: set = set()  # 허니팟 걸린 IP 영구 차단
 _RATE_LIMIT = 40  # 분당 최대 요청 수 (비인증 사용자)
 _RATE_LIMIT_AUTH = 120  # 분당 최대 요청 수 (인증된 사용자)
-_WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico", "/api/debug/version", "/api/cron"}
+_WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico", "/api/debug/", "/api/cron"}
 # 데이터 페이지 경로 (검색엔진 봇 차단 대상)
 _DATA_PATHS = ["/influencers", "/api/", "/advertiser", "/export", "/collect",
                "/hashtags", "/settings", "/refresh", "/target-extract"]
@@ -1183,6 +1183,48 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
 def debug_version():
     commit = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")[:7] or "unknown"
     return JSONResponse({"commit": commit, "deployed": True})
+
+
+@app.get("/api/debug/media-raw")
+def debug_media_raw(username: str = ""):
+    """HikerAPI 원본 미디어 응답 구조 확인 (첫 2개 게시물의 키/뷰 관련 필드)."""
+    from crawler import _hiker_user_info, _hiker_user_medias
+    if not username:
+        return JSONResponse({"error": "?username= 필요"})
+    info = _hiker_user_info(username)
+    if not info:
+        return JSONResponse({"error": "유저 조회 실패"})
+    medias = _hiker_user_medias(str(info["pk"]), amount=3)
+    if not medias:
+        return JSONResponse({"error": "게시물 조회 실패"})
+    result = []
+    view_keys = ["view_count","play_count","video_play_count","video_view_count",
+                 "ig_play_count","fb_play_count"]
+    for m in medias[:3]:
+        entry = {
+            "all_keys": sorted(m.keys()) if isinstance(m, dict) else [],
+            "media_type": m.get("media_type"),
+            "product_type": m.get("product_type", ""),
+            "code": m.get("code", ""),
+        }
+        for vk in view_keys:
+            entry[f"field_{vk}"] = m.get(vk)
+        # clips_metadata
+        cm = m.get("clips_metadata")
+        if isinstance(cm, dict):
+            entry["clips_metadata_keys"] = sorted(cm.keys())
+            entry["clips_metadata_play_count"] = cm.get("play_count")
+        # thumbnail 관련
+        entry["has_thumbnail_url"] = bool(m.get("thumbnail_url"))
+        entry["has_image_versions2"] = bool(m.get("image_versions2"))
+        entry["has_carousel_media"] = bool(m.get("carousel_media"))
+        if m.get("carousel_media") and isinstance(m["carousel_media"], list) and m["carousel_media"]:
+            first = m["carousel_media"][0]
+            entry["carousel_first_keys"] = sorted(first.keys()) if isinstance(first, dict) else []
+            entry["carousel_first_has_iv2"] = bool(first.get("image_versions2")) if isinstance(first, dict) else False
+        result.append(entry)
+    return JSONResponse({"medias": result})
+
 
 @app.get("/api/debug/excluded-pks")
 def debug_excluded_pks(session_id: Optional[str] = Cookie(default=None)):

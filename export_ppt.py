@@ -9,6 +9,9 @@ from pptx.util import Cm
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
+# 한국어 폰트명 (PPT 뷰어에서 렌더링)
+KR_FONT = "NanumGothic"
+
 C_PURPLE = RGBColor(0x63, 0x66, 0xf1)
 C_DARK   = RGBColor(0x0f, 0x17, 0x2a)
 C_GRAY   = RGBColor(0x64, 0x74, 0x8b)
@@ -44,6 +47,7 @@ def _add_text_box(slide, text, left, top, width, height,
     run.font.size = Pt(font_size)
     run.font.bold = bold
     run.font.color.rgb = color
+    run.font.name = KR_FONT
     return txBox
 
 def _add_stat_box(slide, label, value, left, top, color):
@@ -236,6 +240,7 @@ def export_list_ppt(inf_list: list) -> bytes:
         p.alignment = PP_ALIGN.CENTER
         run = p.runs[0] if p.runs else p.add_run()
         run.font.bold = True; run.font.size = Pt(8); run.font.color.rgb = C_WHITE
+        run.font.name = KR_FONT
 
     for i, (inf, manual) in enumerate(inf_list):
         row_vals = [
@@ -261,6 +266,7 @@ def export_list_ppt(inf_list: list) -> bytes:
             p.alignment = PP_ALIGN.CENTER if j > 0 else PP_ALIGN.LEFT
             run = p.runs[0] if p.runs else p.add_run()
             run.font.size = Pt(8); run.font.color.rgb = C_DARK
+            run.font.name = KR_FONT
 
     buf = io.BytesIO()
     prs.save(buf)
