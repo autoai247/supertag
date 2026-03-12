@@ -6,7 +6,7 @@ SITE="https://web-production-a8d3a.up.railway.app"
 VERSION_URL="$SITE/api/debug/version"
 
 # 1) push 전 현재 commit
-OLD_COMMIT=$(curl -s "$VERSION_URL" 2>/dev/null | grep -o '"commit":"[^"]*"' | cut -d'"' -f4 || echo "none")
+OLD_COMMIT=$(curl -s -H "User-Agent: SuperTagDeploy/1.0 Mozilla" "$VERSION_URL" 2>/dev/null | grep -o '"commit":"[^"]*"' | cut -d'"' -f4 || echo "none")
 echo "[deploy] 현재 배포 commit: $OLD_COMMIT"
 
 # 2) git push
@@ -24,7 +24,7 @@ fi
 echo "[deploy] Railway 빌드 대기 중..."
 for i in $(seq 1 36); do
     sleep 5
-    DEPLOYED=$(curl -s --max-time 5 "$VERSION_URL" 2>/dev/null | grep -o '"commit":"[^"]*"' | cut -d'"' -f4 || echo "")
+    DEPLOYED=$(curl -s -H "User-Agent: SuperTagDeploy/1.0 Mozilla" --max-time 5 "$VERSION_URL" 2>/dev/null | grep -o '"commit":"[^"]*"' | cut -d'"' -f4 || echo "")
     if [ "$DEPLOYED" = "$NEW_COMMIT" ]; then
         echo "[deploy] 배포 완료! ($((i*5))초 소요)"
         # TTS 알림
