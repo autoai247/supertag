@@ -922,7 +922,7 @@ def _update_profile_from_info(u_info, pk: str, username: str):
         if fc: profile_updates["follower_count"] = fc
         if foc: profile_updates["following_count"] = foc
         if mc: profile_updates["media_count"] = mc
-        if bio: profile_updates["bio"] = bio
+        if bio: profile_updates["biography"] = bio
         if fn: profile_updates["full_name"] = fn
         profile_updates["is_business"] = is_biz
         if cat: profile_updates["category"] = cat
