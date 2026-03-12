@@ -975,7 +975,7 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
         if hiker_medias:
             medias = hiker_medias
             u_info = _hiker_user_info_by_id(pk)
-            log.info(f"[{username}] HikerAPI로 게시물 {len(medias)}개 조회")
+            log.info(f"[{username}] HikerAPI로 게시물 {len(medias)}개 조회, 프로필: {'OK' if u_info else 'FAIL'}")
 
         # ② instagrapi 폴백
         if not medias and cl:
