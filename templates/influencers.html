@@ -280,26 +280,40 @@
     </a>
 
     <!-- 스탯 박스들 -->
-    <div class="flex gap-2 flex-shrink-0">
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+    <div class="flex gap-1.5 flex-shrink-0">
+      <div class="text-center px-2.5 py-1.5 rounded-xl bg-gray-50 min-w-14">
         <div class="text-sm font-bold text-gray-900">{{ r.follower_count | fmtn }}</div>
         <div class="text-xs text-gray-400">팔로워</div>
       </div>
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+      <div class="text-center px-2.5 py-1.5 rounded-xl bg-gray-50 min-w-12">
         <div class="text-sm font-bold {% if r.engagement_rate and r.engagement_rate >= 5 %}text-green-600{% elif r.engagement_rate and r.engagement_rate >= 2 %}text-blue-600{% else %}text-gray-400{% endif %}">
           {{ '%.1f'|format(r.engagement_rate or 0) }}%
         </div>
         <div class="text-xs text-gray-400">참여율</div>
       </div>
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
-        <div class="text-sm font-bold text-purple-600">{{ r.avg_reel_views | fmtn if r.avg_reel_views else '-' }}</div>
-        <div class="text-xs text-gray-400">릴스뷰</div>
+      <!-- 피드 평균 -->
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#eff6ff;">
+        <div class="text-xs font-bold text-blue-600">{{ r.avg_feed_likes | fmtn if r.avg_feed_likes else '-' }}</div>
+        <div class="text-xs text-blue-400" style="font-size:9px;">피드❤️</div>
       </div>
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
-        <div class="text-sm font-bold text-pink-500">{{ r.avg_likes | fmtn if r.avg_likes else '-' }}</div>
-        <div class="text-xs text-gray-400">평균좋아요</div>
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#eff6ff;">
+        <div class="text-xs font-bold text-blue-600">{{ r.avg_feed_comments | fmtn if r.avg_feed_comments else '-' }}</div>
+        <div class="text-xs text-blue-400" style="font-size:9px;">피드💬</div>
       </div>
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-12">
+      <!-- 릴스 평균 -->
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
+        <div class="text-xs font-bold text-purple-600">{{ r.avg_reel_views | fmtn if r.avg_reel_views else '-' }}</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스👁</div>
+      </div>
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
+        <div class="text-xs font-bold text-purple-600">{{ r.avg_reel_likes | fmtn if r.avg_reel_likes else '-' }}</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스❤️</div>
+      </div>
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
+        <div class="text-xs font-bold text-purple-600">{{ r.avg_reel_comments | fmtn if r.avg_reel_comments else '-' }}</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스💬</div>
+      </div>
+      <div class="text-center px-2.5 py-1.5 rounded-xl bg-gray-50 min-w-12">
         <div class="text-sm font-bold text-gray-500">{{ r.media_count | comma }}</div>
         <div class="text-xs text-gray-400">게시물</div>
       </div>
@@ -409,24 +423,36 @@ function buildRow(r) {
         ${r.full_name ? '<span class="text-xs text-gray-400 truncate max-w-32">'+r.full_name+'</span>' : ''}
       </div>
     </a>
-    <div class="flex gap-2 flex-shrink-0">
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+    <div class="flex gap-1.5 flex-shrink-0">
+      <div class="text-center px-2.5 py-1.5 rounded-xl bg-gray-50 min-w-14">
         <div class="text-sm font-bold text-gray-900">${fmtn(r.follower_count)}</div>
         <div class="text-xs text-gray-400">팔로워</div>
       </div>
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
+      <div class="text-center px-2.5 py-1.5 rounded-xl bg-gray-50 min-w-12">
         <div class="text-sm font-bold ${erClass}">${er.toFixed(1)}%</div>
         <div class="text-xs text-gray-400">참여율</div>
       </div>
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
-        <div class="text-sm font-bold text-purple-600">${fmtn(r.avg_reel_views)}</div>
-        <div class="text-xs text-gray-400">릴스뷰</div>
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#eff6ff;">
+        <div class="text-xs font-bold text-blue-600">${fmtn(r.avg_feed_likes)}</div>
+        <div class="text-xs text-blue-400" style="font-size:9px;">피드❤️</div>
       </div>
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-16">
-        <div class="text-sm font-bold text-pink-500">${fmtn(r.avg_likes)}</div>
-        <div class="text-xs text-gray-400">평균좋아요</div>
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#eff6ff;">
+        <div class="text-xs font-bold text-blue-600">${fmtn(r.avg_feed_comments)}</div>
+        <div class="text-xs text-blue-400" style="font-size:9px;">피드💬</div>
       </div>
-      <div class="text-center px-3 py-1.5 rounded-xl bg-gray-50 min-w-12">
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
+        <div class="text-xs font-bold text-purple-600">${fmtn(r.avg_reel_views)}</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스👁</div>
+      </div>
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
+        <div class="text-xs font-bold text-purple-600">${fmtn(r.avg_reel_likes)}</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스❤️</div>
+      </div>
+      <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
+        <div class="text-xs font-bold text-purple-600">${fmtn(r.avg_reel_comments)}</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스💬</div>
+      </div>
+      <div class="text-center px-2.5 py-1.5 rounded-xl bg-gray-50 min-w-12">
         <div class="text-sm font-bold text-gray-500">${(r.media_count||0).toLocaleString()}</div>
         <div class="text-xs text-gray-400">게시물</div>
       </div>
