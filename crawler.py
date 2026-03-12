@@ -665,7 +665,7 @@ def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dic
         is_reel = (media_type == 2 and product_type == "clips") or (media_type == 2 and (_media_get(m, "video_duration", 0) or 0) > 0)
         likes = _media_get(m, "like_count", 0) or 0
         comments = _media_get(m, "comment_count", 0) or 0
-        views = _media_get(m, "view_count", 0) or _media_get(m, "play_count", 0) or 0
+        views = _extract_views(m)
         # caption: instagrapi는 caption_text, HikerAPI는 caption.text
         caption = _media_get_str(m, "caption_text", "")
         if not caption and isinstance(m, dict):
@@ -933,6 +933,7 @@ def _extract_top_posts(medias: list):
         top_likes.append({
             "url": f"https://www.instagram.com/p/{code}/" if code else "",
             "likes": _media_get(m, "like_count", 0) or 0,
+            "comments": _media_get(m, "comment_count", 0) or 0,
             "thumbnail": _thumb(m),
             "post_id": str(_media_get(m, "pk", "")),
         })
@@ -950,13 +951,15 @@ def _extract_top_posts(medias: list):
 
     reel_medias = [m for m in medias
                    if _media_get(m, "media_type", 1) == 2 and _media_get(m, "product_type", "") == "clips"]
-    sorted_reels = sorted(reel_medias, key=lambda m: _media_get(m, "view_count", 0) or 0, reverse=True)
+    sorted_reels = sorted(reel_medias, key=lambda m: _extract_views(m), reverse=True)
     top_reels = []
     for m in sorted_reels[:3]:
         code = _media_get_str(m, "code", "")
         top_reels.append({
             "url": f"https://www.instagram.com/p/{code}/" if code else "",
             "views": _extract_views(m),
+            "likes": _media_get(m, "like_count", 0) or 0,
+            "comments": _media_get(m, "comment_count", 0) or 0,
             "thumbnail": _thumb(m),
             "post_id": str(_media_get(m, "pk", "")),
         })

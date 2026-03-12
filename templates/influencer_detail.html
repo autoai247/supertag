@@ -909,9 +909,9 @@
         {% for post in reels_sorted_views %}
         <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
           {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
-          <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">🎬</span><div class="no-img-stats"><span>👁 {{ post.views | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span></div></div>
-          {% else %}<div class="no-img"><span class="type-icon">🎬</span><div class="no-img-stats"><span>👁 {{ post.views | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span></div></div>{% endif %}
-          <div class="overlay"><div class="overlay-txt"><span class="ov-stat"><span class="ov-icon">👁</span>{{ post.views | fmtn }}</span><span class="ov-stat"><span class="ov-icon">❤️</span>{{ post.likes | fmtn }}</span></div></div>
+          <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">🎬</span><div class="no-img-stats"><span>👁 {{ post.views | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span><span>💬 {{ post.comments | fmtn }}</span></div></div>
+          {% else %}<div class="no-img"><span class="type-icon">🎬</span><div class="no-img-stats"><span>👁 {{ post.views | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span><span>💬 {{ post.comments | fmtn }}</span></div></div>{% endif %}
+          <div class="overlay"><div class="overlay-txt"><span class="ov-stat"><span class="ov-icon">👁</span>{{ post.views | fmtn }}</span><span class="ov-stat"><span class="ov-icon">❤️</span>{{ post.likes | fmtn }}</span><span class="ov-stat"><span class="ov-icon">💬</span>{{ post.comments | fmtn }}</span></div></div>
           <div class="reel-badge"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>
         </a>
         {% endfor %}
@@ -975,21 +975,26 @@ async function refreshOne(btn) {
   if (window.stConfirm) { if (!(await stConfirm('@{{ inf.username }} 상세 정보를 수집합니까?'))) return; }
   else { if (!confirm('@{{ inf.username }} 상세 정보를 수집합니까?')) return; }
   const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = '수집 중... (최대 30초)';
+  btn.disabled = true;
+  let sec = 0;
+  const timer = setInterval(() => { sec++; btn.textContent = `수집 중... ${sec}초`; }, 1000);
+  btn.textContent = '수집 중... 0초';
   try {
     const r = await fetch('/influencers/{{ inf.pk }}/refresh', {method:'POST'});
+    clearInterval(timer);
     const d = await r.json();
     if (d.ok) { if(window.stToast) stToast('수집 완료! 새로고침합니다.','success'); btn.textContent = '완료!'; setTimeout(()=>location.reload(), 500); }
     else { if(window.stToast) stToast('실패: '+(d.error||'알 수 없음'),'error'); btn.textContent = orig; btn.disabled = false; }
-  } catch(e) { if(window.stToast) stToast('네트워크 오류','error'); btn.textContent = orig; btn.disabled = false; }
+  } catch(e) { clearInterval(timer); if(window.stToast) stToast('네트워크 오류','error'); btn.textContent = orig; btn.disabled = false; }
 }
 {% if inf.stats_updated_at %}
 (function() {
   const updated = new Date({{ inf.stats_updated_at }} * 1000);
   const now = new Date();
-  const diff = Math.floor((now - updated) / 60000);
+  const diff = Math.max(0, Math.floor((now - updated) / 60000));
   let label;
-  if (diff < 60) label = diff + '분 전';
+  if (diff <= 0) label = '방금';
+  else if (diff < 60) label = diff + '분 전';
   else if (diff < 1440) label = Math.floor(diff/60) + '시간 전';
   else label = Math.floor(diff/1440) + '일 전';
   const el = document.getElementById('updatedAgo');
