@@ -2667,10 +2667,8 @@ def collect_progress(job_id: str,
             except Exception:
                 pass
             # v1 top이 가장 다양한 유저 반환 (10p=212명 vs v2 recent 10p=43명)
-            # top → clips → top_recent → recent 순서
+            # 어떤 search_type이든 top 우선 → clips → recent
             _ENDPOINTS = ["top", "clips", "top_recent", "recent"]
-            if search_type == "recent":
-                _ENDPOINTS = ["recent", "top", "clips", "top_recent"]
             _ep_idx = 0
             endpoint = _ENDPOINTS[_ep_idx]
             page_num = _resume_page
