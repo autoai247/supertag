@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{% block title %}SuperTag{% endblock %}</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://openfpcdn.io" crossorigin>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"/>
   <style>
@@ -26,10 +28,15 @@
     input:focus,select:focus,textarea:focus { border-color:#6366f1!important; }
     ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
     .nav-section { padding:4px 12px;font-size:10px;font-weight:700;text-transform:uppercase;color:#475569;letter-spacing:.8px;margin-top:12px;margin-bottom:2px; }
+    /* 페이지 전환 로딩바 */
+    #pageLoader{position:fixed;top:0;left:0;width:0;height:3px;background:linear-gradient(90deg,#6366f1,#8b5cf6);z-index:9999;transition:width .3s ease;pointer-events:none;}
+    #pageLoader.loading{width:70%;transition:width 8s ease-out;}
+    #pageLoader.done{width:100%;transition:width .2s ease;opacity:0;transition:width .2s ease, opacity .3s .2s;}
   </style>
   {% block head %}{% endblock %}
 </head>
 <body style="background:#f1f5f9;">
+<div id="pageLoader"></div>
 <aside class="fixed top-0 left-0 h-screen w-56 flex flex-col z-20" style="background:#0f172a;border-right:1px solid #1e293b;">
   <div class="px-4 py-5 border-b" style="border-color:#1e293b;">
     <a href="/" class="flex items-center gap-2.5">
@@ -172,5 +179,37 @@ window.__solvePow=function(challenge,timestamp,difficulty){
     tryBatch();
   });
 };
+// ── 페이지 전환 로딩바 + 링크 프리페치 ──
+(function(){
+  var loader=document.getElementById('pageLoader');
+  // 클릭 시 즉시 로딩바
+  document.addEventListener('click',function(e){
+    var a=e.target.closest('a[href]');
+    if(!a)return;
+    var href=a.getAttribute('href');
+    if(!href||href.startsWith('#')||href.startsWith('javascript')||a.target==='_blank'||e.ctrlKey||e.metaKey)return;
+    if(href.startsWith('http')&&!href.includes(location.host))return;
+    loader.style.width='0';loader.style.opacity='1';
+    loader.classList.remove('done');
+    requestAnimationFrame(function(){loader.classList.add('loading');});
+  });
+  window.addEventListener('beforeunload',function(){
+    loader.classList.remove('loading');loader.classList.add('done');
+  });
+  // 호버 시 프리페치
+  var prefetched={};
+  document.addEventListener('mouseover',function(e){
+    var a=e.target.closest('a[href]');
+    if(!a)return;
+    var href=a.getAttribute('href');
+    if(!href||href.startsWith('#')||href.startsWith('javascript')||a.target==='_blank')return;
+    if(href.startsWith('http')&&!href.includes(location.host))return;
+    if(prefetched[href])return;
+    prefetched[href]=true;
+    var link=document.createElement('link');
+    link.rel='prefetch';link.href=href;
+    document.head.appendChild(link);
+  });
+})();
 </script>
 </body></html>
