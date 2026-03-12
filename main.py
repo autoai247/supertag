@@ -2113,13 +2113,12 @@ def refresh_stream(session_id: Optional[str] = Cookie(default=None)):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 @app.post("/api/refresh-selected")
-def refresh_selected(request: Request, session_id: Optional[str] = Cookie(default=None)):
+async def refresh_selected(request: Request, session_id: Optional[str] = Cookie(default=None)):
     """선택한 PK 목록만 갱신 (SSE 스트림)"""
     user = get_user(session_id)
     if not user: return JSONResponse({"error": "인증 필요"}, 403)
 
-    import asyncio
-    body = asyncio.get_event_loop().run_until_complete(request.json())
+    body = await request.json()
     pks = body.get("pks", [])
     if not pks:
         return JSONResponse({"error": "선택된 항목이 없습니다."}, 400)
