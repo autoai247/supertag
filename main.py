@@ -1539,9 +1539,15 @@ async def upload_excel_process(
             is_business = _yn_to_int(row[14]) if len(row) > 14 else 0
             biz_category = str(row[15]).strip() if len(row) > 15 and row[15] else ""
             is_verified = _yn_to_int(row[18]) if len(row) > 18 else 0
+            is_paid_verified = _yn_to_int(row[19]) if len(row) > 19 else 0
+            location_info = str(row[20]).strip() if len(row) > 20 and row[20] else ""
             avg_reel_views = _parse_kr_number(row[21]) if len(row) > 21 else 0
             biography = str(row[23]).strip() if len(row) > 23 and row[23] else ""
             external_url = str(row[25]).strip() if len(row) > 25 and row[25] else ""
+            highlight_count = _parse_kr_number(row[8]) if len(row) > 8 else 0
+            comments_disabled = 1 if (len(row) > 11 and row[11] and str(row[11]).strip().upper() in ("Y", "YES", "1", "TRUE")) else 0
+            is_professional = _yn_to_int(row[16]) if len(row) > 16 else 0
+            has_threads = _yn_to_int(row[17]) if len(row) > 17 else 0
 
             # 카테고리: N열 우선, 없으면 P열(비지니스 카테고리)
             if not category and biz_category:
@@ -1574,6 +1580,12 @@ async def upload_excel_process(
                 "avg_reel_views": avg_reel_views,
                 "reel_count": reel_count,
                 "feed_count": feed_count,
+                "highlight_count": highlight_count,
+                "comments_disabled": comments_disabled,
+                "has_threads": has_threads,
+                "is_professional": is_professional,
+                "is_paid_verified": is_paid_verified,
+                "location_info": location_info,
             }
             # 해시태그 라벨이 있으면 추가
             if hashtag_label.strip():

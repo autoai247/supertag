@@ -198,6 +198,15 @@
         {% if inf.is_business %}
         <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#e0e7ff;color:#4f46e5;">비즈니스</span>
         {% endif %}
+        {% if inf.is_professional %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#ede9fe;color:#7c3aed;">전문가</span>
+        {% endif %}
+        {% if inf.is_paid_verified %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#dbeafe;color:#2563eb;">Meta Verified</span>
+        {% endif %}
+        {% if inf.has_threads %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#f3f4f6;color:#374151;">🧵 스레드</span>
+        {% endif %}
         {% if manual.can_live %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#fef3c7;color:#d97706;">📡 라이브</span>{% endif %}
         {% if manual.is_approved %}<span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:#d1fae5;color:#059669;">승인됨</span>{% endif %}
       </div>
@@ -651,6 +660,12 @@
           <div class="info-row"><span class="label">게시 간격</span><span class="value">{{ '%.1f일'|format(inf.avg_posting_interval) if inf.avg_posting_interval else '-' }}</span></div>
           <div class="info-row"><span class="label">업로드 빈도</span><span class="value">{{ inf.upload_frequency or '-' }}</span></div>
           <div class="info-row"><span class="label">활성 시간대</span><span class="value">{{ inf.active_hours or '-' }}</span></div>
+          {% if inf.highlight_count %}<div class="info-row"><span class="label">하이라이트</span><span class="value">{{ inf.highlight_count }}개</span></div>{% endif %}
+          {% if inf.is_professional %}<div class="info-row"><span class="label">전문가 계정</span><span class="value text-indigo-600">전문가</span></div>{% endif %}
+          {% if inf.is_paid_verified %}<div class="info-row"><span class="label">유료 인증</span><span class="value text-blue-600">Meta Verified</span></div>{% endif %}
+          {% if inf.comments_disabled %}<div class="info-row"><span class="label">댓글</span><span class="value text-red-500">비활성화</span></div>{% endif %}
+          {% if inf.has_threads %}<div class="info-row"><span class="label">스레드</span><span class="value text-green-600">연결됨</span></div>{% endif %}
+          {% if inf.location_info %}<div class="info-row"><span class="label">위치</span><span class="value">{{ inf.location_info }}</span></div>{% endif %}
         </div>
         <!-- 콘텐츠 비율 도넛 -->
         <div class="flex flex-col items-center justify-center">

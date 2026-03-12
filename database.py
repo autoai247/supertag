@@ -204,8 +204,24 @@ def init_db():
         reels_ratio REAL DEFAULT 0, sponsored_ratio REAL DEFAULT 0,
         top_posts_likes TEXT DEFAULT '[]', top_posts_comments TEXT DEFAULT '[]',
         top_reels_views TEXT DEFAULT '[]', top_hashtags TEXT DEFAULT '[]',
-        stats_updated_at REAL DEFAULT 0, created_at REAL, updated_at REAL
+        stats_updated_at REAL DEFAULT 0, created_at REAL, updated_at REAL,
+        highlight_count INTEGER DEFAULT 0, comments_disabled INTEGER DEFAULT 0,
+        has_threads INTEGER DEFAULT 0, is_professional INTEGER DEFAULT 0,
+        is_paid_verified INTEGER DEFAULT 0, location_info TEXT DEFAULT ''
     )""")
+    # 기존 테이블에 새 컬럼 추가 (이미 있으면 무시)
+    for col, typedef in [
+        ("highlight_count", "INTEGER DEFAULT 0"),
+        ("comments_disabled", "INTEGER DEFAULT 0"),
+        ("has_threads", "INTEGER DEFAULT 0"),
+        ("is_professional", "INTEGER DEFAULT 0"),
+        ("is_paid_verified", "INTEGER DEFAULT 0"),
+        ("location_info", "TEXT DEFAULT ''"),
+    ]:
+        try:
+            c.execute(f"ALTER TABLE {T_INF} ADD COLUMN {col} {typedef}")
+        except Exception:
+            pass
     c.execute(f"""CREATE TABLE IF NOT EXISTS {T_MAN} (
         pk TEXT PRIMARY KEY, contact_name TEXT DEFAULT '', contact_kakao TEXT DEFAULT '',
         contact_line TEXT DEFAULT '', contact_email TEXT DEFAULT '', contact_phone TEXT DEFAULT '',
