@@ -1260,6 +1260,40 @@ def debug_db_posts(pk: str):
     return JSONResponse({"pk": pk, "username": inf.get("username"), "post_count": len(posts), "posts": result})
 
 
+@app.get("/api/debug/test-crawl/{pk}")
+def debug_test_crawl(pk: str):
+    """수집 테스트: 1개 게시물만 추출해서 결과 확인."""
+    inf = get_influencer(pk)
+    if not inf:
+        return JSONResponse({"error": "인플루언서 없음"})
+    try:
+        from crawler import _hiker_user_medias, _extract_media_fields, _enrich_reel_views
+        medias = _hiker_user_medias(pk, amount=3)
+        if not medias:
+            return JSONResponse({"error": "HikerAPI 게시물 조회 실패"})
+        # enrichment 실행
+        _enrich_reel_views(medias)
+        results = []
+        for m in medias[:3]:
+            try:
+                post_data = _extract_media_fields(m, pk)
+                results.append({
+                    "post_id": post_data.get("post_id"),
+                    "post_type": post_data.get("post_type"),
+                    "thumbnail_url": (post_data.get("thumbnail_url") or "")[:80],
+                    "likes": post_data.get("likes"),
+                    "views": post_data.get("views"),
+                    "code": post_data.get("post_url", ""),
+                })
+            except Exception as e:
+                import traceback
+                results.append({"error": str(e), "tb": traceback.format_exc()[-300:]})
+        return JSONResponse({"medias_count": len(medias), "results": results})
+    except Exception as e:
+        import traceback
+        return JSONResponse({"error": str(e), "tb": traceback.format_exc()[-500:]})
+
+
 @app.get("/api/debug/excluded-pks")
 def debug_excluded_pks(session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
