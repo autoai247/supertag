@@ -104,7 +104,7 @@ _rate_store_cleanup_ts: float = 0.0  # 마지막 정리 시간
 _honeypot_ips: set = set()  # 허니팟 걸린 IP 영구 차단
 _RATE_LIMIT = 40  # 분당 최대 요청 수 (비인증 사용자)
 _RATE_LIMIT_AUTH = 120  # 분당 최대 요청 수 (인증된 사용자)
-_WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico"}
+_WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico", "/api/debug/version", "/api/cron"}
 # 데이터 페이지 경로 (검색엔진 봇 차단 대상)
 _DATA_PATHS = ["/influencers", "/api/", "/advertiser", "/export", "/collect",
                "/hashtags", "/settings", "/refresh", "/target-extract"]
