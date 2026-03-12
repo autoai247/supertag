@@ -1181,7 +1181,12 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
 
 @app.get("/api/debug/version")
 def debug_version():
-    return JSONResponse({"version": "20260308-v10", "deployed": True})
+    import subprocess
+    try:
+        commit = subprocess.check_output(["git","rev-parse","--short","HEAD"], stderr=subprocess.DEVNULL, timeout=3).decode().strip()
+    except Exception:
+        commit = "unknown"
+    return JSONResponse({"commit": commit, "deployed": True})
 
 @app.get("/api/debug/excluded-pks")
 def debug_excluded_pks(session_id: Optional[str] = Cookie(default=None)):
