@@ -173,7 +173,7 @@
   <div class="px-7 pt-7 pb-6 flex items-start gap-6 flex-wrap relative">
     <!-- 프로필 이미지 -->
     <div class="flex-shrink-0 relative">
-      <img src="{{ inf | pic }}" alt="{{ inf.username }}"
+      <img src="{{ inf | pic }}" alt="{{ inf.username }}" referrerpolicy="no-referrer"
            class="w-28 h-28 rounded-full object-cover" style="border:4px solid #e5e7eb;box-shadow:0 4px 16px rgba(0,0,0,.08);"
            onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent(this.alt||'U')+'&background=6366f1&color=fff&size=128'">
       {% if false %}
@@ -873,7 +873,7 @@
       <div class="grid grid-cols-5 gap-3">
         {% for post in all_sorted_likes %}
         <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
-          {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
+          {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
           <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span>❤️ {{ post.likes | fmtn }}</span><span>💬 {{ post.comments | fmtn }}</span></div></div>
           {% else %}<div class="no-img"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span>❤️ {{ post.likes | fmtn }}</span><span>💬 {{ post.comments | fmtn }}</span></div></div>{% endif %}
           <div class="overlay"><div class="overlay-txt"><span class="ov-stat"><span class="ov-icon">❤️</span>{{ post.likes | fmtn }}</span><span class="ov-stat"><span class="ov-icon">💬</span>{{ post.comments | fmtn }}</span></div></div>
@@ -890,7 +890,7 @@
       <div class="grid grid-cols-5 gap-3">
         {% for post in all_sorted_comments %}
         <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
-          {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
+          {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
           <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span>💬 {{ post.comments | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span></div></div>
           {% else %}<div class="no-img"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span>💬 {{ post.comments | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span></div></div>{% endif %}
           <div class="overlay"><div class="overlay-txt"><span class="ov-stat"><span class="ov-icon">💬</span>{{ post.comments | fmtn }}</span><span class="ov-stat"><span class="ov-icon">❤️</span>{{ post.likes | fmtn }}</span></div></div>
@@ -908,7 +908,7 @@
       <div class="grid grid-cols-5 gap-3">
         {% for post in reels_sorted_views %}
         <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
-          {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
+          {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
           <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">🎬</span><div class="no-img-stats"><span>👁 {{ post.views | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span><span>💬 {{ post.comments | fmtn }}</span></div></div>
           {% else %}<div class="no-img"><span class="type-icon">🎬</span><div class="no-img-stats"><span>👁 {{ post.views | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span><span>💬 {{ post.comments | fmtn }}</span></div></div>{% endif %}
           <div class="overlay"><div class="overlay-txt"><span class="ov-stat"><span class="ov-icon">👁</span>{{ post.views | fmtn }}</span><span class="ov-stat"><span class="ov-icon">❤️</span>{{ post.likes | fmtn }}</span><span class="ov-stat"><span class="ov-icon">💬</span>{{ post.comments | fmtn }}</span></div></div>

@@ -366,7 +366,7 @@ function renderCard(r, idx) {
   const initial = (r.username||'?')[0].toUpperCase();
   const picUrl = r.profile_pic_local || r.profile_pic_url || '';
   let imgInner = picUrl
-    ? `<img src="${picUrl}" class="profile-img" onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${initial}')+'&background=6366f1&color=fff&size=128'">`
+    ? `<img src="${picUrl}" referrerpolicy="no-referrer" class="profile-img" onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${initial}')+'&background=6366f1&color=fff&size=128'">`
     : `<div class="profile-placeholder">${initial}</div>`;
 
   // 티어 계산

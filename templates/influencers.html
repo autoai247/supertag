@@ -257,7 +257,7 @@
 
     <!-- 프로필 이미지 -->
     <a href="/influencers/{{ r.pk }}" class="flex-shrink-0">
-      <img src="{{ r | pic }}" class="w-12 h-12 rounded-full object-cover border border-gray-100"
+      <img src="{{ r | pic }}" referrerpolicy="no-referrer" class="w-12 h-12 rounded-full object-cover border border-gray-100"
            onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('{{ r.username or 'U' }}')+'&background=6366f1&color=fff&size=128'">
     </a>
 
@@ -397,7 +397,7 @@ function buildRow(r) {
   return `<div class="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-3 hover:border-indigo-200 hover:shadow-sm transition-all">
     <input type="checkbox" class="row-check rounded flex-shrink-0" value="${r.pk}">
     <a href="/influencers/${r.pk}" class="flex-shrink-0">
-      <img src="${pic}" class="w-12 h-12 rounded-full object-cover border border-gray-100"
+      <img src="${pic}" referrerpolicy="no-referrer" class="w-12 h-12 rounded-full object-cover border border-gray-100"
            onerror="this.src='https://ui-avatars.com/api/?name='+encodeURIComponent('${r.username||'U'}')+'&background=6366f1&color=fff&size=128'">
     </a>
     <a href="/influencers/${r.pk}" class="flex-1 min-w-0 group">
