@@ -2124,33 +2124,53 @@ async def refresh_selected(request: Request, session_id: Optional[str] = Cookie(
         return JSONResponse({"error": "선택된 항목이 없습니다."}, 400)
 
     from crawler import crawl_user_detail
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
 
     def stream():
         try:
             total = len(pks)
-            success = fail = 0
-            # 즉시 시작 이벤트 전송
+            success = 0
+            fail = 0
+            done = 0
+            lock = threading.Lock()
+
             yield f"data: {json.dumps({'running': True, 'total': total, 'done': 0, 'success': 0, 'fail': 0, 'current_username': '준비 중...'}, ensure_ascii=False)}\n\n"
-            for i, pk in enumerate(pks):
+
+            # PK별 정보 미리 조회
+            tasks = []
+            for pk in pks:
                 inf = get_influencer(str(pk))
-                uname = inf.get("username", "") if inf else ""
+                uname = inf.get("username", "") if inf else str(pk)
                 followers = inf.get("follower_count", 0) if inf else 0
-                # 크롤링 시작 전 현재 대상 알림
-                yield f"data: {json.dumps({'running': True, 'total': total, 'done': i, 'success': success, 'fail': fail, 'current_username': f'@{uname} 크롤링 중...'}, ensure_ascii=False)}\n\n"
-                try:
-                    ok = crawl_user_detail(None, str(pk), uname, followers or 0)
-                    if ok:
-                        success += 1
-                    else:
-                        fail += 1
-                except Exception:
-                    fail += 1
-                p = {"running": True, "total": total, "done": i + 1,
-                     "success": success, "fail": fail, "current_username": uname}
-                yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
-            p = {"running": False, "total": total, "done": total,
-                 "success": success, "fail": fail}
-            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                tasks.append((str(pk), uname, followers))
+
+            # 3명씩 병렬 처리
+            BATCH = 3
+            for batch_start in range(0, len(tasks), BATCH):
+                batch = tasks[batch_start:batch_start + BATCH]
+                names = ", ".join(f"@{t[1]}" for t in batch)
+                yield f"data: {json.dumps({'running': True, 'total': total, 'done': done, 'success': success, 'fail': fail, 'current_username': f'{names} 크롤링 중...'}, ensure_ascii=False)}\n\n"
+
+                with ThreadPoolExecutor(max_workers=BATCH) as executor:
+                    futures = {
+                        executor.submit(crawl_user_detail, None, pk, uname, fol or 0): uname
+                        for pk, uname, fol in batch
+                    }
+                    for future in as_completed(futures):
+                        try:
+                            ok = future.result()
+                            if ok:
+                                success += 1
+                            else:
+                                fail += 1
+                        except Exception:
+                            fail += 1
+                        done += 1
+
+                yield f"data: {json.dumps({'running': True, 'total': total, 'done': done, 'success': success, 'fail': fail, 'current_username': f'{done}/{total} 완료'}, ensure_ascii=False)}\n\n"
+
+            yield f"data: {json.dumps({'running': False, 'total': total, 'done': total, 'success': success, 'fail': fail}, ensure_ascii=False)}\n\n"
         except Exception as e:
             log.error(f"선택 갱신 에러: {e}")
             yield f"data: {json.dumps({'running': False, 'error': str(e)}, ensure_ascii=False)}\n\n"
