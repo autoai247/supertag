@@ -785,32 +785,38 @@
 
   <!-- 해시태그 분석 (왼쪽 1/3) -->
   {% set htags_list = inf.top_hashtags if (inf.top_hashtags is iterable and inf.top_hashtags is not string) else [] %}
+  {% set htags_total = htags_list | sum(attribute='count') if htags_list else 0 %}
   <div class="card p-5">
     <div class="flex items-center justify-between mb-4">
       <div class="section-title mb-0">
         <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/></svg>
         해시태그 분석
       </div>
-      {% if htags_list %}<span class="text-xs text-gray-400 font-medium">{{ htags_list | length }}개</span>{% endif %}
+      {% if htags_list %}<span class="text-xs text-gray-400 font-medium">{{ htags_list | length }}종 / 총 {{ htags_total | comma }}회</span>{% endif %}
     </div>
     {% if htags_list %}
     {% set max_c = htags_list[0].count if htags_list else 1 %}
-    <div class="space-y-2 mb-4">
-      {% for item in htags_list[:10] %}
-      {% set pct = ((item.count / max_c) * 100) | int %}
-      <div class="flex items-center gap-3">
-        <span class="text-xs font-bold text-purple-700 w-28 truncate shrink-0">#{{ item.tag }}</span>
-        <div class="flex-1 h-3.5 rounded-full overflow-hidden" style="background:#f3f4f6;">
-          <div class="h-full rounded-full" style="width:{{ [pct,5]|max }}%;background:linear-gradient(90deg,var(--accent),var(--primary));transition:width .8s ease-out;"></div>
+    <div class="space-y-2.5 mb-4">
+      {% for item in htags_list[:15] %}
+      {% set bar_pct = ((item.count / max_c) * 100) | int %}
+      {% set ratio = (item.count / htags_total * 100) | round(1) if htags_total > 0 else 0 %}
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold text-purple-700 truncate shrink-0" style="width:100px;" title="#{{ item.tag }}">#{{ item.tag }}</span>
+        <div class="flex-1 h-4 rounded-full overflow-hidden" style="background:#f3f4f6;position:relative;">
+          <div class="h-full rounded-full flex items-center" style="width:{{ [bar_pct,5]|max }}%;background:linear-gradient(90deg,var(--accent),var(--primary));transition:width .8s ease-out;min-width:28px;">
+            {% if bar_pct >= 25 %}<span class="text-white text-xs font-bold pl-2" style="font-size:10px;">{{ ratio }}%</span>{% endif %}
+          </div>
+          {% if bar_pct < 25 %}<span class="absolute right-2 top-0 h-full flex items-center text-xs font-bold text-gray-400" style="font-size:10px;">{{ ratio }}%</span>{% endif %}
         </div>
-        <span class="text-xs font-bold text-gray-500 w-8 text-right shrink-0">{{ item.count | comma }}</span>
+        <span class="text-xs font-bold text-gray-500 w-6 text-right shrink-0">{{ item.count }}</span>
       </div>
       {% endfor %}
     </div>
-    {% if htags_list | length > 10 %}
+    {% if htags_list | length > 15 %}
     <div class="pt-3 border-t flex flex-wrap gap-1.5">
-      {% for item in htags_list[10:] %}
-      <span class="hashtag-chip">#{{ item.tag }} <span class="opacity-50 ml-0.5">{{ item.count | comma }}</span></span>
+      {% for item in htags_list[15:] %}
+      {% set ratio = (item.count / htags_total * 100) | round(1) if htags_total > 0 else 0 %}
+      <span class="hashtag-chip">#{{ item.tag }} <span class="opacity-60 ml-0.5">{{ ratio }}%</span></span>
       {% endfor %}
     </div>
     {% endif %}

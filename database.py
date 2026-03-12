@@ -644,6 +644,7 @@ def update_influencer_stats(pk: str, stats: dict):
         "top_posts_likes": json.dumps(stats.get("top_posts_likes",[]), ensure_ascii=False),
         "top_posts_comments": json.dumps(stats.get("top_posts_comments",[]), ensure_ascii=False),
         "top_reels_views": json.dumps(stats.get("top_reels_views",[]), ensure_ascii=False),
+        "top_hashtags": stats.get("top_hashtags","[]"),
         "profile_pic_local": stats.get("profile_pic_local",""), "stats_updated_at": now,
     }
     if _USE_SUPABASE:

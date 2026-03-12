@@ -639,6 +639,7 @@ def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dic
     all_hours = []
     all_intervals = []
     sponsored_cnt = 0
+    all_hashtags = []
     prev_date = None
 
     for m in medias:
@@ -661,6 +662,9 @@ def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dic
 
         if SPONSOR_KEYWORDS.search(caption):
             sponsored_cnt += 1
+        # 해시태그 수집
+        post_tags = re.findall(r'#(\w+)', caption)
+        all_hashtags.extend(post_tags)
 
         if taken_at or taken_at_ts:
             if taken_at_ts and isinstance(taken_at_ts, (int, float)):
@@ -762,6 +766,7 @@ def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dic
         "top_posts_likes": [{"likes": x["likes"], "comments": x["comments"]} for x in top_likes],
         "top_posts_comments": [{"likes": x["likes"], "comments": x["comments"]} for x in top_comments],
         "top_reels_views": [{"views": x["views"], "likes": x["likes"]} for x in top_reels],
+        "top_hashtags": json.dumps([{"tag": t, "count": c} for t, c in Counter(all_hashtags).most_common(30)], ensure_ascii=False),
     }
 
 
