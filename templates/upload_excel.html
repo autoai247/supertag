@@ -10,7 +10,8 @@
   <!-- 해시태그 라벨 -->
   <div class="mb-4">
     <label class="block text-sm font-semibold text-gray-700 mb-1">해시태그 라벨 (선택)</label>
-    <input type="text" id="hashtagLabel" placeholder="예: 에르메스그릇" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+    <input type="text" id="hashtagLabel" placeholder="예: 에르메스그릇" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();doUpload();}" />
     <p class="text-xs text-gray-400 mt-1">입력하면 업로드된 인플루언서에 해시태그가 일괄 지정됩니다.</p>
   </div>
 

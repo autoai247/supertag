@@ -59,7 +59,8 @@
             <span class="flex items-center px-2.5 py-2 text-sm text-gray-400 rounded-lg border border-gray-200 border-r-0 rounded-r-none">#</span>
             <input id="hashtagInput" type="text" placeholder="광고, 협찬, 맛집..."
               class="flex-1 px-3 py-2 text-sm rounded-lg rounded-l-none border border-gray-200 border-l-0"
-              list="hashtagList" oninput="onHashtagInput(this.value)">
+              list="hashtagList" oninput="onHashtagInput(this.value)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();startCollect();}">
             <datalist id="hashtagList">
               {% for h in hashtags %}<option value="{{ h }}">{% endfor %}
             </datalist>
@@ -75,7 +76,8 @@
           <div class="text-xs text-gray-500 mb-1">장소 검색 <span class="text-red-400">*</span></div>
           <input id="locationInput" type="text" placeholder="강남, 홍대, 성수동..."
             class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200"
-            oninput="onLocationInput(this.value)">
+            oninput="onLocationInput(this.value)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();startCollect();}">
           <input type="hidden" id="selectedLocationPk" value="">
           <input type="hidden" id="selectedLocationName" value="">
           <div id="locationResults" class="mt-2 hidden">
