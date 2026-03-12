@@ -11,6 +11,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.graphics.shapes import Drawing, Rect, String, Circle
 from PIL import Image as PILImage
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -33,20 +34,62 @@ try:
 except Exception:
     pass
 
-# ── 색상 팔레트 (모던 대시보드) ──
-C_PRIMARY   = colors.HexColor("#1e3a8a")   # 딥 블루
-C_ACCENT    = colors.HexColor("#3b82f6")   # 액센트 블루
-C_PURPLE    = colors.HexColor("#6366f1")   # 브랜드 퍼플
-C_DARK      = colors.HexColor("#0f172a")   # 텍스트
-C_TEXT      = colors.HexColor("#334155")   # 본문
-C_GRAY      = colors.HexColor("#64748b")   # 보조 텍스트
-C_LIGHT     = colors.HexColor("#f1f5f9")   # 밝은 배경
-C_LIGHTER   = colors.HexColor("#f8fafc")   # 더 밝은 배경
-C_BORDER    = colors.HexColor("#e2e8f0")   # 테두리
-C_GREEN     = colors.HexColor("#059669")   # 좋음
-C_ORANGE    = colors.HexColor("#d97706")   # 주의
-C_RED       = colors.HexColor("#dc2626")   # 낮음
+# ── 색상 팔레트 ──
+C_PRIMARY   = colors.HexColor("#1e3a8a")
+C_ACCENT    = colors.HexColor("#3b82f6")
+C_PURPLE    = colors.HexColor("#7c3aed")
+C_DARK      = colors.HexColor("#0f172a")
+C_TEXT      = colors.HexColor("#334155")
+C_GRAY      = colors.HexColor("#64748b")
+C_LIGHT     = colors.HexColor("#f1f5f9")
+C_LIGHTER   = colors.HexColor("#f8fafc")
+C_BORDER    = colors.HexColor("#e2e8f0")
+C_GREEN     = colors.HexColor("#059669")
+C_ORANGE    = colors.HexColor("#d97706")
+C_RED       = colors.HexColor("#dc2626")
 C_WHITE     = colors.white
+C_BLUE_BG   = colors.HexColor("#eff6ff")
+C_PURP_BG   = colors.HexColor("#f5f3ff")
+C_CARD_BG   = colors.HexColor("#f8fafc")
+
+
+# ── 커스텀 Flowable: 둥근 박스 ──
+class RoundedBox(Flowable):
+    """둥근 모서리 배경 박스"""
+    def __init__(self, width, height, bg_color=C_CARD_BG, border_color=C_BORDER,
+                 radius=6, border_width=0.5):
+        super().__init__()
+        self.width = width
+        self.height = height
+        self.bg_color = bg_color
+        self.border_color = border_color
+        self.radius = radius
+        self.border_width = border_width
+
+    def draw(self):
+        self.canv.setFillColor(self.bg_color)
+        self.canv.setStrokeColor(self.border_color)
+        self.canv.setLineWidth(self.border_width)
+        self.canv.roundRect(0, 0, self.width, self.height, self.radius, fill=1, stroke=1)
+
+
+class SectionHeader(Flowable):
+    """섹션 헤더: 왼쪽 액센트 바 + 타이틀"""
+    def __init__(self, text, width, bar_color=C_PRIMARY, font_size=10):
+        super().__init__()
+        self.text = text
+        self.width = width
+        self.bar_color = bar_color
+        self.font_size = font_size
+        self.height = font_size + 8
+
+    def draw(self):
+        c = self.canv
+        c.setFillColor(self.bar_color)
+        c.roundRect(0, 0, 4, self.height, 2, fill=1, stroke=0)
+        c.setFillColor(C_DARK)
+        c.setFont(FONT_BOLD, self.font_size)
+        c.drawString(10, 4, self.text)
 
 
 def _fmt(n, suffix=""):
@@ -61,19 +104,15 @@ def _fmt_rate(r):
     try: return f"{float(r or 0):.2f}%"
     except: return "-"
 
-
 def _p(text, size=8, color=C_DARK, bold=False, align=TA_LEFT, leading=None):
     fn = FONT_BOLD if bold else FONT_NAME
     ld = leading or size * 1.5
     return Paragraph(str(text), ParagraphStyle("_", fontName=fn, fontSize=size,
                                                 textColor=color, alignment=align, leading=ld))
 
-
 def _get_profile_img(inf, size=(50, 50)):
-    """프로필 이미지: Supabase Storage -> CDN -> 로컬"""
     import requests as _req
     pk = inf.get("pk", "") if isinstance(inf, dict) else ""
-    username = inf.get("username", "") if isinstance(inf, dict) else str(inf)
     urls = []
     if pk:
         sb_url = os.environ.get("SUPABASE_URL", "https://ysqnixgdpltguatvjjcb.supabase.co")
@@ -98,15 +137,36 @@ def _get_profile_img(inf, size=(50, 50)):
             continue
     return None
 
-
 def _er_color(er):
-    """참여율에 따른 색상"""
     try:
         v = float(er or 0)
         if v >= 5: return C_GREEN
         if v >= 2: return C_ACCENT
         return C_ORANGE
     except: return C_GRAY
+
+def _er_label(er):
+    try:
+        v = float(er or 0)
+        if v >= 5: return "Excellent"
+        if v >= 3: return "Good"
+        if v >= 1: return "Average"
+        return "Low"
+    except: return "-"
+
+def _ts_to_date(v):
+    if not v or v == "-":
+        return "-"
+    try:
+        fv = float(v)
+        if fv > 1_000_000_000:
+            return datetime.fromtimestamp(fv).strftime("%Y-%m-%d")
+    except (ValueError, TypeError, OSError):
+        pass
+    s = str(v)
+    if len(s) >= 10 and s[:4].isdigit():
+        return s[:10]
+    return s
 
 
 # ═══════════════════════════════════════════════════════════
@@ -115,254 +175,259 @@ def _er_color(er):
 
 def _scorecard_elements(inf, manual, posts_summary=None):
     elements = []
-    W = 25.7 * cm  # landscape A4 content width
+    W = 25.7 * cm
 
     username = inf.get("username", "")
     full_name = inf.get("full_name", "")
+    er = inf.get("engagement_rate", 0)
+    cat = inf.get("category") or manual.get("main_category") or ""
 
-    # ════════ 1. 헤더 바 (딥블루 그라데이션 효과) ════════
-    pic = _get_profile_img(inf, (48, 48))
+    # ════════ 1. 헤더 (풀폭 딥블루) ════════
+    pic = _get_profile_img(inf, (52, 52))
     pic_cell = pic if pic else _p(username[0].upper() if username else "?",
-                                   size=22, bold=True, color=C_WHITE, align=TA_CENTER)
+                                   size=24, bold=True, color=C_WHITE, align=TA_CENTER)
 
-    # 이름 + 배지 영역
-    name_block = []
-    name_block.append(_p(f"@{username}", size=16, bold=True, color=C_WHITE))
-    sub_parts = []
-    if full_name: sub_parts.append(full_name)
-    if inf.get("category") or manual.get("main_category"):
-        sub_parts.append(inf.get("category") or manual.get("main_category"))
-    if sub_parts:
-        name_block.append(_p(" · ".join(sub_parts), size=9, color=colors.HexColor("#93c5fd")))
-
+    name_parts = [_p(f"@{username}", size=18, bold=True, color=C_WHITE)]
+    sub = full_name
+    if cat: sub += f"  ·  {cat}" if sub else cat
     badges = []
-    if inf.get("is_verified"): badges.append("✓ 인증")
-    if inf.get("is_business"): badges.append("비즈니스")
-    if manual.get("can_live"): badges.append("라이브")
-    if badges:
-        name_block.append(_p("  ".join(badges), size=8, bold=True, color=colors.HexColor("#fbbf24")))
+    if inf.get("is_verified"): badges.append("Verified")
+    if inf.get("is_business"): badges.append("Business")
+    if manual.get("can_live"): badges.append("Live")
+    if badges: sub += ("  |  " if sub else "") + " · ".join(badges)
+    if sub:
+        name_parts.append(_p(sub, size=8, color=colors.HexColor("#bfdbfe")))
 
-    # 오른쪽: 날짜 + 브랜드
-    right_block = [
-        _p("SUPERTAG", size=11, bold=True, color=C_WHITE, align=TA_RIGHT),
+    right_parts = [
+        _p("SUPERTAG", size=14, bold=True, color=C_WHITE, align=TA_RIGHT),
         _p("Influencer Scorecard", size=7, color=colors.HexColor("#93c5fd"), align=TA_RIGHT),
-        _p(datetime.now().strftime("%Y.%m.%d"), size=8, color=colors.HexColor("#93c5fd"), align=TA_RIGHT),
+        _p(datetime.now().strftime("%Y.%m.%d"), size=7, color=colors.HexColor("#93c5fd"), align=TA_RIGHT),
     ]
 
-    header = Table([[pic_cell, name_block, right_block]], colWidths=[60, W - 60 - 7*cm, 7*cm])
-    header.setStyle(TableStyle([
+    hdr = Table([[pic_cell, name_parts, right_parts]], colWidths=[64, W - 64 - 6*cm, 6*cm])
+    hdr.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("BACKGROUND", (0,0), (-1,-1), C_PRIMARY),
-        ("LEFTPADDING", (0,0), (0,0), 10),
-        ("LEFTPADDING", (1,0), (1,0), 12),
-        ("RIGHTPADDING", (-1,0), (-1,0), 12),
-        ("TOPPADDING", (0,0), (-1,-1), 10),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 10),
+        ("LEFTPADDING", (0,0), (0,0), 12), ("LEFTPADDING", (1,0), (1,0), 14),
+        ("RIGHTPADDING", (-1,0), (-1,0), 14),
+        ("TOPPADDING", (0,0), (-1,-1), 12), ("BOTTOMPADDING", (0,0), (-1,-1), 12),
     ]))
-    elements.append(header)
-    elements.append(Spacer(1, 2))
+    elements.append(hdr)
+    elements.append(Spacer(1, 6))
 
-    # ════════ 2. 핵심 지표 카드 (6칸) ════════
-    def _metric_cell(label, value, val_color=C_PRIMARY):
-        return [
-            _p(value, size=14, bold=True, color=val_color, align=TA_CENTER),
-            _p(label, size=7, color=C_GRAY, align=TA_CENTER),
-        ]
+    # ════════ 2. 핵심 지표 (6 카드 — 배경색 있는 개별 카드) ════════
+    def _card(label, value, vc=C_PRIMARY, bg=C_LIGHTER):
+        return Table(
+            [[_p(value, size=16, bold=True, color=vc, align=TA_CENTER)],
+             [_p(label, size=7, color=C_GRAY, align=TA_CENTER)]],
+            colWidths=[W/6 - 4],
+        )
 
-    er = inf.get("engagement_rate", 0)
-    metrics_row = [
-        _metric_cell("팔로워", _fmt(inf.get("follower_count")), C_PRIMARY),
-        _metric_cell("팔로잉", _fmt(inf.get("following_count")), C_TEXT),
-        _metric_cell("총 게시물", _fmt(inf.get("media_count")), C_TEXT),
-        _metric_cell("참여율", _fmt_rate(er), _er_color(er)),
-        _metric_cell("릴스 비율", _fmt_rate(inf.get("reels_ratio")), C_ACCENT),
-        _metric_cell("협찬 비율", _fmt_rate(inf.get("sponsored_ratio")), C_ORANGE),
+    cards_data = [
+        ("팔로워", _fmt(inf.get("follower_count")), C_PRIMARY, C_BLUE_BG),
+        ("팔로잉", _fmt(inf.get("following_count")), C_TEXT, C_LIGHTER),
+        ("총 게시물", _fmt(inf.get("media_count")), C_TEXT, C_LIGHTER),
+        ("참여율", _fmt_rate(er), _er_color(er), colors.HexColor("#f0fdf4") if float(er or 0) >= 2 else colors.HexColor("#fffbeb")),
+        ("릴스 비율", _fmt_rate(inf.get("reels_ratio")), C_PURPLE, C_PURP_BG),
+        ("협찬 비율", _fmt_rate(inf.get("sponsored_ratio")), C_ORANGE, C_LIGHTER),
     ]
-    mt = Table([metrics_row], colWidths=[W/6]*6)
+    row = [_card(l, v, vc, bg) for l, v, vc, bg in cards_data]
+    cw = W / 6
+    mt = Table([row], colWidths=[cw]*6)
     mt.setStyle(TableStyle([
         ("ALIGN",(0,0),(-1,-1),"CENTER"), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("BACKGROUND",(0,0),(-1,-1), C_WHITE),
+        ("BACKGROUND",(0,0),(0,0), cards_data[0][3]),
+        ("BACKGROUND",(1,0),(1,0), cards_data[1][3]),
+        ("BACKGROUND",(2,0),(2,0), cards_data[2][3]),
+        ("BACKGROUND",(3,0),(3,0), cards_data[3][3]),
+        ("BACKGROUND",(4,0),(4,0), cards_data[4][3]),
+        ("BACKGROUND",(5,0),(5,0), cards_data[5][3]),
         ("BOX",(0,0),(-1,-1), 0.5, C_BORDER),
-        ("LINEAFTER",(0,0),(-2,-1), 0.5, C_BORDER),
-        ("TOPPADDING",(0,0),(-1,-1), 8),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 8),
+        ("LINEAFTER",(0,0),(-2,-1), 0.3, C_BORDER),
+        ("TOPPADDING",(0,0),(-1,-1), 8), ("BOTTOMPADDING",(0,0),(-1,-1), 8),
     ]))
     elements.append(mt)
     elements.append(Spacer(1, 8))
 
-    # ════════ 3. 피드/릴스 성과 비교 (컬러 테이블) ════════
-    elements.append(_p("피드 / 릴스 성과 비교", size=11, bold=True, color=C_PRIMARY))
-    elements.append(Spacer(1, 3))
+    # ════════ 3. 2단 레이아웃: 왼쪽(피드릴스 + 인기게시물) | 오른쪽(계정정보) ════════
+    L = []
+    R = []
+    LW = 13.2 * cm
+    RW = W - LW - 0.3*cm
 
-    hdr = [_p("", size=8), _p("평균 좋아요", size=8, bold=True, color=C_GRAY, align=TA_CENTER),
-           _p("평균 댓글", size=8, bold=True, color=C_GRAY, align=TA_CENTER),
-           _p("평균 조회수", size=8, bold=True, color=C_GRAY, align=TA_CENTER)]
-    feed = [
-        _p("피드 (Feed)", size=9, bold=True, color=C_ACCENT),
-        _p(_fmt(inf.get("avg_feed_likes")), size=10, bold=True, color=C_DARK, align=TA_CENTER),
-        _p(_fmt(inf.get("avg_feed_comments")), size=10, bold=True, color=C_DARK, align=TA_CENTER),
+    # --- 왼쪽: 피드/릴스 성과 비교 ---
+    L.append(SectionHeader("피드 / 릴스 성과 비교", LW, C_ACCENT))
+    L.append(Spacer(1, 4))
+
+    compare_hdr = [
+        _p("", size=7),
+        _p("평균 좋아요", size=7.5, bold=True, color=C_WHITE, align=TA_CENTER),
+        _p("평균 댓글", size=7.5, bold=True, color=C_WHITE, align=TA_CENTER),
+        _p("평균 조회수", size=7.5, bold=True, color=C_WHITE, align=TA_CENTER),
+    ]
+    compare_feed = [
+        _p("  피드 (Feed)", size=9, bold=True, color=C_ACCENT),
+        _p(_fmt(inf.get("avg_feed_likes")), size=11, bold=True, color=C_DARK, align=TA_CENTER),
+        _p(_fmt(inf.get("avg_feed_comments")), size=11, color=C_DARK, align=TA_CENTER),
         _p("-", size=9, color=C_GRAY, align=TA_CENTER),
     ]
-    reel = [
-        _p("릴스 (Reels)", size=9, bold=True, color=C_PURPLE),
-        _p(_fmt(inf.get("avg_reel_likes")), size=10, bold=True, color=C_DARK, align=TA_CENTER),
-        _p(_fmt(inf.get("avg_reel_comments")), size=10, bold=True, color=C_DARK, align=TA_CENTER),
-        _p(_fmt(inf.get("avg_reel_views")), size=10, bold=True, color=C_PURPLE, align=TA_CENTER),
+    compare_reel = [
+        _p("  릴스 (Reels)", size=9, bold=True, color=C_PURPLE),
+        _p(_fmt(inf.get("avg_reel_likes")), size=11, bold=True, color=C_DARK, align=TA_CENTER),
+        _p(_fmt(inf.get("avg_reel_comments")), size=11, color=C_DARK, align=TA_CENTER),
+        _p(_fmt(inf.get("avg_reel_views")), size=11, bold=True, color=C_PURPLE, align=TA_CENTER),
     ]
-    cw = [4*cm, 6*cm, 6*cm, 6*cm]
-    pt = Table([hdr, feed, reel], colWidths=cw)
-    pt.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0), C_LIGHT),
-        ("BACKGROUND",(0,1),(-1,1), colors.HexColor("#eff6ff")),  # 피드: 연한 파랑
-        ("BACKGROUND",(0,2),(-1,2), colors.HexColor("#f5f3ff")),  # 릴스: 연한 보라
+    tcw = [3.2*cm, 3.3*cm, 3.3*cm, 3.3*cm]
+    ct = Table([compare_hdr, compare_feed, compare_reel], colWidths=tcw)
+    ct.setStyle(TableStyle([
+        ("BACKGROUND",(1,0),(3,0), C_PRIMARY),
+        ("BACKGROUND",(0,0),(0,0), C_PRIMARY),
+        ("BACKGROUND",(0,1),(-1,1), C_BLUE_BG),
+        ("BACKGROUND",(0,2),(-1,2), C_PURP_BG),
         ("BOX",(0,0),(-1,-1), 0.5, C_BORDER),
-        ("LINEBELOW",(0,0),(-1,0), 0.5, C_BORDER),
-        ("LINEBELOW",(0,1),(-1,1), 0.5, C_BORDER),
-        ("PADDING",(0,0),(-1,-1), 7),
-        ("ALIGN",(1,0),(-1,-1),"CENTER"), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("LINEBELOW",(0,0),(-1,1), 0.5, C_BORDER),
+        ("PADDING",(0,0),(-1,-1), 6),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("ROUNDEDCORNERS", [4,4,4,4]),
     ]))
-    elements.append(pt)
-    elements.append(Spacer(1, 8))
+    L.append(ct)
+    L.append(Spacer(1, 8))
 
-    # ════════ 4. 계정 정보 + 단가 (2단 레이아웃) ════════
-    elements.append(_p("계정 정보", size=11, bold=True, color=C_PRIMARY))
-    elements.append(Spacer(1, 3))
-
-    def _info_table(rows, cw_l=3.5*cm, cw_r=8.5*cm):
-        data = []
-        for label, val in rows:
-            data.append([_p(label, size=7.5, bold=True, color=C_GRAY),
-                         _p(str(val), size=7.5, color=C_DARK)])
-        t = Table(data, colWidths=[cw_l, cw_r])
-        t.setStyle(TableStyle([
-            ("ROWBACKGROUNDS",(0,0),(-1,-1), [C_WHITE, C_LIGHTER]),
-            ("BOX",(0,0),(-1,-1), 0.5, C_BORDER),
-            ("LINEBELOW",(0,0),(-1,-2), 0.3, C_BORDER),
-            ("PADDING",(0,0),(-1,-1), 5),
-            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ]))
-        return t
-
-    left_rows = [
-        ("업로드 빈도", inf.get("upload_frequency") or "-"),
-        ("활성 시간", inf.get("active_hours") or "-"),
-        ("마지막 게시", inf.get("last_post_date") or "-"),
-        ("카테고리", inf.get("category") or manual.get("main_category") or "-"),
-        ("바이오", (inf.get("biography") or "-")[:80]),
-        ("프로필 링크", (inf.get("external_url") or "-")[:60]),
-    ]
-    right_rows = [
-        ("담당자", manual.get("contact_name") or "-"),
-        ("카카오", manual.get("contact_kakao") or "-"),
-        ("이메일", manual.get("contact_email") or inf.get("public_email") or "-"),
-        ("피드 단가", f"{manual.get('feed_price') or 0:,}만원" if manual.get("feed_price") else "-"),
-        ("릴스 단가", f"{manual.get('reel_price') or 0:,}만원" if manual.get("reel_price") else "-"),
-        ("협업 유형", manual.get("collab_types") or "-"),
-    ]
-
-    detail = Table([[_info_table(left_rows), _info_table(right_rows)]],
-                   colWidths=[12.5*cm, 12.5*cm], spaceAfter=0)
-    detail.setStyle(TableStyle([
-        ("VALIGN",(0,0),(-1,-1),"TOP"),
-        ("LEFTPADDING",(0,0),(0,0),0), ("RIGHTPADDING",(0,0),(0,0),4),
-        ("LEFTPADDING",(1,0),(1,0),4), ("RIGHTPADDING",(1,0),(1,0),0),
-        ("TOPPADDING",(0,0),(-1,-1),0), ("BOTTOMPADDING",(0,0),(-1,-1),0),
-    ]))
-    elements.append(detail)
-    elements.append(Spacer(1, 8))
-
-    # ════════ 5. 인기 게시물 TOP ════════
+    # --- 왼쪽: 인기 게시물 TOP ---
     top_likes = inf.get("top_posts_likes", [])
     top_reels = inf.get("top_reels_views", [])
     if top_likes or top_reels:
-        elements.append(_p("인기 게시물 TOP", size=11, bold=True, color=C_PRIMARY))
-        elements.append(Spacer(1, 3))
-
-        post_hdr = [
-            _p("유형", size=7.5, bold=True, color=C_WHITE, align=TA_CENTER),
-            _p("게시물 코드", size=7.5, bold=True, color=C_WHITE, align=TA_CENTER),
-            _p("좋아요", size=7.5, bold=True, color=C_WHITE, align=TA_CENTER),
-            _p("댓글", size=7.5, bold=True, color=C_WHITE, align=TA_CENTER),
-            _p("조회수", size=7.5, bold=True, color=C_WHITE, align=TA_CENTER),
-        ]
-        post_data = [post_hdr]
-
+        L.append(SectionHeader("인기 게시물 TOP", LW, C_PURPLE))
+        L.append(Spacer(1, 4))
+        ph = [_p("유형", size=7, bold=True, color=C_WHITE, align=TA_CENTER),
+              _p("게시물 코드", size=7, bold=True, color=C_WHITE, align=TA_CENTER),
+              _p("좋아요", size=7, bold=True, color=C_WHITE, align=TA_CENTER),
+              _p("댓글", size=7, bold=True, color=C_WHITE, align=TA_CENTER),
+              _p("조회수", size=7, bold=True, color=C_WHITE, align=TA_CENTER)]
+        pd = [ph]
         for p in (top_likes or [])[:3]:
             if not isinstance(p, dict): continue
             url = p.get("url", "")
-            code = url.split("/p/")[-1].rstrip("/")[:15] if "/p/" in url else url[-20:]
-            post_data.append([
-                _p("피드", size=8, bold=True, color=C_ACCENT, align=TA_CENTER),
-                _p(code, size=8, color=C_TEXT, align=TA_CENTER),
-                _p(_fmt(p.get("likes", 0)), size=8, color=C_DARK, align=TA_CENTER),
-                _p(_fmt(p.get("comments", 0)), size=8, color=C_DARK, align=TA_CENTER),
-                _p("-", size=8, color=C_GRAY, align=TA_CENTER),
+            code = url.split("/p/")[-1].rstrip("/")[:14] if "/p/" in url else "-"
+            pd.append([
+                _p("피드", size=7.5, bold=True, color=C_ACCENT, align=TA_CENTER),
+                _p(code, size=7.5, color=C_TEXT, align=TA_CENTER),
+                _p(_fmt(p.get("likes", 0)), size=7.5, bold=True, color=C_DARK, align=TA_CENTER),
+                _p(_fmt(p.get("comments", 0)), size=7.5, color=C_DARK, align=TA_CENTER),
+                _p("-", size=7.5, color=C_GRAY, align=TA_CENTER),
             ])
-
         for p in (top_reels or [])[:3]:
             if not isinstance(p, dict): continue
             url = p.get("url", "")
-            code = url.split("/p/")[-1].rstrip("/")[:15] if "/p/" in url else url[-20:]
-            post_data.append([
-                _p("릴스", size=8, bold=True, color=C_PURPLE, align=TA_CENTER),
-                _p(code, size=8, color=C_TEXT, align=TA_CENTER),
-                _p(_fmt(p.get("likes", 0)), size=8, color=C_DARK, align=TA_CENTER),
-                _p("-", size=8, color=C_GRAY, align=TA_CENTER),
-                _p(_fmt(p.get("views", 0)), size=8, bold=True, color=C_PURPLE, align=TA_CENTER),
+            code = url.split("/p/")[-1].rstrip("/")[:14] if "/p/" in url else "-"
+            pd.append([
+                _p("릴스", size=7.5, bold=True, color=C_PURPLE, align=TA_CENTER),
+                _p(code, size=7.5, color=C_TEXT, align=TA_CENTER),
+                _p(_fmt(p.get("likes", 0)), size=7.5, bold=True, color=C_DARK, align=TA_CENTER),
+                _p("-", size=7.5, color=C_GRAY, align=TA_CENTER),
+                _p(_fmt(p.get("views", 0)), size=7.5, bold=True, color=C_PURPLE, align=TA_CENTER),
             ])
-
-        if len(post_data) > 1:
-            pcw = [2.5*cm, 6*cm, 4*cm, 4*cm, 4*cm]
-            ptbl = Table(post_data, colWidths=pcw)
+        if len(pd) > 1:
+            pw = [2*cm, 3.8*cm, 2.5*cm, 2.5*cm, 2.5*cm]
+            ptbl = Table(pd, colWidths=pw)
             ptbl.setStyle(TableStyle([
-                ("BACKGROUND",(0,0),(-1,0), C_PRIMARY),
-                ("ROWBACKGROUNDS",(0,1),(-1,-1), [C_WHITE, C_LIGHTER]),
+                ("BACKGROUND",(0,0),(-1,0), colors.HexColor("#4338ca")),
+                ("ROWBACKGROUNDS",(0,1),(-1,-1), [C_WHITE, C_PURP_BG]),
                 ("BOX",(0,0),(-1,-1), 0.5, C_BORDER),
                 ("LINEBELOW",(0,0),(-1,-1), 0.3, C_BORDER),
-                ("PADDING",(0,0),(-1,-1), 5),
-                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                ("PADDING",(0,0),(-1,-1), 5), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
             ]))
-            elements.append(ptbl)
-            elements.append(Spacer(1, 8))
+            L.append(ptbl)
 
-    # ════════ 6. 해시태그 ════════
+    # --- 오른쪽: 계정 정보 ---
+    R.append(SectionHeader("계정 정보", RW, C_PRIMARY))
+    R.append(Spacer(1, 4))
+
+    def _irow(label, val, hl=False):
+        vc = C_PRIMARY if hl else C_DARK
+        return [_p(label, size=7.5, bold=True, color=C_GRAY),
+                _p(str(val)[:55], size=7.5, color=vc, bold=hl)]
+
+    info_data = [
+        _irow("업로드 빈도", inf.get("upload_frequency") or "-"),
+        _irow("활성 시간", inf.get("active_hours") or "-"),
+        _irow("마지막 게시", inf.get("last_post_date") or "-"),
+        _irow("카테고리", cat or "-"),
+        _irow("바이오", (inf.get("biography") or "-")[:55]),
+        _irow("프로필 링크", (inf.get("external_url") or "-")[:50]),
+    ]
+    # 구분선 역할의 빈 행
+    info_data.append([_p("연락처 / 단가", size=7, bold=True, color=C_PRIMARY), _p("", size=7)])
+
+    m_items = [
+        ("담당자", manual.get("contact_name") or "-"),
+        ("카카오", manual.get("contact_kakao") or "-"),
+        ("이메일", manual.get("contact_email") or inf.get("public_email") or "-"),
+        ("피드 단가", f"{manual.get('feed_price'):,}만원" if manual.get("feed_price") else "-"),
+        ("릴스 단가", f"{manual.get('reel_price'):,}만원" if manual.get("reel_price") else "-"),
+        ("협업 유형", manual.get("collab_types") or "-"),
+    ]
+    for label, val in m_items:
+        info_data.append(_irow(label, val))
+
+    it = Table(info_data, colWidths=[3*cm, RW - 3*cm - 0.6*cm])
+    styles = [
+        ("ROWBACKGROUNDS",(0,0),(-1,-1), [C_WHITE, C_CARD_BG]),
+        ("BOX",(0,0),(-1,-1), 0.5, C_BORDER),
+        ("LINEBELOW",(0,0),(-1,-2), 0.3, C_BORDER),
+        ("PADDING",(0,0),(-1,-1), 4.5), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        # 구분선 행 강조
+        ("BACKGROUND",(0,6),(-1,6), colors.HexColor("#dbeafe")),
+        ("LINEBELOW",(0,6),(-1,6), 0.8, C_ACCENT),
+    ]
+    it.setStyle(TableStyle(styles))
+    R.append(it)
+
+    # 2단 결합
+    layout = Table([[L, R]], colWidths=[LW, RW])
+    layout.setStyle(TableStyle([
+        ("VALIGN",(0,0),(-1,-1),"TOP"),
+        ("LEFTPADDING",(0,0),(0,0),0), ("RIGHTPADDING",(0,0),(0,0),6),
+        ("LEFTPADDING",(1,0),(1,0),6), ("RIGHTPADDING",(1,0),(1,0),0),
+        ("TOPPADDING",(0,0),(-1,-1),0), ("BOTTOMPADDING",(0,0),(-1,-1),0),
+    ]))
+    elements.append(layout)
+    elements.append(Spacer(1, 6))
+
+    # ════════ 4. 해시태그 (태그 스타일) ════════
     htags_raw = inf.get("top_hashtags", "[]")
     try:
         htags = json.loads(htags_raw) if isinstance(htags_raw, str) else (htags_raw or [])
     except: htags = []
     if htags:
-        elements.append(_p("자주 사용하는 해시태그", size=11, bold=True, color=C_PRIMARY))
-        elements.append(Spacer(1, 3))
         tags = []
-        for h in htags[:20]:
+        for h in htags[:15]:
             if isinstance(h, dict):
-                tags.append(f'<font color="#6366f1">#{h["tag"]}</font>({h.get("count",1)})')
+                tags.append(f'<font color="#7c3aed"><b>#{h["tag"]}</b></font><font color="#94a3b8">({h.get("count",1)})</font>')
             elif isinstance(h, str):
-                tags.append(f'<font color="#6366f1">#{h}</font>')
-        tag_text = "  &nbsp;&nbsp;  ".join(tags)
-        elements.append(_p(tag_text, size=8, color=C_TEXT))
-        elements.append(Spacer(1, 6))
+                tags.append(f'<font color="#7c3aed"><b>#{h}</b></font>')
+        elements.append(_p('<font color="#1e3a8a"><b>Top 해시태그</b></font>    ' + "    ".join(tags),
+                           size=7.5, color=C_TEXT))
+        elements.append(Spacer(1, 3))
 
-    # ════════ 7. 메모 / 협업 브랜드 ════════
+    # ════════ 5. 메모 ════════
     notes = manual.get("notes", "")
     brands = manual.get("past_brands", "")
     if notes or brands:
-        elements.append(_p("메모 / 협업 이력", size=11, bold=True, color=C_PRIMARY))
-        elements.append(Spacer(1, 2))
-        if notes:
-            elements.append(_p(f"메모: {notes}", size=8, color=C_TEXT))
-        if brands:
-            elements.append(_p(f"협업 브랜드: {brands}", size=8, color=C_TEXT))
-        elements.append(Spacer(1, 4))
+        parts = []
+        if notes: parts.append(f"<b>메모:</b> {notes}")
+        if brands: parts.append(f"<b>협업 브랜드:</b> {brands}")
+        elements.append(_p("    ".join(parts), size=7.5, color=C_TEXT))
+        elements.append(Spacer(1, 3))
 
-    # ════════ 8. 푸터 ════════
-    elements.append(Spacer(1, 6))
-    elements.append(HRFlowable(width="100%", thickness=1, color=C_PRIMARY))
+    # ════════ 6. 푸터 ════════
+    elements.append(HRFlowable(width="100%", thickness=1.2, color=C_PRIMARY))
     elements.append(Spacer(1, 3))
-    footer_l = f"SuperTag  |  Confidential  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}  |  v2.0"
-    footer_r = f"통계 갱신: {inf.get('stats_updated_at', inf.get('last_post_date', '-'))}"
+    updated = _ts_to_date(inf.get("stats_updated_at") or inf.get("last_post_date") or "-")
     ft = Table([
-        [_p(footer_l, size=7, color=C_GRAY), _p(footer_r, size=7, color=C_GRAY, align=TA_RIGHT)]
+        [_p(f"SuperTag  |  Confidential  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            size=7, color=C_GRAY),
+         _p(f"통계 갱신: {updated}", size=7, color=C_GRAY, align=TA_RIGHT)]
     ], colWidths=[W/2, W/2])
     ft.setStyle(TableStyle([("PADDING",(0,0),(-1,-1),0)]))
     elements.append(ft)
@@ -374,7 +439,7 @@ def export_single_pdf(inf: dict, manual: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
                              leftMargin=1.2*cm, rightMargin=1.2*cm,
-                             topMargin=1*cm, bottomMargin=0.8*cm)
+                             topMargin=0.8*cm, bottomMargin=0.6*cm)
     doc.build(_scorecard_elements(inf, manual))
     return buf.getvalue()
 
@@ -383,7 +448,7 @@ def export_multi_pdf(inf_list: list) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
                              leftMargin=1.2*cm, rightMargin=1.2*cm,
-                             topMargin=1*cm, bottomMargin=0.8*cm)
+                             topMargin=0.8*cm, bottomMargin=0.6*cm)
     elements = []
     for i, (inf, manual) in enumerate(inf_list):
         if i > 0:
@@ -447,7 +512,6 @@ def export_list_pdf(inf_list: list) -> bytes:
     ]))
     elements.append(tbl)
 
-    # 푸터
     elements.append(Spacer(1, 8))
     elements.append(HRFlowable(width="100%", thickness=1, color=C_PRIMARY))
     elements.append(_p(f"SuperTag  |  Confidential  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}",

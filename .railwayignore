@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+.env*.local
+*.db
+data/profile_pics/
+data/posts/
+.git/
+스크린샷참고/
