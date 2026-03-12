@@ -1066,35 +1066,60 @@ def _hiker_media_info(media_pk: str) -> dict | None:
 
 
 def _enrich_reel_views(medias: list):
-    """릴스 조회수가 0인 경우 media_info API로 개별 조회하여 보완."""
+    """user_medias_chunk_v1이 조회수/썸네일을 안 줄 때 media_info로 개별 보완.
+    - 릴스: view_count 보완
+    - 캐러셀: image_versions2, carousel_media 보완
+    """
     if not medias or not isinstance(medias, list):
         return
-    reels = [m for m in medias if isinstance(m, dict)
-             and m.get("media_type") == 2 and m.get("product_type") == "clips"]
-    if not reels:
+    need_enrich = []
+    for m in medias:
+        if not isinstance(m, dict):
+            continue
+        mt = m.get("media_type")
+        pt = m.get("product_type", "")
+        is_reel = (mt == 2 and pt == "clips")
+        is_carousel = (mt == 8)
+        # 릴스: 조회수 0이면 보완 필요
+        if is_reel and _extract_views(m) == 0:
+            need_enrich.append(m)
+        # 캐러셀: thumbnail_url과 image_versions2 둘 다 없으면 보완 필요
+        elif is_carousel and not m.get("thumbnail_url") and not m.get("image_versions2"):
+            need_enrich.append(m)
+    if not need_enrich:
         return
-    # 모든 릴스의 view_count가 0인지 확인
-    has_views = any(_extract_views(r) > 0 for r in reels)
-    if has_views:
-        return  # 이미 조회수 있음
-    log.info(f"[enrich] 릴스 {len(reels)}개 조회수 0 → media_info 개별 조회 시도")
-    for r in reels:
-        mpk = r.get("pk") or r.get("id")
+    log.info(f"[enrich] {len(need_enrich)}개 게시물 media_info 보완 시도")
+    for m in need_enrich:
+        mpk = m.get("pk") or m.get("id")
         if not mpk:
             continue
         detail = _hiker_media_info(str(mpk))
-        if detail:
+        if not detail:
+            continue
+        code = m.get("code", "")
+        mt = m.get("media_type")
+        # 릴스 조회수 보완
+        if mt == 2:
             for vk in ("view_count", "play_count", "video_play_count", "video_view_count"):
                 v = detail.get(vk, 0)
                 if v:
-                    r[vk] = v
-                    log.info(f"[enrich] 릴스 {r.get('code','')} → {vk}={v}")
+                    m[vk] = v
+                    log.info(f"[enrich] 릴스 {code} → {vk}={v}")
                     break
-            cm = detail.get("clips_metadata")
-            if isinstance(cm, dict) and cm.get("play_count") and not _extract_views(r):
-                r.setdefault("clips_metadata", {})["play_count"] = cm["play_count"]
-                log.info(f"[enrich] 릴스 {r.get('code','')} → clips_metadata.play_count={cm['play_count']}")
-        time.sleep(0.2)  # rate limit
+            if not _extract_views(m):
+                cm = detail.get("clips_metadata")
+                if isinstance(cm, dict) and cm.get("play_count"):
+                    m.setdefault("clips_metadata", {})["play_count"] = cm["play_count"]
+                    log.info(f"[enrich] 릴스 {code} → clips_metadata.play_count={cm['play_count']}")
+        # 캐러셀/사진 썸네일 보완
+        if mt == 8 or (not m.get("thumbnail_url") and not m.get("image_versions2")):
+            for field in ("thumbnail_url", "image_versions2", "carousel_media"):
+                if detail.get(field):
+                    m[field] = detail[field]
+            log.info(f"[enrich] 캐러셀 {code} → thumbnail={bool(detail.get('thumbnail_url'))} "
+                     f"iv2={bool(detail.get('image_versions2'))} "
+                     f"carousel={len(detail.get('carousel_media', []))}개")
+        time.sleep(0.3)  # rate limit
 
 
 def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:

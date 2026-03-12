@@ -1,4 +1,4 @@
-"""PDF 생성 모듈"""
+"""PDF 생성 모듈 — 인플루언서 스코어카드 & 리스트"""
 import io, json, os
 from datetime import datetime
 from reportlab.lib.pagesizes import A4, landscape
@@ -32,29 +32,35 @@ try:
 except Exception:
     pass
 
-C_PURPLE   = colors.HexColor("#6366f1")
-C_INDIGO   = colors.HexColor("#4f46e5")
-C_GRAY     = colors.HexColor("#64748b")
-C_LIGHTGRAY= colors.HexColor("#f1f5f9")
-C_DARK     = colors.HexColor("#0f172a")
-C_GREEN    = colors.HexColor("#10b981")
-C_ORANGE   = colors.HexColor("#f59e0b")
-C_BLUE     = colors.HexColor("#3b82f6")
-C_RED      = colors.HexColor("#ef4444")
+C_PURPLE    = colors.HexColor("#6366f1")
+C_GRAY      = colors.HexColor("#64748b")
+C_LIGHTGRAY = colors.HexColor("#f8fafc")
+C_BORDER    = colors.HexColor("#e2e8f0")
+C_DARK      = colors.HexColor("#0f172a")
+C_GREEN     = colors.HexColor("#10b981")
+C_ORANGE    = colors.HexColor("#f59e0b")
+C_BLUE      = colors.HexColor("#3b82f6")
+C_RED       = colors.HexColor("#ef4444")
+C_PINK      = colors.HexColor("#ec4899")
 
-def _fmt_num(n):
+def _fmt(n, suffix=""):
     try:
         n = int(n or 0)
-        if n >= 10000: return f"{n//10000}만{(n%10000)//1000}천" if (n%10000)//1000 else f"{n//10000}만"
-        return f"{n:,}"
+        if n >= 10_000_000: return f"{n/10_000_000:.1f}천만{suffix}"
+        if n >= 10_000: return f"{n/10_000:.1f}만{suffix}"
+        return f"{n:,}{suffix}"
     except: return str(n or "-")
 
 def _fmt_rate(r):
     try: return f"{float(r or 0):.2f}%"
     except: return "-"
 
-def _get_profile_img(username, size=(60, 60)):
-    """프로필 이미지 로드"""
+def _p(text, font=None, size=8, color=C_DARK, bold=False, align=TA_LEFT):
+    fn = (FONT_BOLD if bold else FONT_NAME) if not font else font
+    return Paragraph(str(text), ParagraphStyle("_p", fontName=fn, fontSize=size,
+                                                textColor=color, alignment=align, leading=size*1.4))
+
+def _get_profile_img(username, size=(50, 50)):
     path = os.path.join(DATA_DIR, "profile_pics", f"{username}.jpg")
     if os.path.exists(path):
         try:
@@ -67,165 +73,204 @@ def _get_profile_img(username, size=(60, 60)):
         except: pass
     return None
 
-def _scorecard_elements(inf, manual, posts_summary=None):
-    """인플루언서 1명 스코어카드 요소 생성"""
-    elements = []
-    W = 25*cm  # 가로 A4
-    col1 = 7*cm
-    col2 = 18*cm
+def _stat_box(label, value, color=C_PURPLE):
+    """통계 박스 (값 + 라벨)"""
+    return [
+        _p(value, bold=True, size=12, color=color, align=TA_CENTER),
+        _p(label, size=7, color=C_GRAY, align=TA_CENTER),
+    ]
 
-    styles = getSampleStyleSheet()
-    h1 = ParagraphStyle("h1", fontName=FONT_BOLD, fontSize=18, textColor=C_DARK, spaceAfter=2)
-    h2 = ParagraphStyle("h2", fontName=FONT_BOLD, fontSize=11, textColor=C_PURPLE, spaceAfter=4)
-    body = ParagraphStyle("body", fontName=FONT_NAME, fontSize=9, textColor=C_GRAY, leading=14)
-    small = ParagraphStyle("small", fontName=FONT_NAME, fontSize=8, textColor=C_GRAY)
+def _section_title(text):
+    return _p(text, bold=True, size=10, color=C_PURPLE)
+
+
+def _scorecard_elements(inf, manual, posts_summary=None):
+    """인플루언서 1명 스코어카드"""
+    elements = []
+    W = 25*cm
 
     username = inf.get("username", "")
     full_name = inf.get("full_name", "")
 
-    # ── 헤더 ──────────────────────────────────────────────
-    header_data = [[]]
-    pic = _get_profile_img(username, (55, 55))
-    if pic:
-        header_data[0].append(pic)
-    else:
-        # 이니셜 박스
-        header_data[0].append(Paragraph(f"<b>{username[0].upper() if username else '?'}</b>",
-                                         ParagraphStyle("init", fontName=FONT_BOLD, fontSize=22,
-                                                        textColor=colors.white, alignment=TA_CENTER)))
+    # ════════ 헤더 ════════
+    pic = _get_profile_img(username, (45, 45))
+    pic_cell = pic if pic else _p(username[0].upper() if username else "?", bold=True, size=18,
+                                   color=colors.white, align=TA_CENTER)
+    name_parts = [_p(f"@{username}", bold=True, size=13, color=colors.white)]
+    if full_name:
+        name_parts.append(_p(full_name, size=8, color=colors.HexColor("#c7d2fe")))
+    name_parts.append(_p(f"instagram.com/{username}", size=7, color=colors.HexColor("#a5b4fc")))
 
-    name_para = [
-        Paragraph(f"<b>@{username}</b>", ParagraphStyle("un", fontName=FONT_BOLD, fontSize=14, textColor=C_DARK)),
-        Paragraph(full_name, ParagraphStyle("fn", fontName=FONT_NAME, fontSize=10, textColor=C_GRAY)),
-        Paragraph(f"<a href='https://www.instagram.com/{username}/'>instagram.com/{username}</a>",
-                  ParagraphStyle("link", fontName=FONT_NAME, fontSize=8, textColor=C_PURPLE)),
-    ]
-    if inf.get("is_verified"):
-        name_para.append(Paragraph("✓ 인증 계정", ParagraphStyle("v", fontName=FONT_BOLD, fontSize=8, textColor=C_BLUE)))
-    if manual.get("can_live"):
-        name_para.append(Paragraph("📡 라이브커머스 가능", ParagraphStyle("live", fontName=FONT_BOLD, fontSize=8, textColor=C_GREEN)))
+    badges = []
+    if inf.get("is_verified"): badges.append("인증계정")
+    if manual.get("can_live"): badges.append("라이브가능")
+    if badges:
+        name_parts.append(_p(" | ".join(badges), bold=True, size=7, color=colors.HexColor("#fbbf24")))
 
-    header_data[0].append(name_para)
-
-    header_tbl = Table(header_data, colWidths=[65, W-65])
-    header_tbl.setStyle(TableStyle([
+    header = Table([[pic_cell, name_parts]], colWidths=[55, W-55])
+    header.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("BACKGROUND", (0,0), (0,0), C_PURPLE),
-        ("ROWBACKGROUNDS", (1,0), (-1,-1), [C_LIGHTGRAY]),
-        ("BOX", (0,0), (-1,-1), 1, colors.HexColor("#e2e8f0")),
+        ("BACKGROUND", (0,0), (-1,-1), C_PURPLE),
         ("PADDING", (0,0), (-1,-1), 8),
+        ("ROUNDEDCORNERS", [6,6,0,0]),
     ]))
-    elements.append(header_tbl)
-    elements.append(Spacer(1, 8))
+    elements.append(header)
 
-    # ── 핵심 통계 박스 ─────────────────────────────────────
-    stats_data = [
-        [
-            _stat_cell("팔로워", _fmt_num(inf.get("follower_count")), C_PURPLE),
-            _stat_cell("참여율", _fmt_rate(inf.get("engagement_rate")), C_GREEN),
-            _stat_cell("평균 릴스 조회", _fmt_num(inf.get("avg_reel_views")), C_BLUE),
-            _stat_cell("평균 좋아요", _fmt_num(inf.get("avg_likes")), C_ORANGE),
-        ]
+    # ════════ 핵심 지표 6칸 ════════
+    row1 = [
+        _stat_box("팔로워", _fmt(inf.get("follower_count")), C_PURPLE),
+        _stat_box("팔로잉", _fmt(inf.get("following_count")), C_GRAY),
+        _stat_box("총 게시물", _fmt(inf.get("media_count")), C_DARK),
+        _stat_box("참여율", _fmt_rate(inf.get("engagement_rate")), C_GREEN),
+        _stat_box("릴스 비율", _fmt_rate(inf.get("reels_ratio")), C_BLUE),
+        _stat_box("협찬 비율", _fmt_rate(inf.get("sponsored_ratio")), C_ORANGE),
     ]
-    col_w = W / 4
-    stats_tbl = Table(stats_data, colWidths=[col_w]*4)
-    stats_tbl.setStyle(TableStyle([
-        ("ALIGN", (0,0), (-1,-1), "CENTER"),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
-        ("PADDING", (0,0), (-1,-1), 10),
-        ("ROWBACKGROUNDS", (0,0), (-1,-1), [colors.white]),
-        ("BOX", (0,0), (-1,-1), 1, colors.HexColor("#e2e8f0")),
+    t = Table([row1], colWidths=[W/6]*6)
+    t.setStyle(TableStyle([
+        ("ALIGN",(0,0),(-1,-1),"CENTER"), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("GRID",(0,0),(-1,-1), 0.5, C_BORDER), ("PADDING",(0,0),(-1,-1), 6),
+        ("BACKGROUND",(0,0),(-1,-1), colors.white),
     ]))
-    elements.append(stats_tbl)
-    elements.append(Spacer(1, 8))
+    elements.append(t)
+    elements.append(Spacer(1, 4))
 
-    # ── 상세 정보 2단 ──────────────────────────────────────
-    left_rows = [
-        ["팔로잉", _fmt_num(inf.get("following_count"))],
-        ["총 게시물", _fmt_num(inf.get("media_count"))],
-        ["릴스 비율", _fmt_rate(inf.get("reels_ratio"))],
-        ["협찬 비율", _fmt_rate(inf.get("sponsored_ratio"))],
+    # ════════ 피드/릴스 성과 비교 ════════
+    elements.append(_section_title("피드 / 릴스 성과"))
+    perf_headers = ["", "평균 좋아요", "평균 댓글", "평균 조회수"]
+    feed_row = [
+        _p("피드", bold=True, size=8, color=C_ORANGE),
+        _p(_fmt(inf.get("avg_feed_likes")), size=8, align=TA_CENTER),
+        _p(_fmt(inf.get("avg_feed_comments")), size=8, align=TA_CENTER),
+        _p("-", size=8, color=C_GRAY, align=TA_CENTER),
+    ]
+    reel_row = [
+        _p("릴스", bold=True, size=8, color=C_BLUE),
+        _p(_fmt(inf.get("avg_reel_likes")), size=8, align=TA_CENTER),
+        _p(_fmt(inf.get("avg_reel_comments")), size=8, align=TA_CENTER),
+        _p(_fmt(inf.get("avg_reel_views")), size=8, color=C_BLUE, align=TA_CENTER),
+    ]
+    perf_t = Table([perf_headers, feed_row, reel_row], colWidths=[3*cm, 5.5*cm, 5.5*cm, 5.5*cm])
+    perf_t.setStyle(TableStyle([
+        ("FONTNAME",(0,0),(-1,0), FONT_BOLD), ("FONTSIZE",(0,0),(-1,0), 8),
+        ("TEXTCOLOR",(0,0),(-1,0), C_GRAY),
+        ("BACKGROUND",(0,0),(-1,0), colors.HexColor("#f1f5f9")),
+        ("GRID",(0,0),(-1,-1), 0.3, C_BORDER), ("PADDING",(0,0),(-1,-1), 5),
+        ("ALIGN",(1,0),(-1,-1),"CENTER"), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+    ]))
+    elements.append(perf_t)
+    elements.append(Spacer(1, 6))
+
+    # ════════ 상세 정보 2단 ════════
+    elements.append(_section_title("계정 정보 / 단가"))
+
+    def _detail_rows(rows):
+        t = Table(rows, colWidths=[3.5*cm, 8*cm])
+        t.setStyle(TableStyle([
+            ("FONTNAME",(0,0),(0,-1), FONT_BOLD), ("FONTNAME",(1,0),(1,-1), FONT_NAME),
+            ("FONTSIZE",(0,0),(-1,-1), 7.5),
+            ("TEXTCOLOR",(0,0),(0,-1), C_GRAY), ("TEXTCOLOR",(1,0),(1,-1), C_DARK),
+            ("ROWBACKGROUNDS",(0,0),(-1,-1), [colors.white, C_LIGHTGRAY]),
+            ("GRID",(0,0),(-1,-1), 0.3, C_BORDER), ("PADDING",(0,0),(-1,-1), 4),
+        ]))
+        return t
+
+    left = _detail_rows([
         ["업로드 빈도", inf.get("upload_frequency") or "-"],
         ["활성 시간", inf.get("active_hours") or "-"],
         ["마지막 게시", inf.get("last_post_date") or "-"],
         ["카테고리", inf.get("category") or manual.get("main_category") or "-"],
-    ]
-    right_rows = [
-        ["연락처", manual.get("contact_name") or "-"],
+        ["바이오", (inf.get("biography") or "-")[:60]],
+        ["프로필 링크", (inf.get("external_url") or "-")[:50]],
+    ])
+    right = _detail_rows([
+        ["담당자", manual.get("contact_name") or "-"],
         ["카카오", manual.get("contact_kakao") or "-"],
         ["이메일", manual.get("contact_email") or inf.get("public_email") or "-"],
-        ["협업 유형", manual.get("collab_types") or "-"],
         ["피드 단가", f"{manual.get('feed_price') or 0:,}만원" if manual.get("feed_price") else "-"],
         ["릴스 단가", f"{manual.get('reel_price') or 0:,}만원" if manual.get("reel_price") else "-"],
-        ["라이브 단가", f"{manual.get('live_price') or 0:,}만원" if manual.get("live_price") else "-"],
-        ["품질 점수", "★" * int(manual.get("quality_score") or 0) or "-"],
-    ]
+        ["협업 유형", manual.get("collab_types") or "-"],
+    ])
+    detail = Table([[left, right]], colWidths=[12*cm, 12*cm])
+    detail.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),0)]))
+    elements.append(detail)
+    elements.append(Spacer(1, 6))
 
-    def make_detail_table(rows):
-        t = Table(rows, colWidths=[3.5*cm, 8.5*cm])
-        t.setStyle(TableStyle([
-            ("FONTNAME", (0,0), (0,-1), FONT_BOLD),
-            ("FONTNAME", (1,0), (1,-1), FONT_NAME),
-            ("FONTSIZE", (0,0), (-1,-1), 8),
-            ("TEXTCOLOR", (0,0), (0,-1), C_GRAY),
-            ("TEXTCOLOR", (1,0), (1,-1), C_DARK),
-            ("ROWBACKGROUNDS", (0,0), (-1,-1), [colors.white, C_LIGHTGRAY]),
-            ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#e2e8f0")),
-            ("PADDING", (0,0), (-1,-1), 5),
-        ]))
-        return t
+    # ════════ 최근 게시물 (Top 3) ════════
+    top_likes = inf.get("top_posts_likes", [])
+    top_reels = inf.get("top_reels_views", [])
+    if top_likes or top_reels:
+        elements.append(_section_title("인기 게시물"))
+        post_headers = ["유형", "URL", "좋아요", "댓글", "조회수"]
+        post_rows = [post_headers]
+        for p in (top_likes or [])[:3]:
+            url = p.get("url", "") if isinstance(p, dict) else ""
+            short = url.split("/p/")[-1].rstrip("/")[:12] if "/p/" in url else url[-20:]
+            post_rows.append([
+                "피드", short, _fmt(p.get("likes",0) if isinstance(p, dict) else 0),
+                _fmt(p.get("comments",0) if isinstance(p, dict) else 0), "-"
+            ])
+        for p in (top_reels or [])[:3]:
+            url = p.get("url", "") if isinstance(p, dict) else ""
+            short = url.split("/p/")[-1].rstrip("/")[:12] if "/p/" in url else url[-20:]
+            post_rows.append([
+                "릴스", short, _fmt(p.get("likes",0) if isinstance(p, dict) else 0),
+                "-", _fmt(p.get("views",0) if isinstance(p, dict) else 0)
+            ])
+        if len(post_rows) > 1:
+            pt = Table(post_rows, colWidths=[2*cm, 7*cm, 3.5*cm, 3.5*cm, 3.5*cm])
+            pt.setStyle(TableStyle([
+                ("FONTNAME",(0,0),(-1,0), FONT_BOLD), ("FONTSIZE",(0,0),(-1,-1), 7.5),
+                ("TEXTCOLOR",(0,0),(-1,0), colors.white),
+                ("BACKGROUND",(0,0),(-1,0), C_PURPLE),
+                ("GRID",(0,0),(-1,-1), 0.3, C_BORDER), ("PADDING",(0,0),(-1,-1), 4),
+                ("ALIGN",(2,0),(-1,-1),"CENTER"), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white, C_LIGHTGRAY]),
+            ]))
+            elements.append(pt)
+            elements.append(Spacer(1, 6))
 
-    detail_data = [[make_detail_table(left_rows), make_detail_table(right_rows)]]
-    detail_tbl = Table(detail_data, colWidths=[12.5*cm, 12.5*cm])
-    detail_tbl.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),0)]))
-    elements.append(detail_tbl)
+    # ════════ 해시태그 ════════
+    htags_raw = inf.get("top_hashtags", "[]")
+    try:
+        htags = json.loads(htags_raw) if isinstance(htags_raw, str) else (htags_raw or [])
+    except: htags = []
+    if htags:
+        elements.append(_section_title("자주 사용하는 해시태그"))
+        tag_text = "  ".join([f"#{h['tag']}({h['count']})" for h in htags[:15]])
+        elements.append(_p(tag_text, size=7.5, color=C_PURPLE))
+        elements.append(Spacer(1, 4))
 
-    # ── 메모 ──────────────────────────────────────────────
+    # ════════ 메모 / 브랜드 ════════
     if manual.get("notes"):
-        elements.append(Spacer(1, 6))
-        elements.append(Paragraph(f"<b>메모:</b> {manual.get('notes')}", body))
-
-    # ── 과거 협업 브랜드 ───────────────────────────────────
+        elements.append(_p(f"메모: {manual['notes']}", size=7.5, color=C_GRAY))
     if manual.get("past_brands"):
-        elements.append(Paragraph(f"<b>협업 브랜드:</b> {manual.get('past_brands')}", body))
+        elements.append(_p(f"협업 브랜드: {manual['past_brands']}", size=7.5, color=C_GRAY))
 
+    # ════════ 푸터 ════════
     elements.append(Spacer(1, 4))
-    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e2e8f0")))
-    elements.append(Paragraph(
-        f"<font color='#94a3b8' size='7'>SuperTag | 생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')} | 통계갱신: {inf.get('last_post_date') or '-'}</font>",
-        ParagraphStyle("footer", fontName=FONT_NAME, fontSize=7, textColor=C_GRAY, alignment=TA_RIGHT)
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=C_BORDER))
+    elements.append(_p(
+        f"SuperTag  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}  |  통계갱신: {inf.get('last_post_date') or '-'}",
+        size=6.5, color=colors.HexColor("#94a3b8"), align=TA_RIGHT
     ))
 
     return elements
 
 
-def _stat_cell(label, value, color):
-    return [
-        Paragraph(f"<b>{value}</b>",
-                  ParagraphStyle("sv", fontName=FONT_BOLD, fontSize=13, textColor=color, alignment=TA_CENTER)),
-        Paragraph(label,
-                  ParagraphStyle("sl", fontName=FONT_NAME, fontSize=8, textColor=C_GRAY, alignment=TA_CENTER)),
-    ]
-
-
 def export_single_pdf(inf: dict, manual: dict) -> bytes:
-    """인플루언서 1명 PDF"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
                              leftMargin=1.5*cm, rightMargin=1.5*cm,
-                             topMargin=1.5*cm, bottomMargin=1.5*cm)
-    elements = _scorecard_elements(inf, manual)
-    doc.build(elements)
+                             topMargin=1.2*cm, bottomMargin=1*cm)
+    doc.build(_scorecard_elements(inf, manual))
     return buf.getvalue()
 
 
 def export_multi_pdf(inf_list: list) -> bytes:
-    """여러 인플루언서 스코어카드 (1명 1페이지)"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
                              leftMargin=1.5*cm, rightMargin=1.5*cm,
-                             topMargin=1.5*cm, bottomMargin=1.5*cm)
+                             topMargin=1.2*cm, bottomMargin=1*cm)
     elements = []
     for i, (inf, manual) in enumerate(inf_list):
         if i > 0:
@@ -236,59 +281,49 @@ def export_multi_pdf(inf_list: list) -> bytes:
 
 
 def export_list_pdf(inf_list: list) -> bytes:
-    """비교 리스트형 PDF (표 형태, 여러 명 한눈에)"""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
-                             leftMargin=1*cm, rightMargin=1*cm,
-                             topMargin=1.5*cm, bottomMargin=1*cm)
+                             leftMargin=0.8*cm, rightMargin=0.8*cm,
+                             topMargin=1.2*cm, bottomMargin=0.8*cm)
     elements = []
 
-    title_style = ParagraphStyle("title", fontName=FONT_BOLD, fontSize=16, textColor=colors.HexColor("#0f172a"),
-                                  spaceAfter=4)
-    sub_style = ParagraphStyle("sub", fontName=FONT_NAME, fontSize=9, textColor=colors.HexColor("#64748b"),
-                                spaceAfter=12)
-    elements.append(Paragraph("인플루언서 비교 리스트", title_style))
-    elements.append(Paragraph(f"총 {len(inf_list)}명 | 생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')}", sub_style))
+    elements.append(_p("인플루언서 비교 리스트", bold=True, size=14, color=C_DARK))
+    elements.append(_p(f"총 {len(inf_list)}명 | {datetime.now().strftime('%Y-%m-%d %H:%M')}", size=8, color=C_GRAY))
+    elements.append(Spacer(1, 8))
 
-    headers = ["#", "계정", "팔로워", "참여율", "평균릴스뷰", "게시물", "릴스%", "카테고리",
-               "라이브", "피드단가", "릴스단가", "협업유형", "품질"]
+    headers = ["#", "계정", "팔로워", "참여율", "릴스조회", "릴스좋아요", "피드좋아요", "게시물",
+               "카테고리", "피드단가", "릴스단가"]
     data = [headers]
 
     for i, (inf, manual) in enumerate(inf_list):
-        uname = inf.get("username", "")
-        row = [
+        data.append([
             str(i+1),
-            f"@{uname}",
-            _fmt_num(inf.get("follower_count")),
+            f"@{inf.get('username', '')}",
+            _fmt(inf.get("follower_count")),
             _fmt_rate(inf.get("engagement_rate")),
-            _fmt_num(inf.get("avg_reel_views")),
-            _fmt_num(inf.get("media_count")),
-            _fmt_rate(inf.get("reels_ratio")),
-            inf.get("category") or manual.get("main_category") or "-",
-            "O" if manual.get("can_live") else "-",
+            _fmt(inf.get("avg_reel_views")),
+            _fmt(inf.get("avg_reel_likes")),
+            _fmt(inf.get("avg_feed_likes")),
+            _fmt(inf.get("media_count")),
+            (inf.get("category") or manual.get("main_category") or "-")[:8],
             f"{manual.get('feed_price') or 0}만" if manual.get("feed_price") else "-",
             f"{manual.get('reel_price') or 0}만" if manual.get("reel_price") else "-",
-            manual.get("collab_types") or "-",
-            "★" * int(manual.get("quality_score") or 0) or "-",
-        ]
-        data.append(row)
+        ])
 
-    col_widths = [1*cm, 4*cm, 2.5*cm, 2*cm, 2.5*cm, 1.8*cm, 1.8*cm,
-                  3*cm, 1.5*cm, 2*cm, 2*cm, 3*cm, 1.5*cm]
-    tbl = Table(data, colWidths=col_widths, repeatRows=1)
+    cw = [1*cm, 3.5*cm, 2.5*cm, 2*cm, 2.5*cm, 2.5*cm, 2.5*cm, 2*cm, 3*cm, 2*cm, 2*cm]
+    tbl = Table(data, colWidths=cw, repeatRows=1)
     tbl.setStyle(TableStyle([
-        ("BACKGROUND",  (0,0), (-1,0), C_PURPLE),
-        ("TEXTCOLOR",   (0,0), (-1,0), colors.white),
-        ("FONTNAME",    (0,0), (-1,0), FONT_BOLD),
-        ("FONTSIZE",    (0,0), (-1,-1), 8),
-        ("FONTNAME",    (0,1), (-1,-1), FONT_NAME),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, C_LIGHTGRAY]),
-        ("GRID",        (0,0), (-1,-1), 0.3, colors.HexColor("#e2e8f0")),
-        ("ALIGN",       (0,0), (-1,-1), "CENTER"),
-        ("ALIGN",       (1,1), (1,-1), "LEFT"),
-        ("ALIGN",       (7,1), (7,-1), "LEFT"),
-        ("PADDING",     (0,0), (-1,-1), 4),
-        ("VALIGN",      (0,0), (-1,-1), "MIDDLE"),
+        ("BACKGROUND",(0,0),(-1,0), C_PURPLE),
+        ("TEXTCOLOR",(0,0),(-1,0), colors.white),
+        ("FONTNAME",(0,0),(-1,0), FONT_BOLD),
+        ("FONTSIZE",(0,0),(-1,-1), 7.5),
+        ("FONTNAME",(0,1),(-1,-1), FONT_NAME),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1), [colors.white, C_LIGHTGRAY]),
+        ("GRID",(0,0),(-1,-1), 0.3, C_BORDER),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),
+        ("ALIGN",(1,1),(1,-1),"LEFT"),
+        ("PADDING",(0,0),(-1,-1), 3.5),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
     ]))
     elements.append(tbl)
     doc.build(elements)
