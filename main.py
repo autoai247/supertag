@@ -513,21 +513,24 @@ def _fromjson(s):
 templates.env.filters["fromjson"] = _fromjson
 
 def _pic(inf, size=128):
-    """프로필 사진 URL: profile_pic_local > profile_pic_url > fallback"""
+    """프로필 사진 URL: Supabase Storage > CDN > fallback"""
     _sb_url = os.environ.get("SUPABASE_URL", "https://ysqnixgdpltguatvjjcb.supabase.co")
     _SB_STORAGE = f"{_sb_url}/storage/v1/object/public/profile-pics/"
     if isinstance(inf, dict):
         local = inf.get("profile_pic_local") or ""
         cdn = inf.get("profile_pic_url") or ""
+        pk = inf.get("pk") or ""
         name = inf.get("username") or inf.get("full_name") or "U"
     else:
-        local = cdn = ""
+        local = cdn = pk = ""
         name = str(inf) if inf else "U"
-    # profile_pic_local: Supabase Storage URL이면 그대로, 레거시 상대경로는 무시
-    if local:
-        if local.startswith("http"):
-            return local
-        # 레거시 상대경로(profile_pics/xxx.jpg)는 Supabase에 없으므로 CDN으로 폴백
+    # 1) profile_pic_local이 Supabase 전체 URL이면 그대로
+    if local and local.startswith("http"):
+        return local
+    # 2) pk가 있으면 Supabase Storage에서 {pk}.jpg 시도 (CDN보다 안정적)
+    if pk:
+        return f"{_SB_STORAGE}{pk}.jpg"
+    # 3) CDN URL 폴백
     if cdn:
         return cdn
     from urllib.parse import quote
