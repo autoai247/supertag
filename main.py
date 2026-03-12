@@ -2042,8 +2042,7 @@ def refresh_page(request: Request, session_id: Optional[str] = Cookie(default=No
     banned_pks = get_banned_pks()
     hidden_pks = get_hidden_pks()
     excluded_pks = banned_pks | hidden_pks
-    all_infs = get_influencers(per_page=99999, page=1)
-    items = all_infs.get("items", [])
+    total_count, items = get_influencers(per_page=99999, page=1)
     stale = [r for r in items
              if (not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff)
              and str(r.get("pk","")) not in excluded_pks]
@@ -2075,8 +2074,8 @@ def refresh_stream(session_id: Optional[str] = Cookie(default=None)):
             banned_pks = get_banned_pks()
             hidden_pks = get_hidden_pks()
             excluded_pks = banned_pks | hidden_pks
-            all_infs = get_influencers(per_page=99999, page=1)
-            rows = [r for r in all_infs.get("items", [])
+            _, all_items = get_influencers(per_page=99999, page=1)
+            rows = [r for r in all_items
                     if (not r.get("stats_updated_at") or r["stats_updated_at"] < cutoff)
                     and str(r.get("pk","")) not in excluded_pks]
 
