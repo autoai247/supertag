@@ -2112,6 +2112,50 @@ def refresh_stream(session_id: Optional[str] = Cookie(default=None)):
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
+@app.post("/api/refresh-selected")
+def refresh_selected(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    """선택한 PK 목록만 갱신 (SSE 스트림)"""
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+
+    import asyncio
+    body = asyncio.get_event_loop().run_until_complete(request.json())
+    pks = body.get("pks", [])
+    if not pks:
+        return JSONResponse({"error": "선택된 항목이 없습니다."}, 400)
+
+    from crawler import crawl_user_detail
+
+    def stream():
+        try:
+            total = len(pks)
+            success = fail = 0
+            for i, pk in enumerate(pks):
+                inf = get_influencer(str(pk))
+                uname = inf.get("username", "") if inf else ""
+                followers = inf.get("follower_count", 0) if inf else 0
+                try:
+                    ok = crawl_user_detail(None, str(pk), uname, followers or 0)
+                    if ok:
+                        success += 1
+                    else:
+                        fail += 1
+                except Exception:
+                    fail += 1
+                p = {"running": True, "total": total, "done": i + 1,
+                     "success": success, "fail": fail, "current_username": uname}
+                yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                time.sleep(0.5)
+            p = {"running": False, "total": total, "done": total,
+                 "success": success, "fail": fail}
+            yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            log.error(f"선택 갱신 에러: {e}")
+            yield f"data: {json.dumps({'running': False, 'error': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
 @app.get("/refresh/status")
 def refresh_status(session_id: Optional[str] = Cookie(default=None)):
     """하위호환용 — SSE 방식으로 전환됨"""
