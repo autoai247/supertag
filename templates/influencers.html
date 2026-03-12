@@ -196,6 +196,10 @@
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
       선택 갱신
     </button>
+    <button onclick="stopRefreshAction()" id="stopRefreshBtn" class="btn btn-sm text-red-600 border border-red-200 hover:bg-red-50" style="display:none;">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      중단
+    </button>
     <button onclick="startRefresh()" id="refreshBtn" class="btn btn-ghost btn-sm">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
       전체 갱신
@@ -514,6 +518,28 @@ document.addEventListener('change', e => {
   if (e.target.classList.contains('row-check') || e.target.id === 'selectAll') updateSelBtnVisibility();
 });
 
+let refreshAbort = null;
+
+function showStopBtn() {
+  document.getElementById('stopRefreshBtn').style.display = '';
+}
+function hideStopBtn() {
+  document.getElementById('stopRefreshBtn').style.display = 'none';
+}
+
+function stopRefreshAction() {
+  if (refreshAbort) { refreshAbort.abort(); refreshAbort = null; }
+  hideStopBtn();
+  const selBtn = document.getElementById('refreshSelBtn');
+  const refBtn = document.getElementById('refreshBtn');
+  if (!selBtn.disabled && !refBtn.disabled) return;
+  selBtn.disabled = false;
+  refBtn.disabled = false;
+  refBtn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> 전체 갱신';
+  updateSelBtnVisibility();
+  alert('갱신이 중단되었습니다. 이미 완료된 항목은 저장되어 있습니다.');
+}
+
 async function refreshSelected() {
   const checked = document.querySelectorAll('.row-check:checked');
   if (checked.length === 0) { alert('갱신할 항목을 선택하세요.'); return; }
@@ -522,12 +548,15 @@ async function refreshSelected() {
   const btn = document.getElementById('refreshSelBtn');
   btn.disabled = true;
   btn.textContent = `갱신 중... (0/${pks.length})`;
+  refreshAbort = new AbortController();
+  showStopBtn();
 
   try {
     const resp = await fetch('/api/refresh-selected', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({pks})
+      body: JSON.stringify({pks}),
+      signal: refreshAbort.signal
     });
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -547,6 +576,7 @@ async function refreshSelected() {
           if (!d.running) {
             btn.textContent = `완료! (성공 ${d.success} / 실패 ${d.fail})`;
             btn.disabled = false;
+            hideStopBtn();
             setTimeout(() => {
               updateSelBtnVisibility();
               location.reload();
@@ -556,25 +586,55 @@ async function refreshSelected() {
       }
     }
   } catch(e) {
+    if (e.name === 'AbortError') return;
     btn.textContent = '오류 발생';
     btn.disabled = false;
+    hideStopBtn();
   }
 }
 
 async function startRefresh() {
   const btn = document.getElementById('refreshBtn');
   btn.disabled = true; btn.textContent = '갱신 시작 중...';
+  showStopBtn();
   try {
     const r = await fetch('/refresh/start', {method:'POST'});
     const d = await r.json();
     if (d.ok) {
-      btn.textContent = '✓ 갱신 시작됨';
-      setTimeout(() => location.reload(), 2000);
+      btn.textContent = '갱신 중...';
+      refreshAbort = new AbortController();
+      const resp = await fetch('/refresh/stream', {signal: refreshAbort.signal});
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream: true});
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const d = JSON.parse(line.slice(6));
+            btn.textContent = `갱신 중... (${d.done}/${d.total})`;
+            if (!d.running) {
+              btn.textContent = `완료! (성공 ${d.success} / 실패 ${d.fail})`;
+              btn.disabled = false;
+              hideStopBtn();
+              setTimeout(() => location.reload(), 2000);
+            }
+          } catch(e) {}
+        }
+      }
     } else {
       btn.textContent = d.error || '오류';
+      hideStopBtn();
     }
   } catch(e) {
+    if (e.name === 'AbortError') return;
     btn.textContent = '오류';
+    hideStopBtn();
   }
 }
 
