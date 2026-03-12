@@ -1308,6 +1308,27 @@ def debug_test_crawl(pk: str, save: str = ""):
         return JSONResponse({"error": str(e), "tb": traceback.format_exc()[-500:]})
 
 
+@app.get("/api/debug/pdf-test/{pk}")
+def debug_pdf_test(pk: str):
+    """PDF 생성 테스트: 크기, 폰트, 버전 확인."""
+    try:
+        from export_pdf import export_single_pdf as _pdf, FONT_NAME
+        inf, manual = _get_inf_with_manual(pk)
+        data = _pdf(inf, manual)
+        return JSONResponse({
+            "ok": True,
+            "pdf_bytes": len(data),
+            "font": FONT_NAME,
+            "username": inf.get("username"),
+            "has_top_posts_likes": bool(inf.get("top_posts_likes")),
+            "has_top_reels_views": bool(inf.get("top_reels_views")),
+            "engagement_rate": inf.get("engagement_rate"),
+        })
+    except Exception as e:
+        import traceback
+        return JSONResponse({"error": str(e), "tb": traceback.format_exc()[-500:]})
+
+
 @app.get("/api/debug/excluded-pks")
 def debug_excluded_pks(session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)

@@ -359,7 +359,7 @@ def _scorecard_elements(inf, manual, posts_summary=None):
     elements.append(Spacer(1, 6))
     elements.append(HRFlowable(width="100%", thickness=1, color=C_PRIMARY))
     elements.append(Spacer(1, 3))
-    footer_l = f"SuperTag  |  Confidential  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    footer_l = f"SuperTag  |  Confidential  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}  |  v2.0"
     footer_r = f"통계 갱신: {inf.get('stats_updated_at', inf.get('last_post_date', '-'))}"
     ft = Table([
         [_p(footer_l, size=7, color=C_GRAY), _p(footer_r, size=7, color=C_GRAY, align=TA_RIGHT)]
