@@ -1067,8 +1067,8 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
         return True
 
     except Exception as e:
-        log.error(f"[{username}] 상세 수집 실패: {e}")
-        return False
+        log.error(f"[{username}] 상세 수집 실패: {e}", exc_info=True)
+        raise  # 호출자에게 에러 전파 → API에서 에러 메시지 표시
 
 
 def crawl_single_user(target_username: str) -> dict:

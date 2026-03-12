@@ -1275,9 +1275,12 @@ def refresh_one(pk: str, session_id: Optional[str] = Cookie(default=None)):
     from crawler import crawl_user_detail
     try:
         ok = crawl_user_detail(None, pk, inf["username"], inf.get("follower_count", 0))
-        return JSONResponse({"ok": ok})
+        if ok:
+            return JSONResponse({"ok": True})
+        else:
+            return JSONResponse({"ok": False, "error": "게시물을 가져올 수 없습니다 (API 응답 없음)"})
     except Exception as e:
-        log.error(f"단일 갱신 실패: {e}")
+        log.error(f"단일 갱신 실패 [{inf['username']}]: {e}", exc_info=True)
         return JSONResponse({"ok": False, "error": str(e)})
 
 
