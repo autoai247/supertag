@@ -1261,19 +1261,20 @@ def debug_db_posts(pk: str):
 
 
 @app.get("/api/debug/test-crawl/{pk}")
-def debug_test_crawl(pk: str):
-    """수집 테스트: 1개 게시물만 추출해서 결과 확인."""
+def debug_test_crawl(pk: str, save: str = ""):
+    """수집 테스트: 게시물 추출 + 선택적 DB 저장 (?save=1)."""
     inf = get_influencer(pk)
     if not inf:
         return JSONResponse({"error": "인플루언서 없음"})
     try:
         from crawler import _hiker_user_medias, _extract_media_fields, _enrich_reel_views
+        from database import upsert_post
         medias = _hiker_user_medias(pk, amount=3)
         if not medias:
             return JSONResponse({"error": "HikerAPI 게시물 조회 실패"})
-        # enrichment 실행
         _enrich_reel_views(medias)
         results = []
+        save_errors = []
         for m in medias[:3]:
             try:
                 post_data = _extract_media_fields(m, pk)
@@ -1285,10 +1286,23 @@ def debug_test_crawl(pk: str):
                     "views": post_data.get("views"),
                     "code": post_data.get("post_url", ""),
                 })
+                if save == "1":
+                    try:
+                        upsert_post(post_data)
+                    except Exception as se:
+                        import traceback
+                        save_errors.append({"post_id": post_data.get("post_id"), "error": str(se), "tb": traceback.format_exc()[-300:]})
             except Exception as e:
                 import traceback
                 results.append({"error": str(e), "tb": traceback.format_exc()[-300:]})
-        return JSONResponse({"medias_count": len(medias), "results": results})
+        resp = {"medias_count": len(medias), "results": results}
+        if save == "1":
+            resp["save_attempted"] = True
+            resp["save_errors"] = save_errors
+            # 저장 후 DB 확인
+            posts = get_influencer_posts(pk)
+            resp["db_post_count_after"] = len(posts)
+        return JSONResponse(resp)
     except Exception as e:
         import traceback
         return JSONResponse({"error": str(e), "tb": traceback.format_exc()[-500:]})
