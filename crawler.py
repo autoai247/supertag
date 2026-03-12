@@ -358,10 +358,9 @@ def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "r
     try:
         all_items = []
         seen_pks = set()
-        # v1 top이 가장 다양한 유저 반환 → top 우선
-        endpoints = ["top", "clips", "top_recent", "recent"]
-        if search_type == "recent":
-            endpoints = ["recent", "top", "clips", "top_recent"]
+            # v1 recent는 폐기(0결과), v2 recent는 페이지네이션 깨짐(38개 순환)
+        # v1 top/chunk만 정상작동 (10p=212명). clips로 릴스 크리에이터 추가 발견
+        endpoints = ["top", "clips"]
         max_pages_per_ep = max(amount // 20, 5)
 
         for ep in endpoints:
