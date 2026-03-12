@@ -27,15 +27,16 @@
 .post-thumb{aspect-ratio:1;border-radius:12px;overflow:hidden;position:relative;display:block;background:#f1f5f9}
 .post-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
 .post-thumb:hover img{transform:scale(1.08)}
-.post-thumb .overlay{position:absolute;inset:0;background:linear-gradient(0deg,rgba(0,0,0,.7) 0%,rgba(0,0,0,0) 55%);display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;transition:background .25s}
-.post-thumb:hover .overlay{background:rgba(0,0,0,.65)}
-.post-thumb .overlay-txt{color:#fff;font-size:13px;text-align:center;opacity:1;line-height:1.8;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.4)}
-.post-thumb .overlay-txt .stat-icon{font-size:15px;vertical-align:middle;margin-right:2px}
+.post-thumb .overlay{position:absolute;inset:0;background:linear-gradient(0deg,rgba(0,0,0,.75) 0%,rgba(0,0,0,0) 50%);display:flex;align-items:flex-end;justify-content:center;padding-bottom:10px;transition:background .25s}
+.post-thumb:hover .overlay{background:rgba(0,0,0,.7)}
+.post-thumb .overlay-txt{color:#fff;display:flex;gap:8px;align-items:center;justify-content:center;font-weight:800;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+.post-thumb .overlay-txt .ov-stat{display:flex;align-items:center;gap:2px;font-size:14px}
+.post-thumb .overlay-txt .ov-stat .ov-icon{font-size:16px}
 .post-thumb .reel-badge{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);border-radius:6px;padding:2px 6px}
 .post-thumb .ad-badge{position:absolute;top:6px;right:6px;background:var(--orange);border-radius:6px;padding:2px 7px;font-size:9px;font-weight:800;color:#fff}
-.post-thumb .no-img{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);aspect-ratio:1;gap:4px}
-.post-thumb .no-img .type-icon{font-size:32px}
-.post-thumb .no-img .no-img-stats{font-size:12px;font-weight:700;color:#64748b;line-height:1.6;text-align:center}
+.post-thumb .no-img{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);aspect-ratio:1;gap:6px}
+.post-thumb .no-img .type-icon{font-size:36px}
+.post-thumb .no-img .no-img-stats{display:flex;gap:10px;font-size:13px;font-weight:800;color:#64748b}
 
 /* ── 가격표 ── */
 .price-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f1f5f9}
@@ -144,11 +145,11 @@
 {% set dash = (quality_score / 100 * circ) | int %}
 
 {# 예상 도달/참여 #}
-{% set est_reach = inf.avg_reel_views if rc > fdc else ((inf.avg_feed_likes or 0) * 8) %}
+{% set est_reach = (inf.avg_reel_views or 0) if rc > fdc else ((inf.avg_feed_likes or 0) * 8) %}
 {% set est_feed_engage = ((inf.avg_feed_likes or 0) + (inf.avg_feed_comments or 0)) | int %}
 {% set est_reel_engage = ((inf.avg_reel_likes or 0) + (inf.avg_reel_comments or 0)) | int %}
-{% set feed_cpe = ((manual.feed_price or 0) * 10000 / est_feed_engage) | int if est_feed_engage > 0 and manual.feed_price else 0 %}
-{% set reel_cpe = ((manual.reel_price or 0) * 10000 / est_reel_engage) | int if est_reel_engage > 0 and manual.reel_price else 0 %}
+{% set feed_cpe = ((manual.feed_price or 0) | abs * 10000 / est_feed_engage) | int if est_feed_engage > 0 and manual.feed_price else 0 %}
+{% set reel_cpe = ((manual.reel_price or 0) | abs * 10000 / est_reel_engage) | int if est_reel_engage > 0 and manual.reel_price else 0 %}
 
 {# 팔로워/팔로잉 비율 #}
 {% set ff_ratio = (fc / (inf.following_count | int)) | round(1) if inf.following_count and inf.following_count | int > 0 else 0 %}
@@ -792,39 +793,33 @@
         <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/></svg>
         해시태그 분석
       </div>
-      {% if htags_list %}<span class="text-xs text-gray-400 font-medium">{{ htags_list | length }}종 / 총 {{ htags_total | comma }}회</span>{% endif %}
+      {% if htags_list %}<span class="text-xs text-gray-400 font-medium">{{ htags_list | length }}종 / {{ htags_total | comma }}회</span>{% endif %}
     </div>
     {% if htags_list %}
+    {# ── TOP 5 바 차트 ── #}
     {% set max_c = htags_list[0].count if htags_list else 1 %}
-    <div class="space-y-2.5 mb-4">
-      {% for item in htags_list[:15] %}
-      {% set bar_pct = ((item.count / max_c) * 100) | int %}
-      {% set ratio = (item.count / htags_total * 100) | round(1) if htags_total > 0 else 0 %}
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-bold text-purple-700 truncate shrink-0" style="width:100px;" title="#{{ item.tag }}">#{{ item.tag }}</span>
-        <div class="flex-1 h-4 rounded-full overflow-hidden" style="background:#f3f4f6;position:relative;">
-          <div class="h-full rounded-full flex items-center" style="width:{{ [bar_pct,5]|max }}%;background:linear-gradient(90deg,var(--accent),var(--primary));transition:width .8s ease-out;min-width:28px;">
-            {% if bar_pct >= 25 %}<span class="text-white text-xs font-bold pl-2" style="font-size:10px;">{{ ratio }}%</span>{% endif %}
+    <div class="mb-4">
+      <div class="text-xs font-bold text-purple-600 mb-2">TOP 5</div>
+      <div class="space-y-2">
+        {% for item in htags_list[:5] %}
+        {% set bar_pct = ((item.count / max_c) * 100) | int %}
+        {% set ratio = (item.count / htags_total * 100) | round(1) if htags_total > 0 else 0 %}
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-xs font-bold text-purple-700">#{{ item.tag }}</span>
+            <span class="text-xs text-gray-500 font-bold">{{ item.count }}회 <span class="text-purple-500">({{ ratio }}%)</span></span>
           </div>
-          {% if bar_pct < 25 %}<span class="absolute right-2 top-0 h-full flex items-center text-xs font-bold text-gray-400" style="font-size:10px;">{{ ratio }}%</span>{% endif %}
+          <div class="h-3 rounded-full overflow-hidden" style="background:#f3f4f6;">
+            <div class="h-full rounded-full" style="width:{{ [bar_pct,5]|max }}%;background:linear-gradient(90deg,var(--accent),var(--primary));transition:width .8s ease-out;"></div>
+          </div>
         </div>
-        <span class="text-xs font-bold text-gray-500 w-6 text-right shrink-0">{{ item.count }}</span>
+        {% endfor %}
       </div>
-      {% endfor %}
     </div>
-    {% if htags_list | length > 15 %}
-    <div class="pt-3 border-t flex flex-wrap gap-1.5">
-      {% for item in htags_list[15:] %}
-      {% set ratio = (item.count / htags_total * 100) | round(1) if htags_total > 0 else 0 %}
-      <span class="hashtag-chip">#{{ item.tag }} <span class="opacity-60 ml-0.5">{{ ratio }}%</span></span>
-      {% endfor %}
-    </div>
-    {% endif %}
-    {% else %}
-    <p class="text-xs text-gray-400 text-center py-4">게시물 수집 후 자동 분석됩니다</p>
-    {% endif %}
+
+    {# ── 수집 경로 해시태그 ── #}
     {% if inf.hashtags %}
-    <div class="mt-4 pt-3 border-t">
+    <div class="mb-4 pt-3 border-t">
       <div class="text-xs text-gray-400 font-medium mb-2">수집 경로 해시태그</div>
       <div class="flex flex-wrap gap-1.5">
         {% for tag in (inf.hashtags or '').split(',') if tag.strip() %}
@@ -832,6 +827,30 @@
         {% endfor %}
       </div>
     </div>
+    {% endif %}
+
+    {# ── 전체 해시태그 리스트 ── #}
+    <div class="pt-3 border-t">
+      <div class="text-xs text-gray-400 font-medium mb-2">전체 해시태그 ({{ htags_list | length }}종)</div>
+      <div class="flex flex-wrap gap-1.5" style="max-height:200px;overflow-y:auto;">
+        {% for item in htags_list %}
+        {% set ratio = (item.count / htags_total * 100) | round(1) if htags_total > 0 else 0 %}
+        <span class="hashtag-chip" title="{{ item.count }}회 사용 ({{ ratio }}%)">#{{ item.tag }} <span class="opacity-50 ml-0.5 text-xs">{{ item.count }}</span></span>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <p class="text-xs text-gray-400 text-center py-4">게시물 수집 후 자동 분석됩니다</p>
+    {% if inf.hashtags %}
+    <div class="pt-3 border-t">
+      <div class="text-xs text-gray-400 font-medium mb-2">수집 경로 해시태그</div>
+      <div class="flex flex-wrap gap-1.5">
+        {% for tag in (inf.hashtags or '').split(',') if tag.strip() %}
+        <a href="/influencers?hashtag={{ tag.strip() }}" class="hashtag-chip" style="background:#e0f2fe;color:#0369a1;">#{{ tag.strip() }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
     {% endif %}
   </div>
 
@@ -850,14 +869,14 @@
 
     <!-- 좋아요 TOP 5 -->
     <div class="mb-5">
-      <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#e11d48;"><span class="stat-icon" style="font-size:16px;">❤️</span> 좋아요 TOP 5</div>
-      <div class="grid grid-cols-5 gap-2.5">
+      <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#e11d48;font-size:13px;">❤️ 좋아요 TOP 5</div>
+      <div class="grid grid-cols-5 gap-3">
         {% for post in all_sorted_likes %}
         <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
           {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
-          <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}<br><span class="stat-icon">💬</span> {{ post.comments | fmtn }}</div></div>
-          {% else %}<div class="no-img"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}<br><span class="stat-icon">💬</span> {{ post.comments | fmtn }}</div></div>{% endif %}
-          <div class="overlay"><div class="overlay-txt"><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}<br><span class="stat-icon">💬</span> {{ post.comments | fmtn }}</div></div>
+          <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span>❤️ {{ post.likes | fmtn }}</span><span>💬 {{ post.comments | fmtn }}</span></div></div>
+          {% else %}<div class="no-img"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span>❤️ {{ post.likes | fmtn }}</span><span>💬 {{ post.comments | fmtn }}</span></div></div>{% endif %}
+          <div class="overlay"><div class="overlay-txt"><span class="ov-stat"><span class="ov-icon">❤️</span>{{ post.likes | fmtn }}</span><span class="ov-stat"><span class="ov-icon">💬</span>{{ post.comments | fmtn }}</span></div></div>
           {% if post.post_type == 'reel' %}<div class="reel-badge"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>{% endif %}
           {% if post.is_sponsored %}<div class="ad-badge">AD</div>{% endif %}
         </a>
@@ -867,14 +886,14 @@
 
     <!-- 댓글 TOP 5 -->
     <div class="mb-5">
-      <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#2563eb;"><span class="stat-icon" style="font-size:16px;">💬</span> 댓글 TOP 5</div>
-      <div class="grid grid-cols-5 gap-2.5">
+      <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#2563eb;font-size:13px;">💬 댓글 TOP 5</div>
+      <div class="grid grid-cols-5 gap-3">
         {% for post in all_sorted_comments %}
         <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
           {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
-          <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span class="stat-icon">💬</span> {{ post.comments | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>
-          {% else %}<div class="no-img"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span class="stat-icon">💬</span> {{ post.comments | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>{% endif %}
-          <div class="overlay"><div class="overlay-txt"><span class="stat-icon">💬</span> {{ post.comments | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>
+          <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span>💬 {{ post.comments | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span></div></div>
+          {% else %}<div class="no-img"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span>💬 {{ post.comments | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span></div></div>{% endif %}
+          <div class="overlay"><div class="overlay-txt"><span class="ov-stat"><span class="ov-icon">💬</span>{{ post.comments | fmtn }}</span><span class="ov-stat"><span class="ov-icon">❤️</span>{{ post.likes | fmtn }}</span></div></div>
           {% if post.post_type == 'reel' %}<div class="reel-badge"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>{% endif %}
           {% if post.is_sponsored %}<div class="ad-badge">AD</div>{% endif %}
         </a>
@@ -885,14 +904,14 @@
     <!-- 릴스 조회수 TOP 5 -->
     {% if reels_sorted_views %}
     <div>
-      <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#7c3aed;"><span class="stat-icon" style="font-size:16px;">👁</span> 릴스 조회수 TOP 5</div>
-      <div class="grid grid-cols-5 gap-2.5">
+      <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#7c3aed;font-size:13px;">👁 릴스 조회수 TOP 5</div>
+      <div class="grid grid-cols-5 gap-3">
         {% for post in reels_sorted_views %}
         <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
           {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
-          <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">🎬</span><div class="no-img-stats"><span class="stat-icon">👁</span> {{ post.views | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>
-          {% else %}<div class="no-img"><span class="type-icon">🎬</span><div class="no-img-stats"><span class="stat-icon">👁</span> {{ post.views | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>{% endif %}
-          <div class="overlay"><div class="overlay-txt"><span class="stat-icon">👁</span> {{ post.views | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>
+          <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">🎬</span><div class="no-img-stats"><span>👁 {{ post.views | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span></div></div>
+          {% else %}<div class="no-img"><span class="type-icon">🎬</span><div class="no-img-stats"><span>👁 {{ post.views | fmtn }}</span><span>❤️ {{ post.likes | fmtn }}</span></div></div>{% endif %}
+          <div class="overlay"><div class="overlay-txt"><span class="ov-stat"><span class="ov-icon">👁</span>{{ post.views | fmtn }}</span><span class="ov-stat"><span class="ov-icon">❤️</span>{{ post.likes | fmtn }}</span></div></div>
           <div class="reel-badge"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>
         </a>
         {% endfor %}
