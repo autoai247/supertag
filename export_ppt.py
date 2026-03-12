@@ -93,12 +93,35 @@ def _add_scorecard_slide(prs, inf, manual):
     # ═══ 헤더 바 ═══
     _rect(slide, 0, 0, W, 3.0, C_PURPLE)
 
-    # 프로필 사진
-    pic_path = os.path.join(DATA_DIR, "profile_pics", f"{username}.jpg")
-    if os.path.exists(pic_path):
+    # 프로필 사진 (Supabase Storage → CDN → 로컬)
+    _pic_added = False
+    import requests as _req
+    pk = inf.get("pk", "")
+    _pic_urls = []
+    if pk:
+        sb_url = os.environ.get("SUPABASE_URL", "https://ysqnixgdpltguatvjjcb.supabase.co")
+        _pic_urls.append(f"{sb_url}/storage/v1/object/public/profile-pics/{pk}.jpg")
+    _local_val = inf.get("profile_pic_local", "") or ""
+    if _local_val.startswith("http"):
+        _pic_urls.append(_local_val)
+    _cdn_val = inf.get("profile_pic_url", "") or ""
+    if _cdn_val:
+        _pic_urls.append(_cdn_val)
+    for _purl in _pic_urls:
         try:
-            slide.shapes.add_picture(pic_path, Cm(1), Cm(0.25), Cm(2.5), Cm(2.5))
-        except: pass
+            _pr = _req.get(_purl, timeout=5)
+            if _pr.status_code == 200 and len(_pr.content) > 500:
+                _pbuf = io.BytesIO(_pr.content)
+                slide.shapes.add_picture(_pbuf, Cm(1), Cm(0.25), Cm(2.5), Cm(2.5))
+                _pic_added = True
+                break
+        except: continue
+    if not _pic_added:
+        pic_path = os.path.join(DATA_DIR, "profile_pics", f"{username}.jpg")
+        if os.path.exists(pic_path):
+            try:
+                slide.shapes.add_picture(pic_path, Cm(1), Cm(0.25), Cm(2.5), Cm(2.5))
+            except: pass
 
     _tb(slide, f"@{username}", 4, 0.2, 15, 1.0, size=20, bold=True, color=C_WHITE)
     sub_text = full_name

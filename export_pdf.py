@@ -60,7 +60,34 @@ def _p(text, font=None, size=8, color=C_DARK, bold=False, align=TA_LEFT):
     return Paragraph(str(text), ParagraphStyle("_p", fontName=fn, fontSize=size,
                                                 textColor=color, alignment=align, leading=size*1.4))
 
-def _get_profile_img(username, size=(50, 50)):
+def _get_profile_img(inf, size=(50, 50)):
+    """프로필 이미지: Supabase Storage → CDN → 로컬 파일 순서로 시도"""
+    import requests as _req
+    pk = inf.get("pk", "") if isinstance(inf, dict) else ""
+    username = inf.get("username", "") if isinstance(inf, dict) else str(inf)
+    urls = []
+    if pk:
+        sb_url = os.environ.get("SUPABASE_URL", "https://ysqnixgdpltguatvjjcb.supabase.co")
+        urls.append(f"{sb_url}/storage/v1/object/public/profile-pics/{pk}.jpg")
+    local_val = (inf.get("profile_pic_local", "") or "") if isinstance(inf, dict) else ""
+    if local_val.startswith("http"):
+        urls.append(local_val)
+    cdn = (inf.get("profile_pic_url", "") or "") if isinstance(inf, dict) else ""
+    if cdn:
+        urls.append(cdn)
+    for url in urls:
+        try:
+            r = _req.get(url, timeout=5)
+            if r.status_code == 200 and len(r.content) > 500:
+                img = PILImage.open(io.BytesIO(r.content)).convert("RGB")
+                img.thumbnail(size, PILImage.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG")
+                buf.seek(0)
+                return RLImage(buf, width=size[0], height=size[1])
+        except:
+            continue
+    # 로컬 파일 폴백
     path = os.path.join(DATA_DIR, "profile_pics", f"{username}.jpg")
     if os.path.exists(path):
         try:
@@ -93,7 +120,7 @@ def _scorecard_elements(inf, manual, posts_summary=None):
     full_name = inf.get("full_name", "")
 
     # ════════ 헤더 ════════
-    pic = _get_profile_img(username, (45, 45))
+    pic = _get_profile_img(inf, (45, 45))
     pic_cell = pic if pic else _p(username[0].upper() if username else "?", bold=True, size=18,
                                    color=colors.white, align=TA_CENTER)
     name_parts = [_p(f"@{username}", bold=True, size=13, color=colors.white)]

@@ -294,24 +294,24 @@
       <!-- 피드 평균 -->
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#eff6ff;">
         <div class="text-xs font-bold text-blue-600">{{ r.avg_feed_likes | fmtn if r.avg_feed_likes else '-' }}</div>
-        <div class="text-xs text-blue-400" style="font-size:9px;">피드❤️</div>
+        <div class="text-xs text-blue-400" style="font-size:9px;">피드 평균좋아요</div>
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#eff6ff;">
         <div class="text-xs font-bold text-blue-600">{{ r.avg_feed_comments | fmtn if r.avg_feed_comments else '-' }}</div>
-        <div class="text-xs text-blue-400" style="font-size:9px;">피드💬</div>
+        <div class="text-xs text-blue-400" style="font-size:9px;">피드 평균댓글</div>
       </div>
       <!-- 릴스 평균 -->
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
         <div class="text-xs font-bold text-purple-600">{{ r.avg_reel_views | fmtn if r.avg_reel_views else '-' }}</div>
-        <div class="text-xs text-purple-400" style="font-size:9px;">릴스👁</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스 평균조회</div>
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
         <div class="text-xs font-bold text-purple-600">{{ r.avg_reel_likes | fmtn if r.avg_reel_likes else '-' }}</div>
-        <div class="text-xs text-purple-400" style="font-size:9px;">릴스❤️</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스 평균좋아요</div>
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
         <div class="text-xs font-bold text-purple-600">{{ r.avg_reel_comments | fmtn if r.avg_reel_comments else '-' }}</div>
-        <div class="text-xs text-purple-400" style="font-size:9px;">릴스💬</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스 평균댓글</div>
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl bg-gray-50 min-w-12">
         <div class="text-sm font-bold text-gray-500">{{ r.media_count | comma }}</div>
@@ -434,23 +434,23 @@ function buildRow(r) {
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#eff6ff;">
         <div class="text-xs font-bold text-blue-600">${fmtn(r.avg_feed_likes)}</div>
-        <div class="text-xs text-blue-400" style="font-size:9px;">피드❤️</div>
+        <div class="text-xs text-blue-400" style="font-size:9px;">피드 평균좋아요</div>
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#eff6ff;">
         <div class="text-xs font-bold text-blue-600">${fmtn(r.avg_feed_comments)}</div>
-        <div class="text-xs text-blue-400" style="font-size:9px;">피드💬</div>
+        <div class="text-xs text-blue-400" style="font-size:9px;">피드 평균댓글</div>
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
         <div class="text-xs font-bold text-purple-600">${fmtn(r.avg_reel_views)}</div>
-        <div class="text-xs text-purple-400" style="font-size:9px;">릴스👁</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스 평균조회</div>
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
         <div class="text-xs font-bold text-purple-600">${fmtn(r.avg_reel_likes)}</div>
-        <div class="text-xs text-purple-400" style="font-size:9px;">릴스❤️</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스 평균좋아요</div>
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl min-w-14" style="background:#faf5ff;">
         <div class="text-xs font-bold text-purple-600">${fmtn(r.avg_reel_comments)}</div>
-        <div class="text-xs text-purple-400" style="font-size:9px;">릴스💬</div>
+        <div class="text-xs text-purple-400" style="font-size:9px;">릴스 평균댓글</div>
       </div>
       <div class="text-center px-2.5 py-1.5 rounded-xl bg-gray-50 min-w-12">
         <div class="text-sm font-bold text-gray-500">${(r.media_count||0).toLocaleString()}</div>
