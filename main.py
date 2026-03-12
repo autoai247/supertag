@@ -1182,10 +1182,12 @@ def hidden_page(request: Request, session_id: Optional[str] = Cookie(default=Non
         "request": request, "user": user, "hidden": hidden,
     })
 
+_last_errors = []   # 최근 에러 저장 (디버그용)
+
 @app.get("/api/debug/version")
 def debug_version():
     commit = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")[:7] or "unknown"
-    return JSONResponse({"commit": commit, "deployed": True})
+    return JSONResponse({"commit": commit, "deployed": True, "errors": _last_errors[-5:]})
 
 
 @app.get("/api/debug/media-raw")
@@ -1219,14 +1221,46 @@ def debug_media_raw(username: str = ""):
             entry["clips_metadata_play_count"] = cm.get("play_count")
         # thumbnail 관련
         entry["has_thumbnail_url"] = bool(m.get("thumbnail_url"))
+        entry["thumbnail_url_preview"] = (m.get("thumbnail_url") or "")[:80]
         entry["has_image_versions2"] = bool(m.get("image_versions2"))
+        entry["has_image_versions"] = bool(m.get("image_versions"))
         entry["has_carousel_media"] = bool(m.get("carousel_media"))
-        if m.get("carousel_media") and isinstance(m["carousel_media"], list) and m["carousel_media"]:
-            first = m["carousel_media"][0]
-            entry["carousel_first_keys"] = sorted(first.keys()) if isinstance(first, dict) else []
-            entry["carousel_first_has_iv2"] = bool(first.get("image_versions2")) if isinstance(first, dict) else False
+        entry["has_resources"] = bool(m.get("resources"))
+        # carousel/resources 첫 아이템 구조
+        for ckey in ("carousel_media", "resources"):
+            cdata = m.get(ckey)
+            if cdata and isinstance(cdata, list) and cdata:
+                first = cdata[0]
+                entry[f"{ckey}_first_keys"] = sorted(first.keys()) if isinstance(first, dict) else []
+                if isinstance(first, dict):
+                    entry[f"{ckey}_first_thumb"] = (first.get("thumbnail_url") or "")[:80]
+                    entry[f"{ckey}_first_has_iv2"] = bool(first.get("image_versions2"))
+                    entry[f"{ckey}_first_has_iv"] = bool(first.get("image_versions"))
         result.append(entry)
     return JSONResponse({"medias": result})
+
+
+@app.get("/api/debug/db-posts/{pk}")
+def debug_db_posts(pk: str):
+    """DB에 저장된 recent_posts의 썸네일 상태 확인."""
+    inf = get_influencer(pk)
+    if not inf:
+        return JSONResponse({"error": "인플루언서 없음"})
+    posts_raw = inf.get("recent_posts") or "[]"
+    try:
+        posts = json.loads(posts_raw) if isinstance(posts_raw, str) else posts_raw
+    except:
+        posts = []
+    result = []
+    for p in posts[:12]:
+        result.append({
+            "code": p.get("code", ""),
+            "type": p.get("type", ""),
+            "has_thumbnail": bool(p.get("thumbnail_url")),
+            "thumbnail_preview": (p.get("thumbnail_url") or "")[:80],
+            "likes": p.get("likes", 0),
+        })
+    return JSONResponse({"pk": pk, "username": inf.get("username"), "post_count": len(posts), "posts": result})
 
 
 @app.get("/api/debug/excluded-pks")
@@ -1348,13 +1382,20 @@ def export_single_pdf(pk: str, tpl: str = "scorecard",
                       session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id) or get_adv_user(session_id)
     if not user: return RedirectResponse("/login", 302)
-    from export_pdf import export_single_pdf as _pdf
-    inf, manual = _get_inf_with_manual(pk)
-    data = _pdf(inf, manual)
-    tpl_label = {"scorecard": "스코어카드", "detail": "상세리포트"}.get(tpl, "스코어카드")
-    fname = f"{inf.get('username', pk)}_{tpl_label}.pdf"
-    return Response(data, media_type="application/pdf",
-                    headers={"Content-Disposition": _safe_cd(fname)})
+    try:
+        from export_pdf import export_single_pdf as _pdf
+        inf, manual = _get_inf_with_manual(pk)
+        data = _pdf(inf, manual)
+        tpl_label = {"scorecard": "스코어카드", "detail": "상세리포트"}.get(tpl, "스코어카드")
+        fname = f"{inf.get('username', pk)}_{tpl_label}.pdf"
+        return Response(data, media_type="application/pdf",
+                        headers={"Content-Disposition": _safe_cd(fname)})
+    except Exception as e:
+        import traceback
+        err = traceback.format_exc()
+        log.error(f"[PDF EXPORT ERROR] {e}\n{err}")
+        _last_errors.append({"route": "pdf", "pk": pk, "error": str(e), "tb": err[-500:]})
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/influencers/{pk}/export/ppt")
@@ -1362,14 +1403,21 @@ def export_single_ppt(pk: str, tpl: str = "scorecard",
                       session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id) or get_adv_user(session_id)
     if not user: return RedirectResponse("/login", 302)
-    from export_ppt import export_single_ppt as _ppt
-    inf, manual = _get_inf_with_manual(pk)
-    data = _ppt(inf, manual)
-    tpl_label = {"scorecard": "스코어카드", "proposal": "제안서"}.get(tpl, "스코어카드")
-    fname = f"{inf.get('username', pk)}_{tpl_label}.pptx"
-    return Response(data,
-                    media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    headers={"Content-Disposition": _safe_cd(fname)})
+    try:
+        from export_ppt import export_single_ppt as _ppt
+        inf, manual = _get_inf_with_manual(pk)
+        data = _ppt(inf, manual)
+        tpl_label = {"scorecard": "스코어카드", "proposal": "제안서"}.get(tpl, "스코어카드")
+        fname = f"{inf.get('username', pk)}_{tpl_label}.pptx"
+        return Response(data,
+                        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        headers={"Content-Disposition": _safe_cd(fname)})
+    except Exception as e:
+        import traceback
+        err = traceback.format_exc()
+        log.error(f"[PPT EXPORT ERROR] {e}\n{err}")
+        _last_errors.append({"route": "ppt", "pk": pk, "error": str(e), "tb": err[-500:]})
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/export/pdf")
