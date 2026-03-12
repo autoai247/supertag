@@ -523,11 +523,11 @@ def _pic(inf, size=128):
     else:
         local = cdn = ""
         name = str(inf) if inf else "U"
-    # profile_pic_local이 상대 경로면 Supabase Storage URL로 변환
+    # profile_pic_local: Supabase Storage URL이면 그대로, 레거시 상대경로는 무시
     if local:
         if local.startswith("http"):
             return local
-        return _SB_STORAGE + local
+        # 레거시 상대경로(profile_pics/xxx.jpg)는 Supabase에 없으므로 CDN으로 폴백
     if cdn:
         return cdn
     from urllib.parse import quote
@@ -722,8 +722,8 @@ def api_public(
                 "is_private": bool(_g(r,"is_private",False)),
                 "category": _g(r,"category",""),
                 "hashtags": _g(r,"hashtags",""),
-                "profile_pic_url": _g(r,"profile_pic_url",""),
-                "profile_pic_local": _g(r,"profile_pic_local",""),
+                "profile_pic_url": _pic(r),
+                "profile_pic_local": _pic(r),
             })
         else:
             # 비인증 사용자: 제한된 필드만 (상세 통계 숨김)
@@ -735,8 +735,8 @@ def api_public(
                 "is_verified": _g(r,"is_verified",False),
                 "is_business": _g(r,"is_business",False),
                 "category": _g(r,"category",""),
-                "profile_pic_url": _g(r,"profile_pic_url",""),
-                "profile_pic_local": _g(r,"profile_pic_local",""),
+                "profile_pic_url": _pic(r),
+                "profile_pic_local": _pic(r),
             })
     # 마지막 업데이트 날짜
     last_updated = ""

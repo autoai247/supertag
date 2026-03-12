@@ -1036,14 +1036,10 @@ def _update_profile_from_info(u_info, pk: str, username: str):
             from database import update_influencer_profile
             update_influencer_profile(pk, profile_updates)
 
-        if pic_url:
-            pic_path = os.path.join(PROFILE_PIC_DIR, f"{username}.jpg")
-            if download_image(pic_url, pic_path):
-                pic_local = f"profile_pics/{username}.jpg"
     except Exception as e:
         log.debug(f"프로필 갱신 오류 {username}: {e}")
 
-    return pic_local
+    return ""
 
 
 def _hiker_media_info(media_pk: str) -> dict | None:
@@ -1183,7 +1179,7 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
 
         # 통계 계산 (프로필에서 갱신된 follower_count 사용)
         stats = calc_stats(pk, username, medias, follower_count)
-        stats["profile_pic_local"] = pic_local
+        # profile_pic_local은 _update_profile_from_info()에서 이미 DB에 저장됨 (Supabase URL)
 
         # Top 게시물 URL
         try:
