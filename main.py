@@ -1266,23 +1266,19 @@ def collect_job_users(job_id: int, session_id: Optional[str] = Cookie(default=No
 
 
 @app.post("/influencers/{pk}/refresh")
-def refresh_one(pk: str, background_tasks: BackgroundTasks,
-                session_id: Optional[str] = Cookie(default=None)):
+def refresh_one(pk: str, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
     if not user: return JSONResponse({"error": "인증 필요"}, 403)
     inf = get_influencer(pk)
     if not inf: return JSONResponse({"error": "없음"}, 404)
 
-    def do_refresh():
-        from crawler import get_client, crawl_user_detail
-        try:
-            cl = get_client(INSTA_CFG["username"], INSTA_CFG["password"], INSTA_CFG["totp"])
-            crawl_user_detail(cl, pk, inf["username"], inf.get("follower_count", 0))
-        except Exception as e:
-            log.error(f"단일 갱신 실패: {e}")
-
-    background_tasks.add_task(do_refresh)
-    return JSONResponse({"ok": True})
+    from crawler import crawl_user_detail
+    try:
+        ok = crawl_user_detail(None, pk, inf["username"], inf.get("follower_count", 0))
+        return JSONResponse({"ok": ok})
+    except Exception as e:
+        log.error(f"단일 갱신 실패: {e}")
+        return JSONResponse({"ok": False, "error": str(e)})
 
 
 # ═══════════════════════════════════════════════════════

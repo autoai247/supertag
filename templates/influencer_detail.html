@@ -934,14 +934,14 @@ async function banUser(pk) {
 }
 
 async function refreshOne(btn) {
-  if (!confirm('@{{ inf.username }} 상세 정보를 수집합니까? (1~2분 소요)')) return;
+  if (!confirm('@{{ inf.username }} 상세 정보를 수집합니까?')) return;
   const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = '수집 중...';
+  btn.disabled = true; btn.textContent = '수집 중... (최대 30초)';
   try {
     const r = await fetch('/influencers/{{ inf.pk }}/refresh', {method:'POST'});
     const d = await r.json();
-    if (d.ok) { btn.textContent = '완료!'; setTimeout(() => location.reload(), 2000); }
-    else { btn.textContent = orig; btn.disabled = false; }
+    if (d.ok) { btn.textContent = '완료! 새로고침 중...'; location.reload(); }
+    else { btn.textContent = '실패: ' + (d.error || ''); setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000); }
   } catch(e) { btn.textContent = orig; btn.disabled = false; }
 }
 {% if inf.stats_updated_at %}
