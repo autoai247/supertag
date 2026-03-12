@@ -810,6 +810,15 @@ def _extract_media_fields(m, pk: str):
             candidates = img.get("candidates", [])
             if candidates:
                 thumbnail_url = candidates[0].get("url", "")
+        # 캐러셀(슬라이드) 게시물: 첫 번째 이미지에서 추출
+        if not thumbnail_url:
+            carousel = m.get("carousel_media", [])
+            if carousel and isinstance(carousel, list):
+                first = carousel[0] if carousel else {}
+                c_img = first.get("image_versions2", {})
+                c_cands = c_img.get("candidates", [])
+                if c_cands:
+                    thumbnail_url = c_cands[0].get("url", "")
     else:
         try:
             if m.thumbnail_url:
