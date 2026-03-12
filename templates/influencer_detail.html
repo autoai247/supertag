@@ -27,12 +27,15 @@
 .post-thumb{aspect-ratio:1;border-radius:12px;overflow:hidden;position:relative;display:block;background:#f1f5f9}
 .post-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
 .post-thumb:hover img{transform:scale(1.08)}
-.post-thumb .overlay{position:absolute;inset:0;background:rgba(0,0,0,0);transition:background .25s;display:flex;align-items:center;justify-content:center}
+.post-thumb .overlay{position:absolute;inset:0;background:linear-gradient(0deg,rgba(0,0,0,.7) 0%,rgba(0,0,0,0) 55%);display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;transition:background .25s}
 .post-thumb:hover .overlay{background:rgba(0,0,0,.65)}
-.post-thumb .overlay-txt{color:#fff;font-size:11px;text-align:center;opacity:0;transition:opacity .25s;line-height:2}
-.post-thumb:hover .overlay-txt{opacity:1}
+.post-thumb .overlay-txt{color:#fff;font-size:13px;text-align:center;opacity:1;line-height:1.8;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.post-thumb .overlay-txt .stat-icon{font-size:15px;vertical-align:middle;margin-right:2px}
 .post-thumb .reel-badge{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);border-radius:6px;padding:2px 6px}
 .post-thumb .ad-badge{position:absolute;top:6px;right:6px;background:var(--orange);border-radius:6px;padding:2px 7px;font-size:9px;font-weight:800;color:#fff}
+.post-thumb .no-img{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);aspect-ratio:1;gap:4px}
+.post-thumb .no-img .type-icon{font-size:32px}
+.post-thumb .no-img .no-img-stats{font-size:12px;font-weight:700;color:#64748b;line-height:1.6;text-align:center}
 
 /* ── 가격표 ── */
 .price-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f1f5f9}
@@ -833,13 +836,14 @@
 
       <!-- 좋아요 TOP 5 -->
       <div class="mb-5">
-        <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#e11d48;">❤️ 좋아요 TOP 5</div>
+        <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#e11d48;"><span class="stat-icon" style="font-size:16px;">❤️</span> 좋아요 TOP 5</div>
         <div class="grid grid-cols-5 gap-2.5">
           {% for post in all_sorted_likes %}
           <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
-            {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.style.display='none'">
-            {% else %}<div class="w-full h-full flex items-center justify-center rounded-xl" style="background:#f1f5f9;aspect-ratio:1;"><span class="text-2xl">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span></div>{% endif %}
-            <div class="overlay"><div class="overlay-txt">❤️ {{ post.likes | fmtn }}<br>💬 {{ post.comments | fmtn }}</div></div>
+            {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
+            <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}<br><span class="stat-icon">💬</span> {{ post.comments | fmtn }}</div></div>
+            {% else %}<div class="no-img"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}<br><span class="stat-icon">💬</span> {{ post.comments | fmtn }}</div></div>{% endif %}
+            <div class="overlay"><div class="overlay-txt"><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}<br><span class="stat-icon">💬</span> {{ post.comments | fmtn }}</div></div>
             {% if post.post_type == 'reel' %}<div class="reel-badge"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>{% endif %}
             {% if post.is_sponsored %}<div class="ad-badge">AD</div>{% endif %}
           </a>
@@ -849,13 +853,14 @@
 
       <!-- 댓글 TOP 5 -->
       <div class="mb-5">
-        <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#2563eb;">💬 댓글 TOP 5</div>
+        <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#2563eb;"><span class="stat-icon" style="font-size:16px;">💬</span> 댓글 TOP 5</div>
         <div class="grid grid-cols-5 gap-2.5">
           {% for post in all_sorted_comments %}
           <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
-            {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.style.display='none'">
-            {% else %}<div class="w-full h-full flex items-center justify-center rounded-xl" style="background:#f1f5f9;aspect-ratio:1;"><span class="text-2xl">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span></div>{% endif %}
-            <div class="overlay"><div class="overlay-txt">💬 {{ post.comments | fmtn }}<br>❤️ {{ post.likes | fmtn }}</div></div>
+            {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
+            <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span class="stat-icon">💬</span> {{ post.comments | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>
+            {% else %}<div class="no-img"><span class="type-icon">{{ '🎬' if post.post_type == 'reel' else '📸' }}</span><div class="no-img-stats"><span class="stat-icon">💬</span> {{ post.comments | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>{% endif %}
+            <div class="overlay"><div class="overlay-txt"><span class="stat-icon">💬</span> {{ post.comments | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>
             {% if post.post_type == 'reel' %}<div class="reel-badge"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>{% endif %}
             {% if post.is_sponsored %}<div class="ad-badge">AD</div>{% endif %}
           </a>
@@ -866,13 +871,14 @@
       <!-- 릴스 조회수 TOP 5 -->
       {% if reels_sorted_views %}
       <div>
-        <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#7c3aed;">👁 릴스 조회수 TOP 5</div>
+        <div class="text-xs font-bold mb-2.5 flex items-center gap-1.5" style="color:#7c3aed;"><span class="stat-icon" style="font-size:16px;">👁</span> 릴스 조회수 TOP 5</div>
         <div class="grid grid-cols-5 gap-2.5">
           {% for post in reels_sorted_views %}
           <a href="{{ post.post_url }}" target="_blank" class="post-thumb">
-            {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.style.display='none'">
-            {% else %}<div class="w-full h-full flex items-center justify-center rounded-xl" style="background:#f5f3ff;aspect-ratio:1;"><span class="text-2xl">🎬</span></div>{% endif %}
-            <div class="overlay"><div class="overlay-txt">👁 {{ post.views | fmtn }}<br>❤️ {{ post.likes | fmtn }}</div></div>
+            {% if post.thumbnail_url %}<img src="{{ post.thumbnail_url }}" alt="" loading="lazy" onerror="this.parentNode.querySelector('.no-img-fallback')&&(this.parentNode.querySelector('.no-img-fallback').style.display='flex');this.style.display='none'">
+            <div class="no-img-fallback no-img" style="display:none;position:absolute;inset:0;"><span class="type-icon">🎬</span><div class="no-img-stats"><span class="stat-icon">👁</span> {{ post.views | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>
+            {% else %}<div class="no-img"><span class="type-icon">🎬</span><div class="no-img-stats"><span class="stat-icon">👁</span> {{ post.views | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>{% endif %}
+            <div class="overlay"><div class="overlay-txt"><span class="stat-icon">👁</span> {{ post.views | fmtn }}<br><span class="stat-icon">❤️</span> {{ post.likes | fmtn }}</div></div>
             <div class="reel-badge"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.249a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>
           </a>
           {% endfor %}
@@ -930,19 +936,20 @@ async function banUser(pk) {
   if (reason === null) return;
   const form = new URLSearchParams({reason});
   const r = await fetch(`/influencers/${pk}/ban`, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:form});
-  if (r.ok) { alert('밴 처리되었습니다.'); location.href = '/influencers'; }
+  if (r.ok) { if(window.stToast) stToast('밴 처리되었습니다.','success'); location.href = '/influencers'; }
 }
 
 async function refreshOne(btn) {
-  if (!confirm('@{{ inf.username }} 상세 정보를 수집합니까?')) return;
+  if (window.stConfirm) { if (!(await stConfirm('@{{ inf.username }} 상세 정보를 수집합니까?'))) return; }
+  else { if (!confirm('@{{ inf.username }} 상세 정보를 수집합니까?')) return; }
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = '수집 중... (최대 30초)';
   try {
     const r = await fetch('/influencers/{{ inf.pk }}/refresh', {method:'POST'});
     const d = await r.json();
-    if (d.ok) { btn.textContent = '완료! 새로고침 중...'; location.reload(); }
-    else { btn.textContent = '실패: ' + (d.error || ''); setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000); }
-  } catch(e) { btn.textContent = orig; btn.disabled = false; }
+    if (d.ok) { if(window.stToast) stToast('수집 완료! 새로고침합니다.','success'); btn.textContent = '완료!'; setTimeout(()=>location.reload(), 500); }
+    else { if(window.stToast) stToast('실패: '+(d.error||'알 수 없음'),'error'); btn.textContent = orig; btn.disabled = false; }
+  } catch(e) { if(window.stToast) stToast('네트워크 오류','error'); btn.textContent = orig; btn.disabled = false; }
 }
 {% if inf.stats_updated_at %}
 (function() {

@@ -695,7 +695,10 @@ def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dic
 
     total = len(reels) + len(feeds)
     avg_reel_views = round(sum(r["views"] for r in reels) / len(reels), 1) if reels else 0
+    avg_reel_likes = round(sum(r["likes"] for r in reels) / len(reels), 1) if reels else 0
+    avg_reel_comments = round(sum(r["comments"] for r in reels) / len(reels), 1) if reels else 0
     avg_feed_likes = round(sum(f["likes"] for f in feeds) / len(feeds), 1) if feeds else 0
+    avg_feed_comments = round(sum(f["comments"] for f in feeds) / len(feeds), 1) if feeds else 0
     all_likes = [m["likes"] for m in reels + feeds]
     all_comments = [m["comments"] for m in reels + feeds]
     avg_likes = round(sum(all_likes) / len(all_likes), 1) if all_likes else 0
@@ -744,7 +747,10 @@ def calc_stats(pk: str, username: str, medias: list, follower_count: int) -> dic
         "avg_comments": avg_comments,
         "engagement_rate": engagement_rate,
         "avg_reel_views": avg_reel_views,
+        "avg_reel_likes": avg_reel_likes,
+        "avg_reel_comments": avg_reel_comments,
         "avg_feed_likes": avg_feed_likes,
+        "avg_feed_comments": avg_feed_comments,
         "reel_count": len(reels),
         "feed_count": len(feeds),
         "upload_frequency": upload_freq,

@@ -32,11 +32,95 @@
     #pageLoader{position:fixed;top:0;left:0;width:0;height:3px;background:linear-gradient(90deg,#6366f1,#8b5cf6);z-index:9999;transition:width .3s ease;pointer-events:none;}
     #pageLoader.loading{width:70%;transition:width 8s ease-out;}
     #pageLoader.done{width:100%;transition:width .2s ease;opacity:0;transition:width .2s ease, opacity .3s .2s;}
+    /* 커스텀 토스트 */
+    #stToastWrap{position:fixed;top:20px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+    .st-toast{pointer-events:auto;min-width:280px;max-width:400px;padding:14px 18px;border-radius:12px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.12);font-size:13px;color:#1e293b;display:flex;align-items:flex-start;gap:10px;animation:stSlideIn .25s ease;line-height:1.5;}
+    .st-toast.out{animation:stSlideOut .2s ease forwards;}
+    .st-toast-icon{width:20px;height:20px;flex-shrink:0;margin-top:1px;}
+    @keyframes stSlideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes stSlideOut{to{opacity:0;transform:translateX(40px)}}
+    /* 커스텀 confirm 모달 */
+    #stConfirmOverlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10001;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px);}
+    #stConfirmOverlay.show{display:flex;}
+    #stConfirmBox{background:#fff;border-radius:16px;padding:28px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.18);animation:stPopIn .2s ease;}
+    #stConfirmMsg{font-size:14px;color:#1e293b;line-height:1.6;margin-bottom:20px;word-break:keep-all;}
+    #stConfirmBtns{display:flex;gap:8px;justify-content:flex-end;}
+    #stConfirmBtns button{padding:8px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+    #stBtnCancel{background:#f1f5f9;color:#64748b;border:none;}
+    #stBtnCancel:hover{background:#e2e8f0;}
+    #stBtnOk{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;}
+    #stBtnOk:hover{opacity:.88;}
+    @keyframes stPopIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
   </style>
   {% block head %}{% endblock %}
 </head>
 <body style="background:#f1f5f9;">
 <div id="pageLoader"></div>
+<div id="stToastWrap"></div>
+<div id="stConfirmOverlay">
+  <div id="stConfirmBox">
+    <div id="stConfirmMsg"></div>
+    <div id="stConfirmBtns">
+      <button id="stBtnCancel">취소</button>
+      <button id="stBtnOk">확인</button>
+    </div>
+  </div>
+</div>
+<script>
+// ── 커스텀 toast (alert 대체) ──
+function stToast(msg, type) {
+  type = type || 'info';
+  var wrap = document.getElementById('stToastWrap');
+  var t = document.createElement('div');
+  t.className = 'st-toast';
+  var icons = {
+    success: '<svg class="st-toast-icon" fill="none" stroke="#10b981" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    error: '<svg class="st-toast-icon" fill="none" stroke="#ef4444" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    warning: '<svg class="st-toast-icon" fill="none" stroke="#f59e0b" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>',
+    info: '<svg class="st-toast-icon" fill="none" stroke="#6366f1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  };
+  t.innerHTML = (icons[type] || icons.info) + '<span>' + msg.replace(/\n/g,'<br>') + '</span>';
+  wrap.appendChild(t);
+  setTimeout(function(){ t.classList.add('out'); setTimeout(function(){ t.remove(); }, 200); }, 3500);
+}
+
+// ── 커스텀 confirm 대체 ──
+var _stConfirmResolve = null;
+function stConfirm(msg) {
+  return new Promise(function(resolve) {
+    _stConfirmResolve = resolve;
+    document.getElementById('stConfirmMsg').innerHTML = msg.replace(/\n/g,'<br>');
+    document.getElementById('stConfirmOverlay').classList.add('show');
+  });
+}
+document.getElementById('stBtnOk').onclick = function() {
+  document.getElementById('stConfirmOverlay').classList.remove('show');
+  if (_stConfirmResolve) { _stConfirmResolve(true); _stConfirmResolve = null; }
+};
+document.getElementById('stBtnCancel').onclick = function() {
+  document.getElementById('stConfirmOverlay').classList.remove('show');
+  if (_stConfirmResolve) { _stConfirmResolve(false); _stConfirmResolve = null; }
+};
+document.getElementById('stConfirmOverlay').onclick = function(e) {
+  if (e.target === this) {
+    this.classList.remove('show');
+    if (_stConfirmResolve) { _stConfirmResolve(false); _stConfirmResolve = null; }
+  }
+};
+
+// ── 전역 alert/confirm 오버라이드 ──
+window._origAlert = window.alert;
+window.alert = function(msg) { stToast(String(msg), msg && (String(msg).includes('실패') || String(msg).includes('오류') || String(msg).includes('에러')) ? 'error' : msg && (String(msg).includes('완료') || String(msg).includes('성공') || String(msg).includes('표시됨') || String(msg).includes('처리됨')) ? 'success' : 'info'); };
+window._origConfirm = window.confirm;
+window.confirm = function(msg) {
+  // confirm은 동기 함수이므로 기존 form onsubmit 등에서 쓰이면 동기로 동작해야 함
+  // async 코드에서는 stConfirm() 사용 권장, 여기서는 동기 폴백 제공
+  // 커스텀 모달로 표시하되, 동기 반환이 필요하므로 synchronous 방식으로 처리
+  var overlay = document.getElementById('stConfirmOverlay');
+  // 이미 promise 기반으로 쓰이는 경우 감지 불가하므로, 동기 폴백
+  return window._origConfirm(msg);
+};
+</script>
 <aside class="fixed top-0 left-0 h-screen w-56 flex flex-col z-20" style="background:#0f172a;border-right:1px solid #1e293b;">
   <div class="px-4 py-5 border-b" style="border-color:#1e293b;">
     <a href="/" class="flex items-center gap-2.5">

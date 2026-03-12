@@ -641,7 +641,7 @@ async function startRefresh() {
 }
 
 async function markBrand(pk, username) {
-  if (!confirm(`@${username}을(를) 브랜드 계정으로 표시하시겠습니까?`)) return;
+  if (!await stConfirm(`@${username}을(를) 브랜드 계정으로 표시하시겠습니까?`)) return;
   const r = await fetch(`/influencers/${pk}/mark-brand`, {method:'POST'});
   const d = await r.json();
   if (d.ok) {
