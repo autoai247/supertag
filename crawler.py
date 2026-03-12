@@ -993,20 +993,29 @@ def crawl_user_detail(cl, pk: str, username: str, follower_count: int) -> bool:
             post_data = _extract_media_fields(m, pk)
             upsert_post(post_data)
 
-        # 통계 계산
-        stats = calc_stats(pk, username, medias, follower_count)
-
-        # 프로필 정보 갱신
+        # 프로필 정보 갱신 (통계 계산 전에 실행 → follower_count 확보)
         pic_local = ""
         if u_info:
             pic_local = _update_profile_from_info(u_info, pk, username)
+            # 프로필에서 가져온 follower_count로 갱신
+            if isinstance(u_info, dict):
+                fc = u_info.get("follower_count", 0)
+            else:
+                fc = getattr(u_info, "follower_count", 0)
+            if fc:
+                follower_count = fc
         elif cl:
             try:
                 u_info = cl.user_info(int(pk))
                 pic_local = _update_profile_from_info(u_info, pk, username)
+                fc = getattr(u_info, "follower_count", 0)
+                if fc:
+                    follower_count = fc
             except Exception as e:
                 log.debug(f"프로필 갱신 오류 {username}: {e}")
 
+        # 통계 계산 (프로필에서 갱신된 follower_count 사용)
+        stats = calc_stats(pk, username, medias, follower_count)
         stats["profile_pic_local"] = pic_local
 
         # Top 게시물 URL
