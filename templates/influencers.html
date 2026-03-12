@@ -572,7 +572,9 @@ async function refreshSelected() {
         if (!line.startsWith('data: ')) continue;
         try {
           const d = JSON.parse(line.slice(6));
-          btn.textContent = `갱신 중... (${d.done}/${d.total})`;
+          btn.textContent = d.current_username
+            ? `${d.current_username} (${d.done}/${d.total})`
+            : `갱신 중... (${d.done}/${d.total})`;
           if (!d.running) {
             btn.textContent = `완료! (성공 ${d.success} / 실패 ${d.fail})`;
             btn.disabled = false;

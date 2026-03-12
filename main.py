@@ -2129,10 +2129,14 @@ async def refresh_selected(request: Request, session_id: Optional[str] = Cookie(
         try:
             total = len(pks)
             success = fail = 0
+            # 즉시 시작 이벤트 전송
+            yield f"data: {json.dumps({'running': True, 'total': total, 'done': 0, 'success': 0, 'fail': 0, 'current_username': '준비 중...'}, ensure_ascii=False)}\n\n"
             for i, pk in enumerate(pks):
                 inf = get_influencer(str(pk))
                 uname = inf.get("username", "") if inf else ""
                 followers = inf.get("follower_count", 0) if inf else 0
+                # 크롤링 시작 전 현재 대상 알림
+                yield f"data: {json.dumps({'running': True, 'total': total, 'done': i, 'success': success, 'fail': fail, 'current_username': f'@{uname} 크롤링 중...'}, ensure_ascii=False)}\n\n"
                 try:
                     ok = crawl_user_detail(None, str(pk), uname, followers or 0)
                     if ok:
@@ -2144,7 +2148,6 @@ async def refresh_selected(request: Request, session_id: Optional[str] = Cookie(
                 p = {"running": True, "total": total, "done": i + 1,
                      "success": success, "fail": fail, "current_username": uname}
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
-                time.sleep(0.5)
             p = {"running": False, "total": total, "done": total,
                  "success": success, "fail": fail}
             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
