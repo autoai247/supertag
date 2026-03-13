@@ -2634,7 +2634,7 @@ def collect_progress(job_id: str,
 
         log.info(f"[{_label}] SSE 시작 — resume_from={resume_from}, resume_new={resume_new}, resume_posts={resume_posts}, resume_page={resume_page}")
 
-        BATCH_PAGES = 15  # 배치당 페이지 수 (최적화 후 증가)
+        BATCH_PAGES = 500  # 재연결 없이 한번에 끝까지 수집 (기존 15 → 500)
 
         try:
             from crawler import _hiker_hashtag_medias_page, _hiker_location_medias_page
@@ -2669,7 +2669,17 @@ def collect_progress(job_id: str,
             # v1 top이 가장 다양한 유저 반환 (10p=212명 vs v2 recent 10p=43명)
             # 어떤 search_type이든 top 우선 → clips → recent
             _ENDPOINTS = ["top", "clips", "top_recent", "recent"]
+            # 재연결 시 이전 엔드포인트 복원 (last_next_id에 "ep:idx:" 접두어로 저장)
             _ep_idx = 0
+            if max_id and max_id.startswith("ep:"):
+                try:
+                    parts = max_id.split(":", 3)  # "ep:idx:real_cursor"
+                    _ep_idx = int(parts[1])
+                    max_id = parts[2] if len(parts) > 2 and parts[2] else None
+                    if _ep_idx >= len(_ENDPOINTS):
+                        _ep_idx = 0
+                except Exception:
+                    _ep_idx = 0
             endpoint = _ENDPOINTS[_ep_idx]
             page_num = _resume_page
             batch_done = 0
@@ -2691,9 +2701,10 @@ def collect_progress(job_id: str,
                         if _job_check and _job_check.get("status") == "stopped":
                             try:
                                 from datetime import datetime as _dt3, timezone as _tz3, timedelta as _td3
+                                _stop_next = f"ep:{_ep_idx}:{last_next_id}" if last_next_id else ""
                                 update_collect_job(job_db_id,
                                     collected_posts=total_medias, new_users=new_cnt,
-                                    updated_users=updated_cnt, last_next_id=last_next_id or "",
+                                    updated_users=updated_cnt, last_next_id=_stop_next,
                                     last_page=page_num, status="stopped",
                                     finished_at=_dt3.now(_tz3(_td3(hours=9))).isoformat())
                             except Exception:
@@ -2792,21 +2803,25 @@ def collect_progress(job_id: str,
                         for nb in _new_batch
                     ])
 
+                # 클라이언트에 ep 접두어 포함된 next_id 전달 (재연결 시 엔드포인트 복원용)
+                _client_next = f"ep:{_ep_idx}:{next_id}" if next_id else ""
                 p.update({"posts": total_medias, "new": new_cnt, "updated": updated_cnt,
                           "status": f"페이지 {page_num:,} — 신규 {new_cnt:,}명 / 중복 {updated_cnt:,}명 / 목표 {target_users:,}명",
                           "page": page_num, "page_items": len(items),
                           "has_next": bool(next_id),
-                          "next_id": next_id or "",
+                          "next_id": _client_next,
                           "users": page_users})
                 yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
 
                 # 3페이지마다 DB 통계 업데이트 (매 페이지 → 불필요한 오버헤드)
                 if batch_done % 3 == 0 or not next_id:
+                    # last_next_id에 엔드포인트 인덱스를 접두어로 저장 (재연결 시 복원용)
+                    _save_next = f"ep:{_ep_idx}:{last_next_id}" if last_next_id else ""
                     try:
                         update_collect_job(job_db_id,
                             collected_posts=total_medias, new_users=new_cnt,
                             updated_users=updated_cnt, status="running",
-                            last_next_id=last_next_id or "", last_page=page_num)
+                            last_next_id=_save_next, last_page=page_num)
                     except Exception:
                         pass
 
@@ -2817,6 +2832,12 @@ def collect_progress(job_id: str,
                         _prev_ep = endpoint
                         endpoint = _ENDPOINTS[_ep_idx]
                         max_id = None
+                        # 엔드포인트 전환 시 즉시 DB에 저장 (재연결 대비)
+                        try:
+                            update_collect_job(job_db_id,
+                                last_next_id=f"ep:{_ep_idx}:", last_page=page_num)
+                        except Exception:
+                            pass
                         log.info(f"[{_label}] {_prev_ep} 소진 → {endpoint} 전환 (신규 {new_cnt})")
                         p.update({"status": f"{endpoint} 게시물 검색 중 — 신규 {new_cnt:,}명"})
                         yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
@@ -2855,12 +2876,13 @@ def collect_progress(job_id: str,
                 all_pks = list(set(prev_pks + collected_pk_list))
                 all_new_pks = list(set(prev_new_pks + new_pk_list))
 
+                _save_next_final = f"ep:{_ep_idx}:{last_next_id}" if last_next_id else ""
                 save_data = dict(
                     collected_posts=total_medias, new_users=new_cnt,
                     updated_users=updated_cnt,
                     collected_pks=json.dumps(all_pks),
                     new_pks=json.dumps(all_new_pks),
-                    last_next_id=last_next_id or "",
+                    last_next_id=_save_next_final,
                     last_page=page_num)
                 if is_truly_done:
                     save_data["status"] = "done"
@@ -2880,8 +2902,9 @@ def collect_progress(job_id: str,
                           "status": f"완료 — 신규 {new_cnt:,}명 / 중복 {updated_cnt:,}명 ({reason})",
                           "page": page_num})
             else:
+                _resume_next = f"ep:{_ep_idx}:{last_next_id}" if last_next_id else ""
                 p.update({"done": False, "has_more": True, "new": new_cnt, "updated": updated_cnt,
-                          "next_id": last_next_id or "", "page": page_num,
+                          "next_id": _resume_next, "page": page_num,
                           "posts": total_medias,
                           "status": f"배치 {page_num:,}페이지 완료 — 신규 {new_cnt:,}명 / 중복 {updated_cnt:,}명 / 목표 {target_users:,}명 (자동 계속)"})
             yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
