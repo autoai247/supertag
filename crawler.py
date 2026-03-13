@@ -231,53 +231,100 @@ def _parse_v1_chunk(data) -> tuple:
 
 
 def _hiker_hashtag_medias_page(hashtag: str, endpoint: str = "recent", max_id: str = None) -> tuple:
-    """HikerAPI v1 해시태그 1페이지 조회. (medias_list, next_max_id) 반환.
+    """HikerAPI 해시태그 1페이지 조회. (medias_list, next_cursor) 반환.
 
     endpoint 매핑:
-      "recent"  → /v1/hashtag/medias/recent/chunk
-      "top"     → /v1/hashtag/medias/top/chunk
-      "clips"   → /v1/hashtag/medias/clips/chunk
-      "top_recent" → /v1/hashtag/medias/top/recent/chunk  (통합)
+      "recent"  → v2/hashtag/medias/recent + 수동 커서 (진짜 최근 게시물)
+      "top"     → v1/hashtag/medias/top/chunk (인기 게시물)
+      "clips"   → v1/hashtag/medias/clips/chunk (릴스)
     """
+    import base64 as _b64
     token = os.environ.get("HIKERAPI_TOKEN", "").strip()
     if not token:
         return [], None
-    # 엔드포인트 매핑 — v1 top/chunk가 가장 다양한 유저 반환
-    # v1 recent/chunk는 빈 결과 반환 → v2 recent 사용
-    url_map = {
-        "top": "https://api.hikerapi.com/v1/hashtag/medias/top/chunk",
-        "clips": "https://api.hikerapi.com/v1/hashtag/medias/clips/chunk",
-        "top_recent": "https://api.hikerapi.com/v1/hashtag/medias/top/recent/chunk",
-    }
-    # recent는 v2 사용 (v1 recent/chunk가 빈 결과)
-    _use_v2 = endpoint == "recent"
-    if _use_v2:
+
+    _use_v2_recent = endpoint == "recent"
+
+    if _use_v2_recent:
+        # ── v2 recent: page_id 파라미터 + 수동 커서 [next_max_id, next_media_ids, page] ──
         url = "https://api.hikerapi.com/v2/hashtag/medias/recent"
+        params = {"name": hashtag}
+        if max_id:
+            params["page_id"] = max_id  # base64 인코딩된 커서
+        try:
+            r = req_lib.get(url, params=params,
+                headers={"x-access-key": token, "accept": "application/json"}, timeout=30)
+            if r.status_code == 402:
+                raise Exception("HikerAPI 크레딧 소진")
+            if r.status_code != 200:
+                log.warning(f"[HikerAPI] recent 응답 {r.status_code}: {r.text[:200]}")
+                return [], None
+            data = r.json()
+            resp = data.get("response", data)
+            # sections에서 미디어 추출
+            medias = []
+            if isinstance(resp, dict) and "sections" in resp:
+                for sec in resp.get("sections", []):
+                    lc = sec.get("layout_content", {}) if isinstance(sec, dict) else {}
+                    for row in lc.get("medias", []):
+                        md = row.get("media") if isinstance(row, dict) else None
+                        if isinstance(md, dict): medias.append(md)
+                    obt = lc.get("one_by_two_item")
+                    if isinstance(obt, dict):
+                        for ci in obt.get("clips", {}).get("items", []):
+                            md = ci.get("media") if isinstance(ci, dict) else None
+                            if isinstance(md, dict): medias.append(md)
+                    for fi in lc.get("fill_items", []):
+                        md = fi.get("media") if isinstance(fi, dict) else None
+                        if isinstance(md, dict): medias.append(md)
+            # 다음 커서 구성: [next_max_id, next_media_ids, page+1]
+            next_id = None
+            more = resp.get("more_available", False) if isinstance(resp, dict) else False
+            if more:
+                _nmi = resp.get("next_max_id")
+                _nmids = resp.get("next_media_ids", [])
+                # 현재 페이지 번호 추출
+                _cur_page = 1
+                if max_id:
+                    try:
+                        _decoded = json.loads(_b64.b64decode(max_id + "==").decode("utf-8", errors="replace"))
+                        if isinstance(_decoded, list) and len(_decoded) >= 3:
+                            _cur_page = int(_decoded[2])
+                    except Exception:
+                        pass
+                if _nmi:
+                    _cursor = json.dumps([_nmi, _nmids, _cur_page + 1])
+                    next_id = _b64.b64encode(_cursor.encode()).decode()
+            log.info(f"[HikerAPI] hashtag={hashtag} ep=recent(v2) page_id={str(max_id)[:40] if max_id else 'None'} → {len(medias)} medias, next={bool(next_id)}")
+            return medias, next_id
+        except Exception as e:
+            log.warning(f"[HikerAPI] recent 페이지 조회 실패: {e}")
+            raise
     else:
-        url = url_map.get(endpoint)
-        if not url:
-            url = url_map["top"]
-    params = {"name": hashtag}
-    if max_id:
-        params["max_id"] = max_id
-    try:
-        r = req_lib.get(
-            url, params=params,
-            headers={"x-access-key": token, "accept": "application/json"},
-            timeout=30,
-        )
-        if r.status_code == 402:
-            raise Exception("HikerAPI 크레딧 소진")
-        if r.status_code != 200:
-            log.warning(f"[HikerAPI] {endpoint} 응답 {r.status_code}: {r.text[:200]}")
-            return [], None
-        data = r.json()
-        medias, next_id = _parse_v1_chunk(data)
-        log.info(f"[HikerAPI] hashtag={hashtag} ep={endpoint} max_id={str(max_id)[:20]} → {len(medias)} medias, next={bool(next_id)}")
-        return medias, next_id
-    except Exception as e:
-        log.warning(f"[HikerAPI] 해시태그 페이지 조회 실패 ({endpoint}): {e}")
-        raise
+        # ── v1 chunk: top, clips ──
+        url_map = {
+            "top": "https://api.hikerapi.com/v1/hashtag/medias/top/chunk",
+            "clips": "https://api.hikerapi.com/v1/hashtag/medias/clips/chunk",
+        }
+        url = url_map.get(endpoint, url_map["top"])
+        params = {"name": hashtag}
+        if max_id:
+            params["max_id"] = max_id
+        try:
+            r = req_lib.get(url, params=params,
+                headers={"x-access-key": token, "accept": "application/json"}, timeout=30)
+            if r.status_code == 402:
+                raise Exception("HikerAPI 크레딧 소진")
+            if r.status_code != 200:
+                log.warning(f"[HikerAPI] {endpoint} 응답 {r.status_code}: {r.text[:200]}")
+                return [], None
+            data = r.json()
+            medias, next_id = _parse_v1_chunk(data)
+            log.info(f"[HikerAPI] hashtag={hashtag} ep={endpoint} max_id={str(max_id)[:40] if max_id else 'None'} → {len(medias)} medias, next={bool(next_id)}")
+            return medias, next_id
+        except Exception as e:
+            log.warning(f"[HikerAPI] {endpoint} 페이지 조회 실패: {e}")
+            raise
 
 
 def _hiker_location_search(query: str) -> list:
@@ -358,9 +405,11 @@ def _hiker_hashtag_medias(hashtag: str, amount: int = 100, search_type: str = "r
     try:
         all_items = []
         seen_pks = set()
-            # v1 recent는 폐기(0결과), v2 recent는 페이지네이션 깨짐(38개 순환)
-        # v1 top/chunk만 정상작동 (10p=212명). clips로 릴스 크리에이터 추가 발견
-        endpoints = ["top", "clips"]
+        # search_type에 따라 메인 엔드포인트 결정, 소진 시 clips 추가
+        if search_type == "recent":
+            endpoints = ["recent", "clips"]  # recent = v1 top/recent/chunk
+        else:
+            endpoints = ["top", "clips"]     # top = v1 top/chunk
         max_pages_per_ep = max(amount // 20, 5)
 
         for ep in endpoints:

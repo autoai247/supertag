@@ -328,10 +328,14 @@ class CollectJob {
         <div class="progress-track mb-3">
           <div class="j-bar progress-bar active" style="width:0%"></div>
         </div>
-        <div class="grid grid-cols-4 gap-2 mb-3">
+        <div class="grid grid-cols-5 gap-2 mb-3">
           <div class="text-center py-2 rounded-lg" style="background:#f8fafc;">
             <div class="j-posts text-lg font-bold text-gray-900">0</div>
             <div class="text-xs text-gray-400">게시물</div>
+          </div>
+          <div class="text-center py-2 rounded-lg" style="background:#f0f9ff;">
+            <div class="j-uniq-posts text-lg font-bold text-sky-600">0</div>
+            <div class="text-xs text-gray-400">고유게시물</div>
           </div>
           <div class="text-center py-2 rounded-lg" style="background:#eef2ff;">
             <div class="j-new text-lg font-bold text-indigo-600">0</div>
@@ -350,6 +354,7 @@ class CollectJob {
           <span class="j-dot w-2 h-2 rounded-full flex-shrink-0" style="background:#6366f1;box-shadow:0 0 6px #6366f1;"></span>
           <span class="j-status text-gray-400">#${this.hashtag} 수집 준비 중...</span>
         </div>
+        <div class="j-postpks mt-1 px-3 py-1 font-mono text-gray-500" style="font-size:10px;background:#f1f5f9;border-radius:6px;min-height:20px;"></div>
         <div class="j-error hidden mt-2 rounded-lg p-2 text-xs" style="background:#1e1b1b;border:1px solid #450a0a;">
           <span class="text-red-300 j-errorMsg"></span>
         </div>
@@ -448,8 +453,18 @@ class CollectJob {
       if (p.page !== undefined) this.lastPage = p.page;
 
       this.$('.j-posts').textContent = (p.posts||0).toLocaleString();
+      this.$('.j-uniq-posts').textContent = (p.unique_posts||0).toLocaleString();
       this.$('.j-new').textContent = (p.new||0).toLocaleString();
       this.$('.j-dup').textContent = (p.updated||0).toLocaleString();
+
+      // 게시물 PK 표시
+      const postInfo = this.$('.j-postpks');
+      if (postInfo) {
+        const uq = (p.unique_posts||0).toLocaleString();
+        const dp = p.dup_posts||0;
+        const pks = (p.post_pks||[]).join(', ');
+        postInfo.textContent = `고유게시물: ${uq}개 | 이번페이지 중복: ${dp}개 | 최근PK: ${pks}`;
+      }
 
       const pct = Math.min(100, Math.round(((p.new || 0) / this.targetUsers) * 100));
       this.$('.j-num').textContent = `신규 ${(p.new||0).toLocaleString()}명 / 중복 ${(p.updated||0).toLocaleString()}명 / 목표 ${this.targetUsers.toLocaleString()}명`;

@@ -2643,6 +2643,7 @@ def collect_progress(job_id: str,
             banned_pks = get_banned_pks()
 
             seen_pks = set()
+            _seen_post_pks = set()  # 게시물 PK 중복 추적
             collected_pk_list = []
             new_pk_list = []
             # DB에 저장된 최신 값과 클라이언트 값 비교 → 큰 값 사용
@@ -2666,9 +2667,13 @@ def collect_progress(job_id: str,
                         max_id = _db_next
             except Exception:
                 pass
-            # v1 top이 가장 다양한 유저 반환 (10p=212명 vs v2 recent 10p=43명)
-            # 어떤 search_type이든 top 우선 → clips → recent
-            _ENDPOINTS = ["top", "clips", "top_recent", "recent"]
+            # search_type에 따라 메인 엔드포인트 결정 (각각 독립 작동)
+            # recent = v1/hashtag/medias/top/recent/chunk (최근 게시물)
+            # top    = v1/hashtag/medias/top/chunk (인기 게시물)
+            if search_type == "recent":
+                _ENDPOINTS = ["recent", "clips"]
+            else:
+                _ENDPOINTS = ["top", "clips"]
             # 재연결 시 이전 엔드포인트 복원 (last_next_id에 "ep:idx:" 접두어로 저장)
             _ep_idx = 0
             if max_id and max_id.startswith("ep:"):
@@ -2757,10 +2762,21 @@ def collect_progress(job_id: str,
                 total_medias += len(items)
                 page_users = []
                 _new_batch = []  # (pk_str, uname, fname, pic, hashtag) 배치 삽입용
+                page_post_pks = []  # 이 페이지의 게시물 PK 목록 (UI 표시용)
+                page_dup_post = 0  # 이 페이지의 중복 게시물 수
 
                 for m in items:
                     if not isinstance(m, dict):
                         continue
+                    # 게시물 PK 추적
+                    post_pk = str(m.get("pk") or m.get("id") or "")
+                    if post_pk:
+                        if post_pk in _seen_post_pks:
+                            page_dup_post += 1
+                        else:
+                            _seen_post_pks.add(post_pk)
+                        page_post_pks.append(post_pk)
+
                     user_data = m.get("user") or {}
                     if not isinstance(user_data, dict):
                         continue
@@ -2806,7 +2822,9 @@ def collect_progress(job_id: str,
                 # 클라이언트에 ep 접두어 포함된 next_id 전달 (재연결 시 엔드포인트 복원용)
                 _client_next = f"ep:{_ep_idx}:{next_id}" if next_id else ""
                 p.update({"posts": total_medias, "new": new_cnt, "updated": updated_cnt,
-                          "status": f"페이지 {page_num:,} — 신규 {new_cnt:,}명 / 중복 {updated_cnt:,}명 / 목표 {target_users:,}명",
+                          "unique_posts": len(_seen_post_pks), "dup_posts": page_dup_post,
+                          "post_pks": page_post_pks[-5:],  # 최근 5개 게시물 PK
+                          "status": f"p{page_num:,} [{endpoint}] — 신규 {new_cnt:,}명 / 중복 {updated_cnt:,}명 / 고유게시물 {len(_seen_post_pks):,}개 (이번페이지 중복 {page_dup_post}개)",
                           "page": page_num, "page_items": len(items),
                           "has_next": bool(next_id),
                           "next_id": _client_next,
