@@ -564,7 +564,7 @@ function banSelected() {
   dd.style.cssText = `position:fixed;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px;min-width:150px;`;
   dd.style.top = (rect.bottom + 4) + 'px';
   dd.style.left = rect.left + 'px';
-  const reasons = ['스팸(팔로워)','스팸(광고)','비활성 계정','부적절한 콘텐츠','기타'];
+  const reasons = ['스팸(팔로워)','스팸(광고)','이슈채널','비활성 계정','부적절한 콘텐츠','기타'];
   dd.innerHTML = `<div class="px-3 py-1.5 text-[11px] text-gray-400 font-medium">${checked.length}명 선택 — 사유 선택</div>` +
     reasons.map(r => `<div class="px-3 py-2 text-xs rounded-lg cursor-pointer hover:bg-red-50 text-gray-700 hover:text-red-600" onclick="doBanSelected('${r}',this)">${r}</div>`).join('');
   document.body.appendChild(dd);
@@ -743,7 +743,7 @@ function banUser(pk, username) {
   dd.style.cssText = `position:fixed;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px;min-width:150px;`;
   dd.style.top = (rect.bottom + 4) + 'px';
   dd.style.left = rect.left + 'px';
-  const reasons = ['스팸(팔로워)','스팸(광고)','비활성 계정','부적절한 콘텐츠','기타'];
+  const reasons = ['스팸(팔로워)','스팸(광고)','이슈채널','비활성 계정','부적절한 콘텐츠','기타'];
   dd.innerHTML = reasons.map(r => `<div class="px-3 py-2 text-xs rounded-lg cursor-pointer hover:bg-red-50 text-gray-700 hover:text-red-600" onclick="doBan('${pk}','${username}','${r}',this)">${r}</div>`).join('');
   document.body.appendChild(dd);
   // 바깥 클릭 시 닫기
