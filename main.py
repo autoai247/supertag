@@ -1124,16 +1124,6 @@ def mark_brand(pk: str, session_id: Optional[str] = Cookie(default=None)):
     return JSONResponse({"ok": True})
 
 
-@app.post("/influencers/{pk}/ban")
-def ban_one(pk: str, reason: str = Form(default="스팸/광고 계정"),
-            session_id: Optional[str] = Cookie(default=None)):
-    user = get_user(session_id)
-    if not user: return JSONResponse({"error": "인증 필요"}, 403)
-    from database import ban_influencer
-    ban_influencer(pk, reason)
-    return JSONResponse({"ok": True})
-
-
 @app.post("/influencers/ban-bulk")
 def ban_bulk(session_id: Optional[str] = Cookie(default=None),
              pks: str = Form(default=""), reason: str = Form(default="수동 밴")):
@@ -1150,6 +1140,16 @@ def ban_bulk(session_id: Optional[str] = Cookie(default=None),
         except Exception:
             pass
     return JSONResponse({"ok": True, "count": done, "total": len(pk_list)})
+
+
+@app.post("/influencers/{pk}/ban")
+def ban_one(pk: str, reason: str = Form(default="스팸/광고 계정"),
+            session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import ban_influencer
+    ban_influencer(pk, reason)
+    return JSONResponse({"ok": True})
 
 
 @app.post("/influencers/{pk}/delete")
