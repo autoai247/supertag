@@ -1124,7 +1124,7 @@ def mark_brand(pk: str, session_id: Optional[str] = Cookie(default=None)):
     return JSONResponse({"ok": True})
 
 
-@app.post("/influencers/ban-bulk")
+@app.post("/api/influencers/ban-bulk")
 def ban_bulk(session_id: Optional[str] = Cookie(default=None),
              pks: str = Form(default=""), reason: str = Form(default="수동 밴")):
     """여러 인플루언서를 한 번에 밴"""
