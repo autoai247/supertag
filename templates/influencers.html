@@ -589,27 +589,15 @@ async function doBanSelected(reason, el) {
   btn.disabled = true;
   btn.textContent = `밴 처리 중...`;
   try {
-    const url = '/admin/ban-bulk';
-    console.log('ban-bulk request:', url, 'pks:', pks.length, 'reason:', reason);
-    const fd = new FormData();
-    fd.append('pks', pks.join(','));
-    fd.append('reason', reason);
-    const r = await fetch(url, {method:'POST', body: fd, credentials:'same-origin'});
-    console.log('ban-bulk response:', r.status, r.url);
-    const txt = await r.text();
-    console.log('ban-bulk body:', txt);
-    if (!r.ok) {
-      await stAlert(`밴 처리 실패 (${r.status}): ${txt.substring(0, 200)}`);
-    } else {
-      try {
-        const d = JSON.parse(txt);
-        await stAlert(`${d.count}명 밴 완료`);
-      } catch(pe) {
-        await stAlert(`밴 완료 (응답 파싱 오류): ${txt.substring(0, 100)}`);
-      }
-    }
+    // 개별 밴 API를 병렬로 호출 (기존 /influencers/{pk}/ban 사용)
+    const results = await Promise.allSettled(pks.map(pk => {
+      const fd = new FormData();
+      fd.append('reason', reason);
+      return fetch(`/influencers/${pk}/ban`, {method:'POST', body: fd});
+    }));
+    const done = results.filter(r => r.status === 'fulfilled' && r.value.ok).length;
+    await stAlert(`${done}명 밴 완료`);
   } catch(e) {
-    console.error('ban-bulk exception:', e);
     await stAlert('밴 처리 중 오류: ' + e.message);
   }
   location.reload();
