@@ -589,17 +589,24 @@ async function doBanSelected(reason, el) {
   btn.disabled = true;
   btn.textContent = `밴 처리 중...`;
   try {
+    const url = '/influencers-action/ban-bulk';
+    console.log('ban-bulk request:', url, 'pks:', pks.length, 'reason:', reason);
     const fd = new FormData();
     fd.append('pks', pks.join(','));
     fd.append('reason', reason);
-    const r = await fetch('/influencers-action/ban-bulk', {method:'POST', body: fd});
+    const r = await fetch(url, {method:'POST', body: fd, credentials:'same-origin'});
+    console.log('ban-bulk response:', r.status, r.url);
+    const txt = await r.text();
+    console.log('ban-bulk body:', txt);
     if (!r.ok) {
-      const txt = await r.text();
-      console.error('ban-bulk error:', r.status, txt);
-      await stAlert(`밴 처리 실패 (${r.status}): ${txt.substring(0, 100)}`);
+      await stAlert(`밴 처리 실패 (${r.status}): ${txt.substring(0, 200)}`);
     } else {
-      const d = await r.json();
-      await stAlert(`${d.count}명 밴 완료`);
+      try {
+        const d = JSON.parse(txt);
+        await stAlert(`${d.count}명 밴 완료`);
+      } catch(pe) {
+        await stAlert(`밴 완료 (응답 파싱 오류): ${txt.substring(0, 100)}`);
+      }
     }
   } catch(e) {
     console.error('ban-bulk exception:', e);
