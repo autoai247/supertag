@@ -529,6 +529,7 @@ async function loadAllAndSelect() {
   document.getElementById('selectAll').checked = true;
   document.querySelectorAll('.row-check').forEach(cb => cb.checked = true);
   if (btn) btn.textContent = '전체 선택됨 ✓';
+  updateSelBtnVisibility();
 }
 
 // 스크롤 감지
@@ -592,14 +593,17 @@ async function doBanSelected(reason, el) {
     fd.append('pks', pks.join(','));
     fd.append('reason', reason);
     const r = await fetch('/influencers/ban-bulk', {method:'POST', body: fd});
-    const d = await r.json();
-    if (d.ok) {
-      await stAlert(`${d.count}명 밴 완료`);
+    if (!r.ok) {
+      const txt = await r.text();
+      console.error('ban-bulk error:', r.status, txt);
+      await stAlert(`밴 처리 실패 (${r.status}): ${txt.substring(0, 100)}`);
     } else {
-      await stAlert('밴 처리 실패: ' + (d.error || ''));
+      const d = await r.json();
+      await stAlert(`${d.count}명 밴 완료`);
     }
   } catch(e) {
-    await stAlert('밴 처리 중 오류 발생: ' + e.message);
+    console.error('ban-bulk exception:', e);
+    await stAlert('밴 처리 중 오류: ' + e.message);
   }
   location.reload();
 }
