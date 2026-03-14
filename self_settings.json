@@ -1,0 +1,12 @@
+{
+  "page_delay_min": 25,
+  "page_delay_max": 35,
+  "rest_interval": 10,
+  "rest_delay_min": 60,
+  "rest_delay_max": 90,
+  "max_pages_per_account": 20,
+  "account_switch_delay": 10,
+  "login_delay_min": 2,
+  "login_delay_max": 5,
+  "last_account_idx": 43
+}

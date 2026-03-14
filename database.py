@@ -1111,7 +1111,7 @@ def get_influencer_reels(pk: str, sort: str = "recent", limit: int = 20) -> list
 
 
 def get_stats():
-    return _cached("stats", _get_stats_impl)
+    return _cached("stats", _get_stats_impl, ttl=300)
 
 def _get_stats_impl():
     hidden_pks = get_hidden_pks()
@@ -1119,6 +1119,8 @@ def _get_stats_impl():
     excluded = hidden_pks | banned_pks
 
     if _USE_SUPABASE:
+        import concurrent.futures
+
         def cnt(table, params=None):
             headers = _sb_headers()
             headers["Prefer"] = "count=exact"
@@ -1127,43 +1129,48 @@ def _get_stats_impl():
             return int(s) if s.isdigit() else 0
 
         def cnt_excl(table, params=None):
-            """excluded pk를 제외한 카운트 (manual 테이블용)"""
             p = dict(params or {})
             if excluded:
-                # is_hidden!=1 AND is_banned!=1 필터 추가
                 p["is_hidden"] = "neq.1"
                 p["is_banned"] = "neq.1"
             return cnt(table, p)
 
-        # hidden/banned 수 차감
-        n_excl_inf = 0
-        n_excl_verified = 0
-        if excluded:
-            all_pks = _sb_get(T_INF, {"select": "pk,is_verified"})
-            if isinstance(all_pks, list):
-                excl_rows = [r for r in all_pks if r.get("pk") in excluded]
-                n_excl_inf = len(excl_rows)
-                n_excl_verified = sum(1 for r in excl_rows if r.get("is_verified"))
-
-        return {
-            "total":      cnt(T_INF) - n_excl_inf,
-            "verified":   cnt(T_INF, {"is_verified": "eq.1"}) - n_excl_verified,
-            "business":   cnt(T_INF, {"is_business": "eq.1"}),
-            "hashtags":   cnt(T_HASH),
-            "with_stats": cnt(T_INF, {"stats_updated_at": "gt.0"}),
-            "live_ok":    cnt_excl(T_MAN, {"can_live": "eq.1"}),
-            "approved":   cnt_excl(T_MAN, {"is_approved": "eq.1"}),
-            "has_url":    cnt(T_INF, {"external_url": "not.is.null"}),
-            "linktree":   0,
-            "has_tiktok": cnt_excl(T_MAN, {"tiktok_url": "not.eq."}),
-            "has_youtube":cnt_excl(T_MAN, {"youtube_url": "not.eq."}),
-            "has_kids":   cnt_excl(T_MAN, {"has_kids": "eq.1"}),
-            "has_pet":    cnt_excl(T_MAN, {"has_pet": "eq.1"}),
-            "is_married": cnt_excl(T_MAN, {"is_married": "eq.1"}),
-            "is_visual":  cnt_excl(T_MAN, {"is_visual": "eq.1"}),
-            "hidden":     len(hidden_pks),
-            "banned":     len(banned_pks),
+        # 모든 카운트 쿼리를 병렬 실행 (15개 직렬 → 병렬)
+        queries = {
+            "total":      (cnt, T_INF, None),
+            "verified":   (cnt, T_INF, {"is_verified": "eq.1"}),
+            "business":   (cnt, T_INF, {"is_business": "eq.1"}),
+            "hashtags":   (cnt, T_HASH, None),
+            "with_stats": (cnt, T_INF, {"stats_updated_at": "gt.0"}),
+            "live_ok":    (cnt_excl, T_MAN, {"can_live": "eq.1"}),
+            "approved":   (cnt_excl, T_MAN, {"is_approved": "eq.1"}),
+            "has_url":    (cnt, T_INF, {"external_url": "not.is.null"}),
+            "has_tiktok": (cnt_excl, T_MAN, {"tiktok_url": "not.eq."}),
+            "has_youtube":(cnt_excl, T_MAN, {"youtube_url": "not.eq."}),
+            "has_kids":   (cnt_excl, T_MAN, {"has_kids": "eq.1"}),
+            "has_pet":    (cnt_excl, T_MAN, {"has_pet": "eq.1"}),
+            "is_married": (cnt_excl, T_MAN, {"is_married": "eq.1"}),
+            "is_visual":  (cnt_excl, T_MAN, {"is_visual": "eq.1"}),
         }
+        results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {pool.submit(fn, tbl, prm): key for key, (fn, tbl, prm) in queries.items()}
+            for f in concurrent.futures.as_completed(futures):
+                key = futures[f]
+                try:
+                    results[key] = f.result()
+                except Exception:
+                    results[key] = 0
+
+        # banned에 포함된 influencer 수 차감 (별도 전체 pk 조회 없이 직접 카운트)
+        n_banned = len(banned_pks)
+        n_hidden = len(hidden_pks)
+
+        results["total"] = max(0, results["total"] - n_banned - n_hidden)
+        results["linktree"] = 0
+        results["hidden"] = n_hidden
+        results["banned"] = n_banned
+        return results
     conn = get_conn()
     try:
         excl_cond = "i.pk NOT IN (SELECT pk FROM {T_MAN} WHERE is_hidden=1 OR is_banned=1)".replace("{T_MAN}", T_MAN)
@@ -1193,7 +1200,7 @@ def _get_stats_impl():
 
 
 def get_url_stats():
-    return _cached("url_stats", _get_url_stats_impl, ttl=60)
+    return _cached("url_stats", _get_url_stats_impl, ttl=300)
 
 def _get_url_stats_impl():
     """외부 URL 도메인별 통계"""

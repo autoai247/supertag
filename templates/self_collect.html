@@ -1,0 +1,854 @@
+{% extends "base.html" %}
+{% block title %}계정 수집 (자체){% endblock %}
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+  <h1 class="text-xl font-bold text-gray-900">계정 수집 (자체 — 프록시 + 계정 로테이션)</h1>
+
+  <!-- 수집 설정 (상단) -->
+  <div class="bg-white rounded-xl shadow-sm border p-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-3">수집 설정</h2>
+    <div class="grid grid-cols-4 gap-3">
+      <div>
+        <label class="text-xs text-gray-500">해시태그</label>
+        <input id="hashtag" type="text" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="공동구매" value="공동구매">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">검색 유형</label>
+        <div class="flex flex-col gap-1 mt-1">
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer"><input type="radio" name="searchType" value="recent" checked class="accent-indigo-600"> 최근</label>
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer"><input type="radio" name="searchType" value="top" class="accent-indigo-600"> 인기</label>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">위치 (선택)</label>
+        <input id="location" type="text" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="서울, 강남 등">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">목표 (명)</label>
+        <input id="targetUsers" type="number" class="w-full border rounded-lg px-3 py-2 text-sm" value="10000">
+      </div>
+    </div>
+    <div class="mt-3 p-3 bg-gray-50 rounded-lg border">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-semibold text-gray-600">수집 세팅</span>
+        <button onclick="saveSettings()" class="px-2 py-0.5 bg-indigo-500 text-white text-xs rounded hover:bg-indigo-600">저장</button>
+      </div>
+      <div class="grid grid-cols-5 gap-2 text-xs">
+        <div>
+          <label class="text-gray-400">페이지 딜레이</label>
+          <div class="flex items-center gap-1 mt-0.5">
+            <input id="s_page_delay_min" type="number" class="w-12 border rounded px-1 py-0.5 text-center" value="{{settings.page_delay_min}}">
+            <span class="text-gray-400">~</span>
+            <input id="s_page_delay_max" type="number" class="w-12 border rounded px-1 py-0.5 text-center" value="{{settings.page_delay_max}}">
+            <span class="text-gray-400">초</span>
+          </div>
+        </div>
+        <div>
+          <label class="text-gray-400">휴식 주기/시간</label>
+          <div class="flex items-center gap-1 mt-0.5">
+            <input id="s_rest_interval" type="number" class="w-12 border rounded px-1 py-0.5 text-center" value="{{settings.rest_interval}}">
+            <span class="text-gray-400">p마다</span>
+            <input id="s_rest_delay_min" type="number" class="w-12 border rounded px-1 py-0.5 text-center" value="{{settings.rest_delay_min}}">
+            <span class="text-gray-400">~</span>
+            <input id="s_rest_delay_max" type="number" class="w-12 border rounded px-1 py-0.5 text-center" value="{{settings.rest_delay_max}}">
+            <span class="text-gray-400">초</span>
+          </div>
+        </div>
+        <div>
+          <label class="text-gray-400">계정당 페이지</label>
+          <div class="flex items-center gap-1 mt-0.5">
+            <input id="s_max_pages" type="number" class="w-14 border rounded px-1 py-0.5 text-center" value="{{settings.max_pages_per_account}}">
+            <span class="text-gray-400">페이지</span>
+          </div>
+        </div>
+        <div>
+          <label class="text-gray-400">계정 교체 대기</label>
+          <div class="flex items-center gap-1 mt-0.5">
+            <input id="s_switch_delay" type="number" class="w-14 border rounded px-1 py-0.5 text-center" value="{{settings.account_switch_delay}}">
+            <span class="text-gray-400">초</span>
+          </div>
+        </div>
+        <div>
+          <label class="text-gray-400">로그인 딜레이</label>
+          <div class="flex items-center gap-1 mt-0.5">
+            <input id="s_login_delay_min" type="number" class="w-12 border rounded px-1 py-0.5 text-center" value="{{settings.login_delay_min}}">
+            <span class="text-gray-400">~</span>
+            <input id="s_login_delay_max" type="number" class="w-12 border rounded px-1 py-0.5 text-center" value="{{settings.login_delay_max}}">
+            <span class="text-gray-400">초</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 블랙리스트 필터 -->
+    <div class="mt-3 p-3 bg-red-50 rounded-lg border border-red-200">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold text-red-600">블랙리스트 필터</span>
+          <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
+            <input type="checkbox" id="bl_enabled" {% if blacklist.enabled %}checked{% endif %} class="w-3 h-3">
+            <span>활성</span>
+          </label>
+        </div>
+        <button onclick="saveBlacklist()" class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600">저장</button>
+      </div>
+      <div class="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <label class="text-red-400 font-medium">프로필 이름 키워드 (full_name에 포함 시 제외)</label>
+          <textarea id="bl_name_keywords" rows="3" class="w-full border border-red-200 rounded px-2 py-1 mt-0.5 text-xs font-mono" placeholder="이슈, 뉴스, 유머 ...">{{ blacklist.name_keywords | join(', ') }}</textarea>
+        </div>
+        <div>
+          <label class="text-red-400 font-medium">아이디 키워드 (username에 포함 시 제외)</label>
+          <textarea id="bl_username_keywords" rows="3" class="w-full border border-red-200 rounded px-2 py-1 mt-0.5 text-xs font-mono" placeholder="news, issue, celeb ...">{{ blacklist.username_keywords | join(', ') }}</textarea>
+        </div>
+      </div>
+      <p class="text-xs text-gray-400 mt-1">쉼표(,)로 구분. 수집 시 프로필 이름/아이디에 키워드가 포함되면 자동 제외됩니다.</p>
+    </div>
+
+    <div class="mt-4">
+      <button onclick="startCollect()" id="btnStart" style="display:block;width:100%;padding:12px;background:#059669;color:#fff;font-size:15px;font-weight:700;border:none;border-radius:8px;cursor:pointer;">
+        수집 시작
+      </button>
+    </div>
+  </div>
+
+  <!-- 실행 중인 작업들 -->
+  <div id="runningJobsSection" class="space-y-4">
+    {% for rj in running_jobs %}
+    <div class="bg-white rounded-xl shadow-sm border p-5 running-job" data-job-id="{{rj.job_id}}">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+          <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+          #{{rj.hashtag}} <span class="text-xs text-gray-400">({{rj.job_id}})</span>
+        </h2>
+        <div class="flex gap-2">
+          <button onclick="stopJob('{{rj.job_id}}')" class="px-3 py-1 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600">중지</button>
+          <button onclick="this.closest('.running-job').remove()" class="px-2 py-1 bg-gray-200 text-gray-500 text-xs rounded-lg hover:bg-gray-300">✕</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-5 gap-2 mb-3">
+        <div class="text-center py-2 rounded-lg" style="background:#eef2ff;"><div class="text-lg font-bold text-indigo-600 j-new">{{rj.new}}</div><div class="text-xs text-gray-400">신규</div></div>
+        <div class="text-center py-2 rounded-lg" style="background:#fef3c7;"><div class="text-lg font-bold text-amber-600 j-dup">{{rj.dup}}</div><div class="text-xs text-gray-400">중복</div></div>
+        <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;"><div class="text-lg font-bold text-emerald-600 j-target">0</div><div class="text-xs text-gray-400">목표</div></div>
+        <div class="text-center py-2 rounded-lg" style="background:#fff7ed;"><div class="text-lg font-bold text-orange-600 j-posts">{{rj.posts}}</div><div class="text-xs text-gray-400">게시물</div></div>
+        <div class="text-center py-2 rounded-lg" style="background:#f0f9ff;"><div class="text-lg font-bold text-sky-600 j-pages">{{rj.pages}}</div><div class="text-xs text-gray-400">페이지</div></div>
+      </div>
+      <div class="bg-gray-200 rounded-full h-2 mb-2"><div class="bg-indigo-600 h-2 rounded-full transition-all j-bar" style="width:0%"></div></div>
+      <div class="rounded-lg px-3 py-2 font-mono text-xs" style="background:#0f172a;"><span class="text-green-400 j-status">{{rj.status}}</span></div>
+      <div class="j-related-tags mt-2 hidden"><span class="text-xs text-gray-400 font-medium">연관 해시태그:</span> <span class="tags-list text-xs text-indigo-600"></span></div>
+      <div class="j-users mt-2 max-h-40 overflow-y-auto space-y-0.5 border rounded-lg p-2" style="background:#fafafa;min-height:40px;"></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 작업 히스토리 -->
+  <div class="bg-white rounded-xl shadow-sm border p-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-3">작업 히스토리</h2>
+    <div class="border rounded-lg overflow-hidden">
+      <table class="w-full text-xs" style="table-layout:fixed;">
+        <thead><tr class="bg-gray-50 border-b text-gray-500">
+          <th class="py-2 px-2 text-left" style="width:58px;">ID</th>
+          <th class="py-2 px-2 text-left" style="width:75px;">해시태그</th>
+          <th class="py-2 px-2 text-center" style="width:35px;">유형</th>
+          <th class="py-2 px-2 text-center" style="width:42px;">상태</th>
+          <th class="py-2 px-2 text-right" style="width:38px;">신규</th>
+          <th class="py-2 px-2 text-right" style="width:38px;">중복</th>
+          <th class="py-2 px-2 text-right" style="width:38px;">게시물</th>
+          <th class="py-2 px-2 text-right" style="width:32px;">페이지</th>
+          <th class="py-2 px-2 text-center" style="width:95px;">시작</th>
+          <th class="py-2 px-2 text-center" style="width:95px;">종료</th>
+          <th class="py-2 px-2 text-right" style="width:60px;">소요</th>
+        </tr></thead>
+        <tbody id="jobHistoryRows">
+          {% for j in jobs_history|reverse %}
+          <tr class="border-b hover:bg-gray-50 cursor-pointer {% if j.status == 'done' %}bg-green-50{% elif j.status == 'running' %}bg-blue-50{% elif j.status == 'stopped' %}bg-amber-50{% elif j.status == 'error' %}bg-red-50{% endif %}" data-hist-job="{{j.id}}" onclick="showJobDetail(this)">
+            <td class="py-1.5 px-2 font-mono text-gray-400" style="font-size:10px;">{{j.id}}</td>
+            <td class="py-1.5 px-2 font-medium truncate">#{{j.hashtag}}</td>
+            <td class="py-1.5 px-2 text-center">{% if j.search_type == 'top' %}인기{% elif j.search_type == 'location' %}위치{% else %}최근{% endif %}</td>
+            <td class="py-1.5 px-2 text-center h-status">
+              {% if j.status == 'done' %}<span class="px-1.5 py-0.5 rounded bg-green-100 text-green-700">완료</span>
+              {% elif j.status == 'running' %}<span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">수집중</span>
+              {% elif j.status == 'stopped' %}<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">중지</span>
+              {% elif j.status == 'error' %}<span class="px-1.5 py-0.5 rounded bg-red-100 text-red-700">에러</span>
+              {% else %}<span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{{j.status}}</span>{% endif %}
+            </td>
+            <td class="py-1.5 px-2 text-right font-medium text-indigo-600 h-new">{{j.new_count|default(0)}}</td>
+            <td class="py-1.5 px-2 text-right text-gray-500 h-dup">{{j.dup_count|default(0)}}</td>
+            <td class="py-1.5 px-2 text-right text-gray-500 h-posts">{{j.total_posts|default(0)}}</td>
+            <td class="py-1.5 px-2 text-right text-gray-500 h-pages">{{j.total_pages|default(0)}}</td>
+            <td class="py-1.5 px-2 text-center text-gray-400" style="font-size:10px;" data-start="{{j.start_time|default('')}}">{{j.start_time[5:16].replace('T',' / ')|default('')}}</td>
+            <td class="py-1.5 px-2 text-center text-gray-400 h-end" style="font-size:10px;" data-end="{{j.end_time|default('')}}">{{j.end_time[5:16].replace('T',' / ') if j.end_time else '-'}}</td>
+            <td class="py-1.5 px-2 text-right text-gray-400 h-dur" style="font-size:10px;" data-s="{{j.start_time|default('')}}" data-e="{{j.end_time|default('')}}">-</td>
+          </tr>
+          <!-- 상세 패널 (숨김) -->
+          <tr class="hidden job-detail-row" data-detail-for="{{j.id}}">
+            <td colspan="11" class="p-4 bg-gray-50">
+              <div class="flex items-center justify-between mb-3">
+                <div class="text-sm font-semibold text-gray-700">{{j.id}} — #{{j.hashtag}}
+                  <span class="ml-2 px-1.5 py-0.5 rounded text-xs
+                    {% if j.status == 'done' %}bg-green-100 text-green-700{% elif j.status == 'running' %}bg-blue-100 text-blue-700{% elif j.status == 'stopped' %}bg-amber-100 text-amber-700{% else %}bg-red-100 text-red-700{% endif %}">
+                    {% if j.status == 'done' %}완료{% elif j.status == 'running' %}수집중{% elif j.status == 'stopped' %}중지{% else %}에러{% endif %}
+                  </span>
+                </div>
+                <div class="flex gap-2">
+                  {% if j.status == 'running' %}
+                  <button onclick="event.stopPropagation(); stopJob('{{j.id}}')" class="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600">중지</button>
+                  {% elif j.status in ('stopped', 'error', 'done') %}
+                  <button onclick="event.stopPropagation(); restartJob('{{j.hashtag}}', '{{j.search_type}}', {{j.target_users}})" class="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">재시작</button>
+                  {% endif %}
+                </div>
+              </div>
+              <!-- 카드형 수치 -->
+              <div class="grid grid-cols-5 gap-2 mb-3">
+                <div class="text-center py-2 rounded-lg" style="background:#eef2ff;"><div class="text-lg font-bold text-indigo-600">{{j.new_count|default(0)}}</div><div class="text-xs text-gray-400">신규</div></div>
+                <div class="text-center py-2 rounded-lg" style="background:#fef3c7;"><div class="text-lg font-bold text-amber-600">{{j.dup_count|default(0)}}</div><div class="text-xs text-gray-400">중복</div></div>
+                <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;"><div class="text-lg font-bold text-emerald-600">{{j.target_users|default(0)}}</div><div class="text-xs text-gray-400">목표</div></div>
+                <div class="text-center py-2 rounded-lg" style="background:#fff7ed;"><div class="text-lg font-bold text-orange-600">{{j.total_posts|default(0)}}</div><div class="text-xs text-gray-400">게시물</div></div>
+                <div class="text-center py-2 rounded-lg" style="background:#f0f9ff;"><div class="text-lg font-bold text-sky-600">{{j.total_pages|default(0)}}</div><div class="text-xs text-gray-400">페이지</div></div>
+              </div>
+              {% set pct = ((j.new_count|default(0)) / (j.target_users|default(1)) * 100)|round|int %}
+              <div class="bg-gray-200 rounded-full h-2 mb-3"><div class="bg-indigo-600 h-2 rounded-full" style="width:{{pct if pct <= 100 else 100}}%"></div></div>
+              <div class="grid grid-cols-4 gap-3 text-xs">
+                <div><span class="text-gray-400">검색 유형:</span> <span class="font-medium">{% if j.search_type == 'top' %}인기{% elif j.search_type == 'location' %}위치{% else %}최근{% endif %}</span></div>
+                <div><span class="text-gray-400">시작:</span> <span class="font-medium">{{j.start_time[5:16].replace('T',' / ')|default('')}}</span></div>
+                <div><span class="text-gray-400">종료:</span> <span class="font-medium">{{j.end_time[5:16].replace('T',' / ') if j.end_time else '-'}}</span></div>
+                <div><span class="text-gray-400">소요:</span> <span class="font-medium dur-calc" data-s="{{j.start_time|default('')}}" data-e="{{j.end_time|default('')}}">-</span></div>
+              </div>
+              {% if j.get('location') %}<div class="mt-1 text-xs"><span class="text-gray-400">위치:</span> <span class="font-medium">{{j.location}}</span></div>{% endif %}
+              {% if j.error %}
+              <div class="mt-2 px-3 py-2 rounded text-xs font-mono bg-red-50 text-red-600">{{j.error}}</div>
+              {% endif %}
+              {% if j.get('users') %}
+              <div class="mt-3">
+                <div class="text-xs font-semibold text-gray-500 mb-1">수집된 유저 ({{j.users|length}}명)</div>
+                <div class="max-h-48 overflow-y-auto border rounded-lg p-2 space-y-0.5" style="background:#fafafa;">
+                  {% for u in j.users %}
+                  <div class="flex items-center gap-2 text-xs py-0.5">
+                    {% if u.is_new %}<span class="px-1.5 py-0.5 bg-indigo-100 text-indigo-600 text-xs rounded font-medium">NEW</span>
+                    {% else %}<span class="px-1.5 py-0.5 bg-gray-100 text-gray-400 text-xs rounded">DUP</span>{% endif %}
+                    <span class="font-medium">@{{u.username}}</span>
+                    <span class="text-gray-400">{{u.full_name|default('')}}</span>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not jobs_history %}<tr><td colspan="11" class="py-4 text-center text-gray-300">수집 기록이 없습니다</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 수집용 계정 (하단) -->
+  <div class="bg-white rounded-xl shadow-sm border p-5">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <h2 class="text-sm font-semibold text-gray-700">수집용 Instagram 계정</h2>
+        <button onclick="reactivateAll()" class="px-2 py-0.5 bg-emerald-500 text-white text-xs rounded hover:bg-emerald-600">전체 재활성</button>
+      </div>
+      <div id="accStats" class="flex items-center gap-3 text-xs">
+        <span class="px-2 py-1 bg-gray-100 rounded font-medium">총 <strong>{{acc_stats.total}}</strong>개</span>
+        <span class="px-2 py-1 bg-green-50 rounded text-green-600">로그인완료 <strong>{{acc_stats.idle + acc_stats.resting}}</strong></span>
+        <span class="px-2 py-1 bg-green-50 rounded text-green-600">활성 <strong>{{acc_stats.active}}</strong></span>
+        <span class="px-2 py-1 bg-red-50 rounded text-red-600">차단 <strong>{{acc_stats.blocked}}</strong></span>
+        {% if acc_stats.failed %}<span class="px-2 py-1 bg-red-50 rounded text-red-400">실패 <strong>{{acc_stats.failed}}</strong></span>{% endif %}
+      </div>
+    </div>
+
+    <!-- 계정 목록 테이블 (스크롤) -->
+    <div class="border rounded-lg overflow-hidden mb-4" style="max-height:240px;overflow-y:auto;">
+      <table class="w-full text-xs" style="table-layout:fixed;">
+        <thead class="sticky top-0 z-10"><tr class="bg-gray-50 border-b text-gray-500">
+          <th class="py-2 px-2 text-left" style="width:30px;">#</th>
+          <th class="py-2 px-2 text-left" style="width:160px;">계정</th>
+          <th class="py-2 px-2 text-left" style="width:120px;">패스워드</th>
+          <th class="py-2 px-2 text-center" style="width:110px;">2FA 코드</th>
+          <th class="py-2 px-2 text-center" style="width:80px;">상태</th>
+          <th class="py-2 px-2 text-left" style="width:150px;">비고</th>
+          <th class="py-2 px-2 text-center" style="width:160px;">관리</th>
+        </tr></thead>
+        <tbody id="accountRows">
+          {% for acc in accounts %}
+          <tr class="border-b hover:bg-gray-50" data-username="{{acc.username}}">
+            <td class="py-1.5 px-2 text-gray-400 text-xs">{{loop.index}}</td>
+            <td class="py-1.5 px-2 font-mono font-medium text-xs cursor-pointer hover:bg-indigo-50" onclick="copyText('{{acc.username}}', this)">@{{acc.username}}</td>
+            <td class="py-1.5 px-2 font-mono text-gray-400 text-xs cursor-pointer hover:bg-indigo-50" onclick="copyText('{{acc.password}}', this)">{{acc.password}}</td>
+            <td class="py-1.5 px-2 text-center"><span class="acc-2fa text-xs font-mono text-indigo-600 cursor-pointer hover:bg-indigo-50 px-1 py-0.5 rounded" onclick="gen2fa('{{acc.username}}', this)">코드보기</span> <button style="margin-left:8px" onclick="event.stopPropagation();gen2fa('{{acc.username}}', this.previousElementSibling)" class="px-1 py-0.5 bg-indigo-100 text-indigo-600 text-xs rounded hover:bg-indigo-200">생성</button></td>
+            <td class="py-1.5 px-2 text-center acc-status">
+              {% set st = acc.get('status', 'idle') %}
+              {% if st == 'active' %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs">활성</span>
+              {% elif st == 'blocked' %}<span class="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs">차단</span>
+              {% elif st == 'login_failed' %}<span class="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs">로그인실패</span>
+              {% elif st == 'logging_in' %}<span class="px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs">로그인중</span>
+              {% elif st == 'resting' %}<span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 text-xs">휴식</span>
+              {% else %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs">로그인완료</span>{% endif %}
+            </td>
+            <td class="py-1.5 px-2 text-xs truncate acc-error">{% set claimed_job = claimed_accounts.get(acc.username, '') %}{% if claimed_job %}<span class="text-blue-600 font-medium">{{claimed_job}}</span>{% elif acc.get('error', '') %}<span class="text-red-500">{{acc.get('error', '')}}</span>{% else %}<span class="text-gray-300">-</span>{% endif %}</td>
+            <td class="py-1.5 px-2 text-center">
+              <div class="flex gap-1 justify-center">
+                <button onclick="checkAccount('{{acc.username}}', 0)" class="px-2 py-1 bg-indigo-50 text-indigo-600 text-xs font-medium rounded hover:bg-indigo-100 border border-indigo-200">확인</button>
+                <button onclick="checkAccount('{{acc.username}}', 1)" class="px-2 py-1 bg-gray-50 text-gray-500 text-xs font-medium rounded hover:bg-gray-100 border border-gray-200" title="프록시 경유">P확인</button>
+                <button onclick="unblockAccount('{{acc.username}}')" class="px-2 py-1 bg-amber-50 text-amber-600 text-xs font-medium rounded hover:bg-amber-100 border border-amber-200">크롬</button>
+                <button onclick="reactivateAccount('{{acc.username}}')" class="px-2 py-1 bg-emerald-50 text-emerald-600 text-xs font-medium rounded hover:bg-emerald-100 border border-emerald-200">재활성</button>
+                <button onclick="deleteAccount('{{acc.username}}')" class="px-2 py-1 bg-red-50 text-red-500 text-xs font-medium rounded hover:bg-red-100 border border-red-200">삭제</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not accounts %}<tr><td colspan="7" class="py-4 text-center text-gray-300">등록된 계정이 없습니다</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 계정 일괄 등록 -->
+    <details class="border rounded-lg">
+      <summary class="px-3 py-2 text-xs font-medium text-gray-600 cursor-pointer hover:bg-gray-50">계정 일괄 등록 (username:password:2FA_secret)</summary>
+      <div class="p-3 pt-0">
+        <textarea id="bulkAccounts" rows="4" class="w-full border rounded-lg p-3 font-mono text-xs text-gray-700 mt-2" placeholder="username1:password1:TOTP_SECRET1
+username2:password2:TOTP_SECRET2"></textarea>
+        <button onclick="importAccounts()" style="display:block;width:100%;padding:12px;background:#4f46e5;color:#fff;font-size:15px;font-weight:700;border:none;border-radius:8px;cursor:pointer;margin-top:8px;">일괄 등록</button>
+        <span id="importStatus" class="text-xs text-gray-400 mt-2 block text-center"></span>
+      </div>
+    </details>
+
+  </div>
+
+  <!-- 프록시 관리 -->
+  <div class="bg-white rounded-xl shadow-sm border p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-gray-700">프록시 관리</h2>
+      <span class="text-xs text-gray-400">수집 시 활성 프록시가 사용됩니다</span>
+    </div>
+    <div id="proxyList" class="space-y-2 mb-3">
+      {% for p in proxies %}
+      <div class="flex items-center gap-3 px-3 py-2 rounded-lg border text-xs proxy-row" data-idx="{{loop.index0}}" style="background:{% if p.active %}#f0fdf4;border-color:#86efac;{% else %}#fff;{% endif %}">
+        <span class="font-semibold text-gray-700 min-w-[80px]">{{p.name}}</span>
+        <span class="text-gray-400 font-mono flex-1 truncate">{{p.url}}</span>
+        {% if p.active %}<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded font-medium">활성</span>
+        {% else %}<button onclick="setActiveProxy({{loop.index0}})" class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 cursor-pointer">활성화</button>{% endif %}
+        <button onclick="editProxy({{loop.index0}}, '{{p.name}}', '{{p.url}}')" class="px-2 py-0.5 bg-gray-50 text-gray-500 rounded hover:bg-amber-100 hover:text-amber-600 border">수정</button>
+        <button onclick="deleteProxy({{loop.index0}}, '{{p.name}}')" class="px-2 py-0.5 bg-red-50 text-red-500 rounded hover:bg-red-100 hover:text-red-700 border border-red-200">삭제</button>
+      </div>
+      {% endfor %}
+      {% if not proxies %}<div class="text-xs text-gray-300 text-center py-3">등록된 프록시가 없습니다</div>{% endif %}
+    </div>
+    <details class="border rounded-lg">
+      <summary class="px-3 py-2 text-xs font-medium text-gray-600 cursor-pointer hover:bg-gray-50">프록시 추가</summary>
+      <div class="p-3 pt-2 grid grid-cols-3 gap-2">
+        <input id="proxyName" type="text" class="border rounded-lg px-3 py-2 text-sm" placeholder="이름 (예: IPRoyal)">
+        <input id="proxyUrl" type="text" class="border rounded-lg px-3 py-2 text-sm col-span-2 font-mono" placeholder="http://user:pass@host:port">
+        <button onclick="addProxy()" style="grid-column:span 3;padding:10px;background:#4f46e5;color:#fff;font-size:14px;font-weight:700;border:none;border-radius:8px;cursor:pointer;">프록시 추가</button>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+let sseConnections = {};  // {job_id: EventSource}
+let jobUserCounts = {};   // {job_id: count}
+
+async function saveSettings() {
+  const body = {
+    page_delay_min: +document.getElementById('s_page_delay_min').value,
+    page_delay_max: +document.getElementById('s_page_delay_max').value,
+    rest_interval: +document.getElementById('s_rest_interval').value,
+    rest_delay_min: +document.getElementById('s_rest_delay_min').value,
+    rest_delay_max: +document.getElementById('s_rest_delay_max').value,
+    max_pages_per_account: +document.getElementById('s_max_pages').value,
+    account_switch_delay: +document.getElementById('s_switch_delay').value,
+    login_delay_min: +document.getElementById('s_login_delay_min').value,
+    login_delay_max: +document.getElementById('s_login_delay_max').value,
+  };
+  const r = await fetch('/api/self-collect/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const d = await r.json();
+  if (d.ok) {
+    const btn = document.querySelector('[onclick="saveSettings()"]');
+    btn.textContent = '저장완료';
+    btn.classList.replace('bg-indigo-500', 'bg-green-500');
+    setTimeout(() => { btn.textContent = '저장'; btn.classList.replace('bg-green-500', 'bg-indigo-500'); }, 1500);
+  }
+}
+
+async function saveBlacklist() {
+  const nameKw = document.getElementById('bl_name_keywords').value.split(',').map(s => s.trim()).filter(Boolean);
+  const userKw = document.getElementById('bl_username_keywords').value.split(',').map(s => s.trim()).filter(Boolean);
+  const enabled = document.getElementById('bl_enabled').checked;
+  const body = { name_keywords: nameKw, username_keywords: userKw, enabled };
+  const r = await fetch('/api/self-collect/blacklist', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const d = await r.json();
+  if (d.ok) {
+    const btn = document.querySelector('[onclick="saveBlacklist()"]');
+    btn.textContent = '저장완료';
+    btn.classList.replace('bg-red-500', 'bg-green-500');
+    setTimeout(() => { btn.textContent = '저장'; btn.classList.replace('bg-green-500', 'bg-red-500'); }, 1500);
+  }
+}
+
+function copyText(text, el) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = el.style.background;
+    el.style.background = '#c7d2fe';
+    setTimeout(() => el.style.background = orig, 300);
+  });
+}
+
+function fmtTime(d) {
+  if (typeof d === 'string') d = new Date(d);
+  return String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' / ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function fmtDuration(startStr, endStr) {
+  if (!startStr || !endStr || endStr === '-') return '-';
+  const ms = new Date(endStr) - new Date(startStr);
+  if (ms < 0) return '-';
+  const s = Math.floor(ms/1000), m = Math.floor(s/60), h = Math.floor(m/60);
+  if (h > 0) return h + '시간 ' + (m%60) + '분';
+  if (m > 0) return m + '분 ' + (s%60) + '초';
+  return s + '초';
+}
+
+function showJobDetail(tr) {
+  const jobId = tr.getAttribute('data-hist-job');
+  const detailRow = document.querySelector(`tr[data-detail-for="${jobId}"]`);
+  if (!detailRow) return;
+  // 다른 열린 상세 닫기
+  document.querySelectorAll('.job-detail-row:not(.hidden)').forEach(r => {
+    if (r !== detailRow) r.classList.add('hidden');
+  });
+  detailRow.classList.toggle('hidden');
+}
+
+async function restartJob(hashtag, searchType, target) {
+  const r = await fetch('/api/self-collect/start', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({hashtag, search_type: searchType, target_users: target})
+  });
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+  const jobId = d.job_id;
+  addJobCard(jobId, hashtag, target);
+  addHistoryRow(jobId, hashtag, searchType);
+  connectSSE(jobId, target);
+}
+
+function updateHistoryRow(jobId, p) {
+  const hRow = document.querySelector(`tr[data-hist-job="${jobId}"]`);
+  if (!hRow) return;
+  if (p.new !== undefined) hRow.querySelector('.h-new').textContent = (p.new||0).toLocaleString();
+  if (p.dup !== undefined) hRow.querySelector('.h-dup').textContent = (p.dup||0).toLocaleString();
+  if (p.posts !== undefined) hRow.querySelector('.h-posts').textContent = (p.posts||0).toLocaleString();
+  if (p.pages !== undefined) hRow.querySelector('.h-pages').textContent = (p.pages||0).toLocaleString();
+}
+
+function addHistoryRow(jobId, hashtag, searchType) {
+  const tbody = document.getElementById('jobHistoryRows');
+  const emptyRow = tbody.querySelector('td[colspan]');
+  if (emptyRow) emptyRow.closest('tr').remove();
+  const typeLabel = searchType === 'top' ? '인기' : searchType === 'location' ? '위치' : '최근';
+  const now = new Date();
+  const timeStr = String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const tr = document.createElement('tr');
+  tr.className = 'border-b hover:bg-gray-50';
+  tr.setAttribute('data-hist-job', jobId);
+  tr.innerHTML = `
+    <td class="py-1.5 px-2 font-mono text-gray-400" style="font-size:10px;">${jobId}</td>
+    <td class="py-1.5 px-2 font-medium truncate">#${hashtag}</td>
+    <td class="py-1.5 px-2 text-center">${typeLabel}</td>
+    <td class="py-1.5 px-2 text-center h-status"><span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">수집중</span></td>
+    <td class="py-1.5 px-2 text-right font-medium text-indigo-600 h-new">0</td>
+    <td class="py-1.5 px-2 text-right text-gray-500 h-dup">0</td>
+    <td class="py-1.5 px-2 text-right text-gray-500 h-posts">0</td>
+    <td class="py-1.5 px-2 text-right text-gray-500 h-pages">0</td>
+    <td class="py-1.5 px-2 text-gray-400" style="font-size:10px;" data-start="${new Date().toISOString()}">${timeStr}</td>
+    <td class="py-1.5 px-2 text-gray-400 h-end" style="font-size:10px;">-</td>
+    <td class="py-1.5 px-2 text-right text-gray-400 h-dur" style="font-size:10px;">-</td>`;
+  tbody.prepend(tr);
+}
+
+function addJobCard(jobId, hashtag, target) {
+  const section = document.getElementById('runningJobsSection');
+  const card = document.createElement('div');
+  card.className = 'bg-white rounded-xl shadow-sm border p-5 running-job';
+  card.setAttribute('data-job-id', jobId);
+  card.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+        #${hashtag} <span class="text-xs text-gray-400">(${jobId})</span>
+      </h2>
+      <div class="flex gap-2">
+        <button onclick="stopJob('${jobId}')" class="j-stop-btn px-3 py-1 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600">중지</button>
+        <button onclick="this.closest('.running-job').remove()" class="px-2 py-1 bg-gray-200 text-gray-500 text-xs rounded-lg hover:bg-gray-300">✕</button>
+      </div>
+    </div>
+    <div class="grid grid-cols-5 gap-2 mb-3">
+      <div class="text-center py-2 rounded-lg" style="background:#eef2ff;"><div class="text-lg font-bold text-indigo-600 j-new">0</div><div class="text-xs text-gray-400">신규</div></div>
+      <div class="text-center py-2 rounded-lg" style="background:#fef3c7;"><div class="text-lg font-bold text-amber-600 j-dup">0</div><div class="text-xs text-gray-400">중복</div></div>
+      <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;"><div class="text-lg font-bold text-emerald-600 j-target">${parseInt(target).toLocaleString()}</div><div class="text-xs text-gray-400">목표</div></div>
+      <div class="text-center py-2 rounded-lg" style="background:#fff7ed;"><div class="text-lg font-bold text-orange-600 j-posts">0</div><div class="text-xs text-gray-400">게시물</div></div>
+      <div class="text-center py-2 rounded-lg" style="background:#f0f9ff;"><div class="text-lg font-bold text-sky-600 j-pages">0</div><div class="text-xs text-gray-400">페이지</div></div>
+    </div>
+    <div class="bg-gray-200 rounded-full h-2 mb-2"><div class="bg-indigo-600 h-2 rounded-full transition-all j-bar" style="width:0%"></div></div>
+    <div class="rounded-lg px-3 py-2 font-mono text-xs" style="background:#0f172a;"><span class="text-green-400 j-status">시작 중...</span></div>
+    <div class="j-related-tags mt-2 hidden"><span class="text-xs text-gray-400 font-medium">연관 해시태그:</span> <span class="tags-list text-xs text-indigo-600"></span></div>
+    <div class="j-users mt-2 max-h-40 overflow-y-auto space-y-0.5 border rounded-lg p-2" style="background:#fafafa;min-height:40px;"></div>
+  `;
+  section.prepend(card);
+  return card;
+}
+
+function connectSSE(jobId, target) {
+  const sse = new EventSource(`/api/self-collect/stream?job_id=${jobId}`);
+  sseConnections[jobId] = sse;
+  jobUserCounts[jobId] = 0;
+
+  sse.onmessage = (e) => {
+    const p = JSON.parse(e.data);
+    const card = document.querySelector(`.running-job[data-job-id="${jobId}"]`);
+    if (!card) { sse.close(); return; }
+
+    if (p.new !== undefined) card.querySelector('.j-new').textContent = (p.new||0).toLocaleString();
+    if (p.dup !== undefined) card.querySelector('.j-dup').textContent = (p.dup||0).toLocaleString();
+    if (p.posts !== undefined) card.querySelector('.j-posts').textContent = (p.posts||0).toLocaleString();
+    if (p.pages !== undefined) card.querySelector('.j-pages').textContent = (p.pages||0).toLocaleString();
+
+    if (p.status) {
+      const statusEl = card.querySelector('.j-status');
+      statusEl.textContent = p.status;
+      statusEl.className = p.error ? 'text-red-400 j-status' : 'text-green-400 j-status';
+    }
+
+    const pct = Math.min(100, Math.round(((p.new||0) / (target||1000)) * 100));
+    card.querySelector('.j-bar').style.width = pct + '%';
+
+    if (p.users && p.users.length > 0) {
+      const ul = card.querySelector('.j-users');
+      if (jobUserCounts[jobId] === 0) ul.innerHTML = '';
+      p.users.forEach(u => {
+        jobUserCounts[jobId]++;
+        const badge = u.is_new
+          ? '<span class="px-1.5 py-0.5 bg-indigo-100 text-indigo-600 text-xs rounded font-medium">NEW</span>'
+          : '<span class="px-1.5 py-0.5 bg-gray-100 text-gray-400 text-xs rounded">DUP</span>';
+        ul.insertAdjacentHTML('afterbegin',
+          `<div class="flex items-center gap-2 text-xs py-0.5">${badge} <span class="font-medium">@${u.username}</span> <span class="text-gray-400">${u.full_name||''}</span></div>`);
+      });
+    }
+
+    // 연관 해시태그 표시
+    if (p.related_tags && p.related_tags.length > 0) {
+      const rtDiv = card.querySelector('.j-related-tags');
+      if (rtDiv) {
+        rtDiv.classList.remove('hidden');
+        rtDiv.querySelector('.tags-list').innerHTML = p.related_tags.map(t => {
+          const name = typeof t === 'string' ? t : t.name;
+          const count = typeof t === 'object' && t.count ? t.count : 0;
+          const countStr = count ? ` <span class="text-gray-400">${count >= 10000 ? (count/10000).toFixed(1)+'만' : count >= 1000 ? (count/1000).toFixed(1)+'천' : count}</span>` : '';
+          return `<a href="#" onclick="event.preventDefault();document.getElementById('hashtag').value='${name}'" class="inline-block px-2 py-0.5 bg-indigo-50 rounded hover:bg-indigo-100 mr-1 mb-1">#${name}${countStr}</a>`;
+        }).join('');
+      }
+    }
+
+    // 히스토리 테이블 실시간 업데이트
+    updateHistoryRow(jobId, p);
+
+    if (p.done) {
+      sse.close();
+      delete sseConnections[jobId];
+      const dot = card.querySelector('.animate-pulse');
+      if (dot) { dot.classList.remove('animate-pulse', 'bg-green-500'); dot.classList.add('bg-gray-400'); }
+      const stopBtn = card.querySelector('.j-stop-btn');
+      if (stopBtn) stopBtn.remove();
+      // 히스토리 상태 반영
+      const hRow = document.querySelector(`tr[data-hist-job="${jobId}"]`);
+      if (hRow) {
+        const statusTd = hRow.querySelector('.h-status');
+        if (statusTd) {
+          if (p.error) statusTd.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-red-100 text-red-700">에러</span>';
+          else if (p.stopped) statusTd.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">중지</span>';
+          else statusTd.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-green-100 text-green-700">완료</span>';
+        }
+        const endTd = hRow.querySelector('.h-end');
+        if (endTd) endTd.textContent = fmtTime(new Date());
+        const durTd = hRow.querySelector('.h-dur');
+        const startTd = hRow.querySelector('td[data-start]');
+        if (durTd && startTd) durTd.textContent = fmtDuration(startTd.dataset.start, new Date().toISOString());
+      }
+    }
+  };
+
+  sse.onerror = () => {
+    setTimeout(() => {
+      if (sseConnections[jobId]) {
+        sse.close();
+        connectSSE(jobId, target);
+      }
+    }, 3000);
+  };
+}
+
+async function startCollect() {
+  const hashtag = document.getElementById('hashtag').value.trim();
+  const location = document.getElementById('location').value.trim();
+  const target = parseInt(document.getElementById('targetUsers').value) || 1000;
+  if (!hashtag && !location) { alert('해시태그 또는 위치를 입력하세요'); return; }
+
+  const searchType = location ? 'location' : document.querySelector('input[name="searchType"]:checked').value;
+
+  const r = await fetch('/api/self-collect/start', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({hashtag: hashtag || location, search_type: searchType, target_users: target, location})
+  });
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+
+  const jobId = d.job_id;
+  const label = hashtag || location;
+  addJobCard(jobId, label, target);
+  addHistoryRow(jobId, label, searchType);
+  connectSSE(jobId, target);
+}
+
+async function stopJob(jobId) {
+  if (!confirm(`작업 ${jobId}를 중지하시겠습니까?`)) return;
+  await fetch('/api/self-collect/stop', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({job_id: jobId})
+  });
+}
+
+async function importAccounts() {
+  const text = document.getElementById('bulkAccounts').value.trim();
+  if (!text) { alert('계정을 입력하세요'); return; }
+  const r = await fetch('/api/self-collect/accounts/import', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text})
+  });
+  const d = await r.json();
+  document.getElementById('importStatus').textContent = d.message || '';
+  setTimeout(() => location.reload(), 1000);
+}
+
+async function checkAccount(username, useProxy=0) {
+  const row = document.querySelector(`tr[data-username="${username}"]`);
+  const statusTd = row?.querySelector('.acc-status');
+  const errorTd = row?.querySelector('.acc-error');
+  if (errorTd) errorTd.innerHTML = '<span class="text-gray-300">확인중...</span>';
+  let sec = 0;
+  if (statusTd) statusTd.innerHTML = '<span class="px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs">확인중(0초)</span>';
+  const timer = setInterval(() => {
+    sec++;
+    if (statusTd) statusTd.innerHTML = `<span class="px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs">확인중(${sec}초)</span>`;
+  }, 1000);
+  try {
+    const r = await fetch(`/api/self-collect/accounts/${username}/check?use_proxy=${useProxy}`, {method:'POST'});
+    clearInterval(timer);
+    const d = await r.json();
+    if (statusTd) {
+      if (d.ok) statusTd.innerHTML = '<span class="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs">로그인성공</span>';
+      else statusTd.innerHTML = `<span class="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs">실패(${sec}초)</span>`;
+    }
+    if (errorTd) {
+      const msg = d.error || d.message || '';
+      if (d.ok) errorTd.innerHTML = '<span class="text-gray-300">-</span>';
+      else errorTd.innerHTML = `<span class="text-red-500">${msg}</span>`;
+    }
+  } catch(e) {
+    clearInterval(timer);
+    if (statusTd) statusTd.innerHTML = '<span class="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs">에러</span>';
+    if (errorTd) errorTd.innerHTML = `<span class="text-red-500">${e.message}</span>`;
+  }
+}
+
+async function genAll2fa() {
+  document.querySelectorAll('.acc-2fa').forEach(el => {
+    const username = el.closest('tr')?.dataset.username;
+    if (username) gen2fa(username, el);
+  });
+}
+
+async function gen2fa(username, el) {
+  el.textContent = '...';
+  try {
+    const r = await fetch(`/api/self-collect/accounts/${username}/totp`);
+    const d = await r.json();
+    if (d.code) {
+      el.textContent = d.code;
+      el.style.fontWeight = '700';
+      el.style.fontSize = '13px';
+      el.onclick = function() { copyText(el.textContent, el); };
+      // 30초 후 자동 갱신
+      if (el._interval) clearInterval(el._interval);
+      el._interval = setInterval(async () => {
+        try {
+          const r2 = await fetch(`/api/self-collect/accounts/${username}/totp`);
+          const d2 = await r2.json();
+          if (d2.code) el.textContent = d2.code;
+        } catch(e) {}
+      }, 30000);
+    } else {
+      el.textContent = '없음';
+    }
+  } catch(e) {
+    el.textContent = '에러';
+  }
+}
+
+async function unblockAccount(username) {
+  const row = document.querySelector(`tr[data-username="${username}"]`);
+  const statusTd = row?.querySelector('.acc-status');
+  const totpTd = row?.querySelector('.acc-2fa');
+  if (statusTd) statusTd.innerHTML = '<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700 text-xs flex items-center justify-center gap-1"><span class="inline-block w-1 h-1 bg-amber-600 rounded-full animate-bounce" style="animation-delay:0s"></span><span class="inline-block w-1 h-1 bg-amber-600 rounded-full animate-bounce" style="animation-delay:0.15s"></span><span class="inline-block w-1 h-1 bg-amber-600 rounded-full animate-bounce" style="animation-delay:0.3s"></span> 크롬 여는중</span>';
+  try {
+    const r = await fetch(`/api/self-collect/accounts/${username}/unblock`, {method:'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      if (statusTd) statusTd.innerHTML = '<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700 text-xs">크롬 열림</span>';
+    } else {
+      if (statusTd) statusTd.innerHTML = '<span class="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs">실패</span>';
+      alert(d.error || '실패');
+    }
+  } catch(e) {
+    alert('에러: ' + e.message);
+  }
+}
+
+async function reactivateAll() {
+  if (!confirm('차단/실패 상태 계정을 전체 재활성화하시겠습니까?')) return;
+  const r = await fetch('/api/self-collect/accounts/reactivate-all', {method:'POST'});
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+  alert(d.message);
+  location.reload();
+}
+
+async function reactivateAccount(username) {
+  const r = await fetch(`/api/self-collect/accounts/${username}/reactivate`, {method:'POST'});
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+  // UI 즉시 업데이트
+  const row = document.querySelector(`tr[data-username="${username}"]`);
+  if (row) {
+    const statusTd = row.querySelector('.acc-status');
+    if (statusTd) statusTd.innerHTML = '<span class="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs">로그인완료</span>';
+    const errorTd = row.querySelector('.acc-error');
+    if (errorTd) errorTd.innerHTML = '<span class="text-gray-300">-</span>';
+  }
+}
+
+async function deleteAccount(username) {
+  if (!confirm(`@${username} 삭제하시겠습니까?`)) return;
+  const r = await fetch(`/api/self-collect/accounts/${username}`, {method:'DELETE'});
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+  document.querySelector(`tr[data-username="${username}"]`)?.remove();
+}
+
+// ── 프록시 관리 ──
+async function addProxy() {
+  const name = document.getElementById('proxyName').value.trim();
+  const url = document.getElementById('proxyUrl').value.trim();
+  if (!name || !url) { alert('이름과 URL을 입력하세요'); return; }
+  const r = await fetch('/api/self-collect/proxies', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, url})
+  });
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+  location.reload();
+}
+
+async function setActiveProxy(idx) {
+  await fetch(`/api/self-collect/proxies/${idx}`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({active: true})
+  });
+  location.reload();
+}
+
+async function editProxy(idx, oldName, oldUrl) {
+  const name = prompt('프록시 이름', oldName);
+  if (name === null) return;
+  const url = prompt('프록시 URL', oldUrl);
+  if (url === null) return;
+  await fetch(`/api/self-collect/proxies/${idx}`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name.trim(), url: url.trim()})
+  });
+  location.reload();
+}
+
+async function deleteProxy(idx, name) {
+  if (!confirm(`${name} 프록시를 삭제하시겠습니까?`)) return;
+  await fetch(`/api/self-collect/proxies/${idx}`, {method:'DELETE'});
+  location.reload();
+}
+
+// 페이지 로드 시 실행 중인 작업들에 SSE 연결
+(function reconnectRunning() {
+  document.querySelectorAll('.running-job[data-job-id]').forEach(card => {
+    const jobId = card.getAttribute('data-job-id');
+    const target = parseInt(document.getElementById('targetUsers').value) || 10000;
+    connectSSE(jobId, target);
+  });
+})();
+
+// 소요 시간 계산 (페이지 로드 후)
+document.querySelectorAll('.h-dur[data-s][data-e]').forEach(el => {
+  el.textContent = fmtDuration(el.dataset.s, el.dataset.e);
+});
+document.querySelectorAll('.dur-calc[data-s][data-e]').forEach(el => {
+  el.textContent = fmtDuration(el.dataset.s, el.dataset.e);
+});
+
+// 계정 상태 실시간 폴링 (5초마다)
+const statusMap = {
+  active: ['활성', 'bg-green-100', 'text-green-700'],
+  blocked: ['차단', 'bg-red-100', 'text-red-700'],
+  login_failed: ['로그인실패', 'bg-red-100', 'text-red-700'],
+  logging_in: ['로그인중', 'bg-blue-100', 'text-blue-700'],
+  resting: ['휴식', 'bg-yellow-100', 'text-yellow-700'],
+  idle: ['로그인완료', 'bg-green-100', 'text-green-700'],
+};
+async function refreshAccountStatus() {
+  try {
+    const r = await fetch('/api/self-collect/accounts');
+    const d = await r.json();
+    if (!d.accounts) return;
+    d.accounts.forEach(acc => {
+      const row = document.querySelector(`tr[data-username="${acc.username}"]`);
+      if (!row) return;
+      const statusTd = row.querySelector('.acc-status');
+      const errorTd = row.querySelector('.acc-error');
+      if (statusTd) {
+        const st = acc.status || 'idle';
+        const [label, bg, fg] = statusMap[st] || statusMap.idle;
+        statusTd.innerHTML = `<span class="px-2 py-0.5 rounded ${bg} ${fg} text-xs">${label}</span>`;
+      }
+      if (errorTd) {
+        if (acc.claimed_by) {
+          errorTd.innerHTML = `<span class="text-blue-600 font-medium">${acc.claimed_by}</span>`;
+        } else if (acc.error) {
+          errorTd.innerHTML = `<span class="text-red-500">${acc.error}</span>`;
+        } else {
+          errorTd.innerHTML = '<span class="text-gray-300">-</span>';
+        }
+      }
+    });
+    // 상단 통계도 갱신
+    const stats = {total: d.accounts.length, idle: 0, active: 0, blocked: 0, failed: 0};
+    d.accounts.forEach(a => {
+      const s = a.status || 'idle';
+      if (s === 'idle' || s === '' || s === 'resting') stats.idle++;
+      else if (s === 'active' || s === 'logging_in') stats.active++;
+      else if (s === 'blocked') stats.blocked++;
+      else if (s === 'login_failed') stats.failed++;
+      else stats.idle++;
+    });
+    const statsEl = document.getElementById('accStats');
+    if (statsEl) statsEl.innerHTML = `<span class="px-2 py-1 bg-gray-100 rounded font-medium">총 <strong>${stats.total}</strong>개</span> <span class="px-2 py-1 bg-green-50 rounded text-green-600">로그인완료 <strong>${stats.idle}</strong></span> <span class="px-2 py-1 bg-green-50 rounded text-green-600">활성 <strong>${stats.active}</strong></span> <span class="px-2 py-1 bg-red-50 rounded text-red-600">차단 <strong>${stats.blocked}</strong></span>${stats.failed ? ` <span class="px-2 py-1 bg-red-50 rounded text-red-400">실패 <strong>${stats.failed}</strong></span>` : ''}`;
+  } catch(e) {}
+}
+setInterval(refreshAccountStatus, 5000);
+</script>
+{% endblock %}

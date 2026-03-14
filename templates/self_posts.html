@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}게시물 탐색{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-4">
+  <h1 class="text-xl font-bold text-gray-900">게시물 탐색</h1>
+
+  <!-- 해시태그 선택 -->
+  <div class="bg-white rounded-xl shadow-sm border p-4">
+    <div class="flex items-center gap-3 flex-wrap">
+      <span class="text-sm font-semibold text-gray-600">해시태그:</span>
+      {% for t in tags_list %}
+      <a href="/self-collect/posts?tag={{t.tag}}"
+         class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-all
+         {% if current_tag == t.tag %}bg-indigo-600 text-white border-indigo-600{% else %}bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50{% endif %}">
+        #{{t.tag}} <span class="{% if current_tag == t.tag %}text-indigo-200{% else %}text-gray-400{% endif %} text-xs">{{t.count}}건</span>
+      </a>
+      {% endfor %}
+      {% if not tags_list %}
+      <span class="text-gray-400 text-sm">수집된 게시물이 없습니다. 자체 수집을 먼저 실행하세요.</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if current_tag %}
+  <!-- 요약 -->
+  <div class="flex items-center justify-between">
+    <p class="text-sm text-gray-500">#{{current_tag}} — 총 <strong class="text-gray-800">{{total}}</strong>건</p>
+    {% if total_pages > 1 %}
+    <div class="flex items-center gap-1 text-xs">
+      {% if page > 1 %}<a href="?tag={{current_tag}}&page={{page-1}}" class="px-2 py-1 bg-white border rounded hover:bg-gray-50">&laquo; 이전</a>{% endif %}
+      <span class="px-2 py-1 text-gray-500">{{page}} / {{total_pages}}</span>
+      {% if page < total_pages %}<a href="?tag={{current_tag}}&page={{page+1}}" class="px-2 py-1 bg-white border rounded hover:bg-gray-50">다음 &raquo;</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 게시물 그리드 -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+    {% for p in posts %}
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-shadow group cursor-pointer" onclick="showDetail(this)" data-post="{{p|tojson|e}}">
+      <!-- 썸네일 -->
+      <div class="relative aspect-square bg-gray-100 overflow-hidden">
+        {% if p.thumbnail_url %}
+        <img src="{{p.thumbnail_url}}" alt="" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="absolute inset-0 items-center justify-center text-gray-300 text-xs" style="display:none">이미지 없음</div>
+        {% else %}
+        <div class="absolute inset-0 flex items-center justify-center text-gray-300 text-xs">이미지 없음</div>
+        {% endif %}
+        <!-- 오버레이: 좋아요/댓글 -->
+        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <div class="flex gap-3 text-white text-xs font-semibold">
+            <span>&#x2665; {{p.like_count|default(0)}}</span>
+            <span>&#x1F4AC; {{p.comment_count|default(0)}}</span>
+          </div>
+        </div>
+        {% if p.carousel_count and p.carousel_count > 0 %}
+        <div class="absolute top-1.5 right-1.5 bg-black bg-opacity-60 text-white text-xs px-1.5 py-0.5 rounded">{{p.carousel_count}}장</div>
+        {% endif %}
+        {% if p.media_type == 2 %}
+        <div class="absolute top-1.5 right-1.5 bg-black bg-opacity-60 text-white text-xs px-1.5 py-0.5 rounded">&#x25B6; 영상</div>
+        {% endif %}
+      </div>
+      <!-- 정보 -->
+      <div class="p-2">
+        <div class="flex items-center gap-1.5 mb-1">
+          {% if p.profile_pic_url %}
+          <img src="{{p.profile_pic_url}}" class="w-4 h-4 rounded-full" loading="lazy" onerror="this.style.display='none'">
+          {% endif %}
+          <span class="text-xs font-medium text-gray-800 truncate">@{{p.username}}</span>
+        </div>
+        <p class="text-xs text-gray-400 line-clamp-2 leading-relaxed" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{p.caption[:100]}}</p>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if not posts and current_tag %}
+  <div class="text-center py-12 text-gray-400">이 해시태그의 게시물이 없습니다.</div>
+  {% endif %}
+
+  <!-- 하단 페이징 -->
+  {% if total_pages > 1 %}
+  <div class="flex justify-center gap-1 text-xs py-4">
+    {% if page > 1 %}<a href="?tag={{current_tag}}&page={{page-1}}" class="px-3 py-1.5 bg-white border rounded hover:bg-gray-50">&laquo; 이전</a>{% endif %}
+    {% for pg in range(1, total_pages + 1) %}
+      {% if pg == page %}
+        <span class="px-3 py-1.5 bg-indigo-600 text-white rounded">{{pg}}</span>
+      {% elif pg <= 3 or pg >= total_pages - 2 or (pg >= page - 2 and pg <= page + 2) %}
+        <a href="?tag={{current_tag}}&page={{pg}}" class="px-3 py-1.5 bg-white border rounded hover:bg-gray-50">{{pg}}</a>
+      {% elif pg == 4 or pg == total_pages - 3 %}
+        <span class="px-1 text-gray-400">...</span>
+      {% endif %}
+    {% endfor %}
+    {% if page < total_pages %}<a href="?tag={{current_tag}}&page={{page+1}}" class="px-3 py-1.5 bg-white border rounded hover:bg-gray-50">다음 &raquo;</a>{% endif %}
+  </div>
+  {% endif %}
+
+  {% endif %}
+</div>
+
+<!-- 상세 모달 -->
+<div id="postModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center" onclick="if(event.target===this)closeDetail()">
+  <div class="bg-white rounded-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl">
+    <div class="p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <img id="mdPic" src="" class="w-8 h-8 rounded-full" onerror="this.style.display='none'">
+          <div>
+            <div id="mdUser" class="text-sm font-bold text-gray-800"></div>
+            <div id="mdName" class="text-xs text-gray-400"></div>
+          </div>
+        </div>
+        <button onclick="closeDetail()" class="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+      </div>
+      <img id="mdImg" src="" class="w-full rounded-lg mb-3" onerror="this.style.display='none'">
+      <div class="flex gap-4 text-sm text-gray-600 mb-3">
+        <span>&#x2665; <strong id="mdLikes">0</strong></span>
+        <span>&#x1F4AC; <strong id="mdComments">0</strong></span>
+        <span id="mdDate" class="text-gray-400 text-xs ml-auto"></span>
+      </div>
+      <p id="mdCaption" class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words"></p>
+      <div class="mt-3 pt-3 border-t">
+        <a id="mdLink" href="#" target="_blank" class="text-xs text-indigo-600 hover:underline">Instagram에서 보기</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showDetail(el) {
+  const p = JSON.parse(el.dataset.post);
+  document.getElementById('mdPic').src = p.profile_pic_url || '';
+  document.getElementById('mdUser').textContent = '@' + p.username;
+  document.getElementById('mdName').textContent = p.full_name || '';
+  document.getElementById('mdImg').src = p.thumbnail_url || '';
+  document.getElementById('mdImg').style.display = p.thumbnail_url ? '' : 'none';
+  document.getElementById('mdLikes').textContent = (p.like_count || 0).toLocaleString();
+  document.getElementById('mdComments').textContent = (p.comment_count || 0).toLocaleString();
+  document.getElementById('mdCaption').textContent = p.caption || '';
+  document.getElementById('mdLink').href = 'https://www.instagram.com/p/' + p.media_id + '/';
+  if (p.taken_at) {
+    const d = new Date(p.taken_at * 1000);
+    document.getElementById('mdDate').textContent = d.toLocaleDateString('ko-KR') + ' ' + d.toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
+  } else {
+    document.getElementById('mdDate').textContent = '';
+  }
+  const modal = document.getElementById('postModal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+function closeDetail() {
+  const modal = document.getElementById('postModal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+</script>
+{% endblock %}

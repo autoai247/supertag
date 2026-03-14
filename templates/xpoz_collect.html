@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}계정 신규 수집{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+  <h1 class="text-xl font-bold text-gray-900">계정 신규 수집</h1>
+
+  <!-- 수집 설정 -->
+  <div class="bg-white rounded-xl shadow-sm border p-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-3">수집 설정</h2>
+    <div class="grid grid-cols-1 gap-3">
+      <div>
+        <label class="text-xs text-gray-500">검색 키워드</label>
+        <input id="keyword" type="text" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="공동구매, 공구, 공구오픈 ..." value="공동구매">
+        <p class="text-xs text-gray-400 mt-1">쉼표로 여러 키워드 입력 가능</p>
+      </div>
+    </div>
+    <div class="grid grid-cols-3 gap-3 mt-3">
+      <div>
+        <label class="text-xs text-gray-500">검색 방식</label>
+        <select id="searchMode" class="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="users">유저 검색 (키워드→유저, 추천)</option>
+          <option value="posts">게시물 검색 (게시물→유저 추출)</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">정렬</label>
+        <select id="sortMode" class="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="relevant">관련도순 (인기)</option>
+          <option value="latest">최신순</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">목표 (명)</label>
+        <input id="targetUsers" type="number" class="w-full border rounded-lg px-3 py-2 text-sm" value="1000">
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 mt-3">
+      <div>
+        <label class="text-xs text-gray-500">시작일</label>
+        <input id="startDate" type="date" class="w-full border rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">종료일</label>
+        <input id="endDate" type="date" class="w-full border rounded-lg px-3 py-2 text-sm">
+      </div>
+    </div>
+    <div class="mt-4">
+      <button onclick="startCollect()" id="btnStart" style="display:block;width:100%;padding:12px;background:#059669;color:#fff;font-size:15px;font-weight:700;border:none;border-radius:8px;cursor:pointer;">
+        수집 시작
+      </button>
+      <button onclick="stopCollect()" id="btnStop" style="display:none;width:100%;padding:12px;background:#ef4444;color:#fff;font-size:15px;font-weight:700;border:none;border-radius:8px;cursor:pointer;">
+        수집 중지
+      </button>
+      <div id="collectState" class="text-center text-xs text-gray-400 mt-2">대기 중</div>
+    </div>
+  </div>
+
+  <!-- 수집 현황 -->
+  <div class="bg-white rounded-xl shadow-sm border p-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+      수집 현황
+      <span id="liveIndicator" class="hidden w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+    </h2>
+    <div class="grid grid-cols-6 gap-2 mb-3">
+      <div class="text-center py-2 rounded-lg" style="background:#eef2ff;">
+        <div id="pNew" class="text-lg font-bold text-indigo-600">0</div>
+        <div class="text-xs text-gray-400">신규</div>
+      </div>
+      <div class="text-center py-2 rounded-lg" style="background:#fef3c7;">
+        <div id="pDup" class="text-lg font-bold text-amber-600">0</div>
+        <div class="text-xs text-gray-400">중복</div>
+      </div>
+      <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;">
+        <div id="pTarget" class="text-lg font-bold text-emerald-600">0</div>
+        <div class="text-xs text-gray-400">목표</div>
+      </div>
+      <div class="text-center py-2 rounded-lg" style="background:#fff7ed;">
+        <div id="pResults" class="text-lg font-bold text-orange-600">0</div>
+        <div class="text-xs text-gray-400">게시물</div>
+      </div>
+      <div class="text-center py-2 rounded-lg" style="background:#f0f9ff;">
+        <div id="pPages" class="text-lg font-bold text-sky-600">0</div>
+        <div class="text-xs text-gray-400">페이지</div>
+      </div>
+      <div class="text-center py-2 rounded-lg" style="background:#fdf2f8;">
+        <div id="pCredits" class="text-lg font-bold text-pink-600">0</div>
+        <div class="text-xs text-gray-400">크레딧</div>
+      </div>
+    </div>
+
+    <!-- 프로그레스 바 -->
+    <div class="bg-gray-200 rounded-full h-2.5 mb-3">
+      <div id="pBar" class="bg-indigo-600 h-2.5 rounded-full transition-all" style="width:0%"></div>
+    </div>
+
+    <!-- 키워드별 현황 -->
+    <div id="kwStatus" class="mb-3 space-y-1"></div>
+
+    <!-- 상태 로그 -->
+    <div class="rounded-lg px-3 py-2 font-mono text-xs" style="background:#0f172a;min-height:36px;">
+      <span id="pStatus" class="text-green-400">수집 시작을 눌러주세요</span>
+    </div>
+
+    <!-- 로그 히스토리 -->
+    <div id="logHistory" class="mt-2 max-h-32 overflow-y-auto"></div>
+
+    <!-- 수집된 유저 목록 -->
+    <div class="mt-3">
+      <h3 class="text-xs font-semibold text-gray-500 mb-2">수집된 유저 <span id="userCount" class="text-indigo-600">0</span>명</h3>
+      <div id="userList" class="max-h-60 overflow-y-auto space-y-1 border rounded-lg p-2" style="background:#fafafa;min-height:60px;">
+        <div class="text-xs text-gray-300 text-center py-3">수집된 유저가 여기에 표시됩니다</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let sse = null;
+let stopped = false;
+let totalUserCount = 0;
+let logLines = [];
+
+function addLog(msg, type) {
+  const time = new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const colors = {info: 'text-gray-400', ok: 'text-green-400', warn: 'text-amber-400', err: 'text-red-400'};
+  const color = colors[type] || colors.info;
+  logLines.push({time, msg, color});
+  if (logLines.length > 50) logLines.shift();
+  const el = document.getElementById('logHistory');
+  el.innerHTML = logLines.map(l =>
+    `<div class="font-mono ${l.color}" style="font-size:10px;">[${l.time}] ${l.msg}</div>`
+  ).reverse().join('');
+}
+
+function startCollect() {
+  stopped = false;
+  totalUserCount = 0;
+  const keyword = document.getElementById('keyword').value.trim();
+  const target = document.getElementById('targetUsers').value;
+  const searchMode = document.getElementById('searchMode').value;
+  const sortMode = document.getElementById('sortMode').value;
+  const startDate = document.getElementById('startDate').value;
+  const endDate = document.getElementById('endDate').value;
+
+  if (!keyword) { alert('키워드를 입력하세요'); return; }
+
+  document.getElementById('btnStart').style.display='none';
+  document.getElementById('btnStop').style.display='block';
+  document.getElementById('collectState').textContent = '수집 중...';
+  document.getElementById('collectState').className = 'text-xs text-emerald-600 font-semibold';
+  document.getElementById('liveIndicator').classList.remove('hidden');
+  document.getElementById('pTarget').textContent = parseInt(target).toLocaleString();
+  document.getElementById('userList').innerHTML = '';
+  document.getElementById('userCount').textContent = '0';
+  document.getElementById('pNew').textContent = '0';
+  document.getElementById('pDup').textContent = '0';
+  document.getElementById('pResults').textContent = '0';
+  document.getElementById('pPages').textContent = '0';
+  document.getElementById('pCredits').textContent = '0';
+  document.getElementById('pBar').style.width = '0%';
+  document.getElementById('kwStatus').innerHTML = '';
+
+  const modeLabel = searchMode === 'posts' ? '게시물 검색' : '유저 검색';
+  const sortLabel = sortMode === 'latest' ? '최신순' : '관련도순';
+  addLog(`수집 시작: "${keyword}" / ${modeLabel} / ${sortLabel} / 목표 ${target}명`, 'ok');
+
+  const params = new URLSearchParams({
+    keyword, target_users: target, search_mode: searchMode,
+    sort_mode: sortMode, start_date: startDate, end_date: endDate
+  });
+  sse = new EventSource('/api/xpoz-collect/stream?' + params);
+  sse.onmessage = (e) => {
+    if (stopped) { sse.close(); return; }
+    const p = JSON.parse(e.data);
+
+    if (p.new !== undefined) document.getElementById('pNew').textContent = (p.new||0).toLocaleString();
+    if (p.dup !== undefined) document.getElementById('pDup').textContent = (p.dup||0).toLocaleString();
+    if (p.results !== undefined) document.getElementById('pResults').textContent = (p.results||0).toLocaleString();
+    if (p.pages !== undefined) document.getElementById('pPages').textContent = (p.pages||0).toLocaleString();
+    if (p.credits !== undefined) document.getElementById('pCredits').textContent = (p.credits||0).toLocaleString();
+
+    if (p.status) {
+      document.getElementById('pStatus').textContent = p.status;
+      document.getElementById('pStatus').className = p.error ? 'text-red-400' : 'text-green-400';
+    }
+
+    if (p.current_keyword) {
+      const kwEl = document.getElementById('kwStatus');
+      let badge = kwEl.querySelector(`[data-kw="${p.current_keyword}"]`);
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.setAttribute('data-kw', p.current_keyword);
+        badge.className = 'text-xs flex items-center gap-2';
+        kwEl.appendChild(badge);
+      }
+      badge.innerHTML = `<span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-medium">${p.current_keyword}</span>
+        <span class="text-gray-500">신규 ${p.kw_new||0} / 중복 ${p.kw_dup||0} / p${p.kw_page||0}</span>`;
+    }
+
+    const pct = Math.min(100, Math.round(((p.new||0) / parseInt(target)) * 100));
+    document.getElementById('pBar').style.width = pct + '%';
+
+    if (p.users) {
+      const ul = document.getElementById('userList');
+      if (totalUserCount === 0) ul.innerHTML = '';
+      p.users.forEach(u => {
+        totalUserCount++;
+        const badge = u.is_new
+          ? '<span class="px-1.5 py-0.5 bg-indigo-100 text-indigo-600 text-xs rounded font-medium">NEW</span>'
+          : '<span class="px-1.5 py-0.5 bg-gray-100 text-gray-400 text-xs rounded">DUP</span>';
+        ul.insertAdjacentHTML('afterbegin',
+          `<div class="flex items-center gap-2 text-xs py-0.5">${badge} <span class="font-medium">@${u.username}</span> <span class="text-gray-400">${u.full_name||''}</span></div>`);
+      });
+      document.getElementById('userCount').textContent = totalUserCount;
+    }
+
+    if (p.status && !p.done) addLog(p.status, p.error ? 'err' : 'info');
+
+    if (p.done) {
+      sse.close();
+      document.getElementById('btnStart').style.display='block';
+      document.getElementById('btnStop').style.display='none';
+      document.getElementById('collectState').textContent = p.error ? '에러 종료' : '수집 완료';
+      document.getElementById('collectState').className = `text-xs font-semibold ${p.error ? 'text-red-500' : 'text-indigo-600'}`;
+      document.getElementById('liveIndicator').classList.add('hidden');
+      addLog(p.error ? `에러: ${p.error}` : `수집 완료! 신규 ${p.new||0}명`, p.error ? 'err' : 'ok');
+    }
+  };
+  sse.onerror = () => {
+    sse.close();
+    document.getElementById('btnStart').classList.remove('hidden');
+    document.getElementById('btnStop').classList.add('hidden');
+    document.getElementById('collectState').textContent = '연결 끊김';
+    document.getElementById('collectState').className = 'text-xs text-red-500 font-semibold';
+    document.getElementById('liveIndicator').classList.add('hidden');
+    addLog('SSE 연결 끊김', 'err');
+  };
+}
+
+function stopCollect() {
+  stopped = true;
+  if (sse) sse.close();
+  document.getElementById('btnStart').classList.remove('hidden');
+  document.getElementById('btnStop').classList.add('hidden');
+  document.getElementById('pStatus').textContent = '사용자에 의해 중지됨';
+  document.getElementById('pStatus').className = 'text-amber-400';
+  document.getElementById('collectState').textContent = '중지됨';
+  document.getElementById('collectState').className = 'text-xs text-amber-500 font-semibold';
+  document.getElementById('liveIndicator').classList.add('hidden');
+  addLog('수집 중지', 'warn');
+}
+</script>
+{% endblock %}

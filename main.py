@@ -104,7 +104,7 @@ _rate_store_cleanup_ts: float = 0.0  # 마지막 정리 시간
 _honeypot_ips: set = set()  # 허니팟 걸린 IP 영구 차단
 _RATE_LIMIT = 40  # 분당 최대 요청 수 (비인증 사용자)
 _RATE_LIMIT_AUTH = 120  # 분당 최대 요청 수 (인증된 사용자)
-_WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico", "/api/debug/", "/api/cron", "/api/img-proxy"}
+_WHITELIST_PATHS = {"/static", "/data", "/robots.txt", "/favicon.ico", "/api/debug/", "/api/cron", "/api/img-proxy", "/api/self-collect", "/api/xpoz-collect"}
 # 데이터 페이지 경로 (검색엔진 봇 차단 대상)
 _DATA_PATHS = ["/influencers", "/api/", "/advertiser", "/export", "/collect",
                "/hashtags", "/settings", "/refresh", "/target-extract"]
@@ -2691,6 +2691,8 @@ def collect_progress(job_id: str,
             last_next_id = None
             no_data = False
 
+            _consec_dup_pages = 0  # 연속 100% 중복 게시물 페이지 수 (순환 감지)
+
             # DB 보정된 값으로 첫 SSE 메시지 전송
             p = {"hashtag": _label, "posts": total_medias, "new": new_cnt,
                  "updated": updated_cnt, "done": False, "error": None,
@@ -2843,6 +2845,20 @@ def collect_progress(job_id: str,
                     except Exception:
                         pass
 
+                # 순환 감지: 이 페이지 게시물이 전부 이미 본 것이면 카운트
+                if page_dup_post >= len(items) * 0.9:  # 90% 이상 중복
+                    _consec_dup_pages += 1
+                else:
+                    _consec_dup_pages = 0
+
+                # 3페이지 연속 90%+ 중복 → 현재 엔드포인트 순환으로 판단, 전환
+                if _consec_dup_pages >= 3:
+                    log.info(f"[{_label}] {endpoint} 순환 감지 ({_consec_dup_pages}페이지 연속 중복) → 전환")
+                    p.update({"status": f"{endpoint} 순환 감지 — 다음 엔드포인트로 전환"})
+                    yield f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+                    next_id = None  # 강제로 엔드포인트 전환 트리거
+                    _consec_dup_pages = 0
+
                 if not next_id:
                     # 현재 엔드포인트 소진 → 다음 엔드포인트로 전환
                     _ep_idx += 1
@@ -2942,6 +2958,1774 @@ def collect_progress(job_id: str,
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ═══════════════════════════════════════════════════════
+# 계정 수집 (Xpoz API)
+# ═══════════════════════════════════════════════════════
+
+_XPOZ_API_KEY = os.getenv("XPOZ_API_KEY", "")
+
+@app.get("/xpoz-collect", response_class=HTMLResponse)
+def xpoz_collect_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return RedirectResponse("/login", 302)
+    return templates.TemplateResponse("xpoz_collect.html", {"request": request, "user": user})
+
+@app.get("/api/xpoz-collect/stream")
+def xpoz_collect_stream(
+    keyword: str = Query(default=""),
+    target_users: int = Query(default=1000),
+    search_mode: str = Query(default="posts"),
+    sort_mode: str = Query(default="relevant"),
+    start_date: str = Query(default=""),
+    end_date: str = Query(default=""),
+    session_id: Optional[str] = Cookie(default=None),
+):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    if not keyword:
+        return JSONResponse({"error": "키워드 필수"}, 400)
+
+    api_key = _XPOZ_API_KEY
+    if not api_key:
+        return JSONResponse({"error": "XPOZ_API_KEY 환경변수 필요"}, 400)
+
+    from database import upsert_influencer, get_existing_pks, get_banned_pks
+
+    def stream():
+        from xpoz import XpozClient
+        from datetime import datetime, timedelta
+
+        client = XpozClient(api_key)
+        ig = client.instagram
+
+        existing_pks = set()
+        try:
+            existing_pks = set(get_existing_pks())
+        except Exception:
+            pass
+        banned_pks = set()
+        try:
+            banned_pks = set(get_banned_pks())
+        except Exception:
+            pass
+
+        keywords = [k.strip() for k in keyword.split(",") if k.strip()]
+        new_count = 0
+        dup_count = 0
+        total_pages = 0
+        total_results = 0
+        credits_used = 0
+        seen_usernames = set()
+
+        _start = start_date if start_date else None
+        _end = end_date if end_date else None
+
+        def _make_progress(kw_idx, kw, kw_new, kw_dup, kw_page, status, batch_users=None, done=False, error=None):
+            p = {
+                "new": new_count, "dup": dup_count,
+                "pages": total_pages, "results": total_results,
+                "credits": round(credits_used, 1),
+                "current_keyword": kw, "kw_new": kw_new, "kw_dup": kw_dup, "kw_page": kw_page,
+                "status": status,
+            }
+            if batch_users:
+                p["users"] = batch_users
+            if done:
+                p["done"] = True
+            if error:
+                p["error"] = error
+            return f"data: {json.dumps(p, ensure_ascii=False)}\n\n"
+
+        def _extract_user_id(item, mode):
+            """유저 ID 추출: users 모드는 id가 유저 PK, posts 모드는 id에서 파싱"""
+            if mode == "users":
+                return str(getattr(item, 'id', '') or '')
+            # posts 모드: id 형식 = "{post_id}_{user_id}"
+            raw_id = str(getattr(item, 'id', '') or '')
+            if '_' in raw_id:
+                return raw_id.split('_')[-1]
+            return ''
+
+        yield _make_progress(0, '', 0, 0, 0, f'{len(keywords)}개 키워드 수집 시작...')
+
+        for kw_idx, kw in enumerate(keywords):
+            if new_count >= target_users:
+                break
+
+            kw_new = 0
+            kw_dup = 0
+            kw_page = 0
+
+            try:
+                kwargs = {"query": kw}
+                if _start:
+                    kwargs["start_date"] = _start
+                if _end:
+                    kwargs["end_date"] = _end
+
+                if search_mode == "users":
+                    result = ig.get_users_by_keywords(**kwargs)
+                else:
+                    if sort_mode == "latest":
+                        kwargs["force_latest"] = True
+                    result = ig.search_posts(**kwargs)
+
+                credits_used += 5  # 첫 쿼리 5크레딧
+
+                while True:
+                    if not result or not hasattr(result, 'data') or not result.data:
+                        break
+
+                    kw_page += 1
+                    total_pages += 1
+                    batch_users = []
+                    page_new = 0
+
+                    for item in result.data:
+                        username = getattr(item, 'username', None) or ''
+                        if not username or username in seen_usernames:
+                            continue
+                        seen_usernames.add(username)
+
+                        user_id = _extract_user_id(item, search_mode)
+                        full_name = getattr(item, 'full_name', '') or ''
+
+                        is_new = user_id not in existing_pks if user_id else True
+                        if user_id and user_id in banned_pks:
+                            continue
+
+                        if is_new:
+                            new_count += 1
+                            kw_new += 1
+                            page_new += 1
+                            if user_id:
+                                try:
+                                    upsert_influencer({
+                                        "pk": user_id,
+                                        "username": username,
+                                        "full_name": full_name,
+                                        "profile_pic_url": getattr(item, 'profile_pic_url', '') or '',
+                                        "source_hashtag": kw,
+                                    })
+                                    existing_pks.add(user_id)
+                                except Exception as db_err:
+                                    log.warning(f"[xpoz] DB upsert 에러: {db_err}")
+                        else:
+                            dup_count += 1
+                            kw_dup += 1
+
+                        batch_users.append({
+                            "username": username,
+                            "full_name": full_name,
+                            "is_new": is_new,
+                        })
+
+                    total_results += len(result.data)
+                    credits_used += max(1, len(result.data)) * 0.005
+
+                    status_msg = f"[{kw_idx+1}/{len(keywords)}] \"{kw}\" p{kw_page} — 신규 {new_count}명 / 중복 {dup_count}명 (이 페이지 +{page_new}명)"
+
+                    if new_count >= target_users:
+                        yield _make_progress(kw_idx, kw, kw_new, kw_dup, kw_page,
+                            f"목표 달성! 신규 {new_count}명 수집 완료 ({total_results}건 검색)",
+                            batch_users, done=True)
+                        client.close()
+                        return
+
+                    yield _make_progress(kw_idx, kw, kw_new, kw_dup, kw_page, status_msg, batch_users)
+
+                    # 신규 0명이면 즉시 다음 키워드로 (크레딧 절약)
+                    if page_new == 0 and kw_page >= 2:
+                        log.info(f"[xpoz] \"{kw}\" p{kw_page} 신규 0명 → 다음 키워드")
+                        yield _make_progress(kw_idx, kw, kw_new, kw_dup, kw_page,
+                            f"\"{kw}\" 신규 없음 → 다음 키워드로 (p{kw_page})")
+                        break
+
+                    # 다음 페이지 (SDK next_page()는 total_pages=0 버그, 직접 호출)
+                    try:
+                        next_result = result._fetch_page_result(kw_page + 1)
+                        if next_result is None or not hasattr(next_result, 'data') or not next_result.data:
+                            log.info(f"[xpoz] \"{kw}\" 더 이상 결과 없음 (p{kw_page})")
+                            yield _make_progress(kw_idx, kw, kw_new, kw_dup, kw_page,
+                                f"\"{kw}\" 마지막 페이지 (p{kw_page})")
+                            break
+                        result = next_result
+                        credits_used += 5
+                    except Exception as page_err:
+                        log.warning(f"[xpoz] \"{kw}\" 페이지 에러 (p{kw_page}): {page_err}")
+                        yield _make_progress(kw_idx, kw, kw_new, kw_dup, kw_page,
+                            f"\"{kw}\" 마지막 페이지 (p{kw_page})")
+                        break
+
+            except Exception as e:
+                err_msg = str(e)[:150]
+                log.warning(f"[xpoz] \"{kw}\" 에러: {err_msg}")
+                yield _make_progress(kw_idx, kw, kw_new, kw_dup, kw_page,
+                    f"\"{kw}\" 에러: {err_msg}", error=err_msg)
+                continue
+
+        # 모든 키워드 완료
+        yield _make_progress(len(keywords)-1, keywords[-1] if keywords else '', 0, 0, 0,
+            f"수집 완료! 신규 {new_count}명 / 중복 {dup_count}명 / {total_pages}페이지 / {total_results}건 / 크레딧 {round(credits_used, 1)}",
+            done=True)
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ═══════════════════════════════════════════════════════
+# 계정 수집 (자체 — instagrapi + 프록시 + 계정 로테이션)
+# 다중 작업 동시 수집 + 계정 풀 공유 + 작업 히스토리
+# ═══════════════════════════════════════════════════════
+
+import threading as _threading
+
+_SELF_ACCOUNTS_FILE = os.path.join(os.path.dirname(__file__), "self_accounts.json")
+_SELF_JOBS_FILE = os.path.join(os.path.dirname(__file__), "self_jobs.json")
+_SELF_PROXIES_FILE = os.path.join(os.path.dirname(__file__), "self_proxies.json")
+_SELF_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "self_settings.json")
+_SELF_POSTS_DIR = os.path.join(os.path.dirname(__file__), "self_posts")
+os.makedirs(_SELF_POSTS_DIR, exist_ok=True)
+_SELF_SESSIONS_DIR = os.path.join(os.path.dirname(__file__), "self_sessions")
+os.makedirs(_SELF_SESSIONS_DIR, exist_ok=True)
+
+def _session_path(username: str) -> str:
+    return os.path.join(_SELF_SESSIONS_DIR, f"{username}.json")
+
+def _make_challenge_handler(username_hint: str):
+    """Instagram 보안 챌린지(SMS/이메일 인증) 발생 시 핸들러.
+    SMS/이메일 코드는 자동 수신 불가 → False 반환하여 즉시 실패 처리.
+    (TOTP 2FA와는 별개 시스템 — TOTP는 login()의 verification_code로 처리)"""
+    def handler(username, choice=None):
+        log.warning(f"[challenge] @{username} SMS/이메일 인증 요구 (choice={choice}) — 자동 해제 불가, 수동 필요")
+        return False
+    return handler
+
+def _setup_client(cl, proxy: str = ""):
+    """클라이언트 기본 설정: 지역, 타임존, 프록시, 챌린지 핸들러.
+    모든 Client() 생성 후 login 전에 호출해야 함."""
+    # 한국 지역 설정 (프록시 위치와 일치해야 차단 방지)
+    cl.set_locale("ko_KR")
+    cl.set_timezone_offset(9 * 3600)   # UTC+9 (KST)
+    cl.set_country("KR")
+    cl.set_country_code(82)            # +82
+    if proxy:
+        cl.set_proxy(proxy)
+
+def _login_with_session(cl, username: str, password: str, totp_secret: str, proxy: str = "") -> bool:
+    """세션 파일이 있으면 복원, 없으면 새 로그인. 성공 시 세션 저장.
+    핵심 원칙:
+    1. UUID/device_settings는 절대 삭제하지 않음 (같은 기기로 인식 유지)
+    2. 세션 만료 시 UUID 보존한 채 재로그인
+    3. 챌린지 발생 시에도 UUID 보존 (세션 파일 삭제 금지)
+    4. locale/timezone/country를 프록시 위치와 일치"""
+    import pyotp
+    from instagrapi.exceptions import LoginRequired
+    spath = _session_path(username)
+
+    # 기본 설정 (지역, 프록시)
+    _setup_client(cl, proxy)
+
+    # SMS/이메일 챌린지 핸들러 (자동 불가 → 빠른 실패)
+    cl.challenge_code_handler = _make_challenge_handler(username)
+
+    # 1) 저장된 세션 복원 시도
+    if os.path.exists(spath):
+        try:
+            session = cl.load_settings(spath)
+            if session:
+                cl.set_settings(session)
+                # set_settings 후 프록시/지역 재설정 (세션 값으로 덮어쓰이므로)
+                _setup_client(cl, proxy)
+            # 세션 복원 로그인 — 세션이 살아있으면 TOTP 없이 통과,
+            # 만료 시 TwoFactorRequired 방지를 위해 TOTP도 함께 전달
+            totp_first = pyotp.TOTP(totp_secret).now() if totp_secret else ""
+            cl.login(username, password, verification_code=totp_first)
+            # 세션 유효성 검증
+            try:
+                cl.account_info()
+            except LoginRequired:
+                log.info(f"[session] @{username} 세션 만료 — UUID 유지 재로그인")
+                old = cl.get_settings()
+                cl.set_settings({})
+                cl.set_uuids(old["uuids"])  # 디바이스 UUID 유지
+                _setup_client(cl, proxy)
+                totp = pyotp.TOTP(totp_secret).now() if totp_secret else ""
+                cl.login(username, password, verification_code=totp)
+            cl.dump_settings(spath)
+            log.info(f"[session] @{username} 세션 복원 성공")
+            return True
+        except Exception as e:
+            err_str = str(e).lower()
+            log.info(f"[session] @{username} 세션 복원 실패: {str(e)[:80]} — UUID 보존 재로그인")
+            # ★ 챌린지로 실패해도 세션 파일 삭제 금지!
+            # UUID를 보존한 채 재로그인 시도 (새 기기로 인식되면 더 심한 챌린지 유발)
+            try:
+                old = cl.get_settings()
+                saved_uuids = old.get("uuids", {})
+                if saved_uuids:
+                    cl.set_settings({})
+                    cl.set_uuids(saved_uuids)
+                    _setup_client(cl, proxy)
+                    log.info(f"[session] @{username} UUID 보존 — 같은 기기로 재로그인")
+            except Exception:
+                _setup_client(cl, proxy)
+
+    # 2) 새 로그인 (TOTP verification_code로 2FA 처리)
+    totp = pyotp.TOTP(totp_secret).now() if totp_secret else ""
+    cl.login(username, password, verification_code=totp)
+    cl.dump_settings(spath)
+    log.info(f"[session] @{username} 새 로그인 + 세션 저장")
+    return True
+
+def _save_self_posts(job_id: str, hashtag: str, posts: list):
+    """게시물을 해시태그별 JSON 파일에 추가 저장"""
+    import hashlib
+    safe_tag = hashtag.replace("/", "_").replace("\\", "_")
+    fpath = os.path.join(_SELF_POSTS_DIR, f"{safe_tag}.json")
+    existing = []
+    if os.path.exists(fpath):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+        except Exception:
+            pass
+    existing_ids = {p.get("media_id") for p in existing}
+    added = 0
+    for p in posts:
+        if p.get("media_id") and p["media_id"] not in existing_ids:
+            existing.append(p)
+            existing_ids.add(p["media_id"])
+            added += 1
+    if added:
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(existing, f, ensure_ascii=False)
+    return added
+
+def _load_self_posts_tags() -> list:
+    """저장된 해시태그 목록 반환"""
+    tags = []
+    if os.path.exists(_SELF_POSTS_DIR):
+        for fname in sorted(os.listdir(_SELF_POSTS_DIR)):
+            if fname.endswith(".json"):
+                tag = fname[:-5]
+                fpath = os.path.join(_SELF_POSTS_DIR, fname)
+                try:
+                    size = os.path.getsize(fpath)
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    tags.append({"tag": tag, "count": len(data), "size_mb": round(size / 1048576, 1)})
+                except Exception:
+                    tags.append({"tag": tag, "count": 0, "size_mb": 0})
+    return tags
+
+def _load_self_posts_by_tag(tag: str, offset: int = 0, limit: int = 60) -> tuple:
+    """특정 해시태그 게시물 로드 (페이징)"""
+    safe_tag = tag.replace("/", "_").replace("\\", "_")
+    fpath = os.path.join(_SELF_POSTS_DIR, f"{safe_tag}.json")
+    if not os.path.exists(fpath):
+        return [], 0
+    try:
+        with open(fpath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        total = len(data)
+        # 최신순 정렬
+        data.sort(key=lambda x: x.get("taken_at", 0), reverse=True)
+        return data[offset:offset+limit], total
+    except Exception:
+        return [], 0
+
+_DEFAULT_SETTINGS = {
+    "page_delay_min": 25,
+    "page_delay_max": 35,
+    "rest_interval": 10,
+    "rest_delay_min": 60,
+    "rest_delay_max": 90,
+    "max_pages_per_account": 20,
+    "account_switch_delay": 10,
+    "login_delay_min": 2,
+    "login_delay_max": 5,
+}
+
+# ─── 블랙리스트 (수집 필터) ─────────────────────────────────────
+_SELF_BLACKLIST_FILE = os.path.join(os.path.dirname(__file__), "self_blacklist.json")
+
+_DEFAULT_BLACKLIST = {
+    # full_name(프로필 이름)에 포함되면 수집 제외
+    "name_keywords": [
+        "이슈", "뉴스", "유머", "예능", "맞팔", "선팔",
+        "소식", "핫토픽", "아이돌", "드라마", "연예",
+        "사건사고", "블랙박스", "매거진", "엔터",
+    ],
+    # username에 포함되면 수집 제외
+    "username_keywords": [
+        "news", "issue", "celeb", "enter.",
+    ],
+    # 활성화 여부
+    "enabled": True,
+}
+
+def _load_blacklist() -> dict:
+    if os.path.exists(_SELF_BLACKLIST_FILE):
+        try:
+            with open(_SELF_BLACKLIST_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return {**_DEFAULT_BLACKLIST, **data}
+        except Exception:
+            pass
+    _save_blacklist(_DEFAULT_BLACKLIST)
+    return dict(_DEFAULT_BLACKLIST)
+
+def _save_blacklist(bl: dict):
+    with open(_SELF_BLACKLIST_FILE, "w", encoding="utf-8") as f:
+        json.dump(bl, f, ensure_ascii=False, indent=2)
+
+def _is_blacklisted(username: str, full_name: str, blacklist: dict) -> str:
+    """블랙리스트 키워드 매칭. 매칭되면 사유 반환, 아니면 빈 문자열."""
+    if not blacklist.get("enabled", True):
+        return ""
+    fn_lower = full_name.lower()
+    un_lower = username.lower()
+    for kw in blacklist.get("name_keywords", []):
+        if kw.lower() in fn_lower:
+            return f"이름:{kw}"
+    for kw in blacklist.get("username_keywords", []):
+        if kw.lower() in un_lower:
+            return f"아이디:{kw}"
+    return ""
+
+def _load_self_settings() -> dict:
+    if os.path.exists(_SELF_SETTINGS_FILE):
+        try:
+            with open(_SELF_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                merged = {**_DEFAULT_SETTINGS, **data}
+                return merged
+        except Exception:
+            pass
+    _save_self_settings(_DEFAULT_SETTINGS)
+    return dict(_DEFAULT_SETTINGS)
+
+def _save_self_settings(settings: dict):
+    with open(_SELF_SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(settings, f, ensure_ascii=False, indent=2)
+
+def _load_self_accounts() -> list:
+    if os.path.exists(_SELF_ACCOUNTS_FILE):
+        try:
+            with open(_SELF_ACCOUNTS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            pass
+    return []
+
+def _save_self_accounts(accounts: list):
+    with open(_SELF_ACCOUNTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(accounts, f, ensure_ascii=False, indent=2)
+
+def _load_self_jobs() -> list:
+    if os.path.exists(_SELF_JOBS_FILE):
+        try:
+            with open(_SELF_JOBS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            pass
+    return []
+
+def _save_self_jobs(jobs: list):
+    with open(_SELF_JOBS_FILE, "w", encoding="utf-8") as f:
+        json.dump(jobs, f, ensure_ascii=False, indent=2)
+
+def _load_self_proxies() -> list:
+    if os.path.exists(_SELF_PROXIES_FILE):
+        try:
+            with open(_SELF_PROXIES_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            pass
+    # 초기화: .env 프록시가 있으면 자동 등록
+    env_proxy = os.getenv("IPROYAL_PROXY", "")
+    if env_proxy:
+        default = [{"name": "IPRoyal", "url": env_proxy, "active": True}]
+        _save_self_proxies(default)
+        return default
+    return []
+
+def _save_self_proxies(proxies: list):
+    with open(_SELF_PROXIES_FILE, "w", encoding="utf-8") as f:
+        json.dump(proxies, f, ensure_ascii=False, indent=2)
+
+def _get_active_proxy() -> str:
+    """활성 프록시 URL 반환"""
+    proxies = _load_self_proxies()
+    for p in proxies:
+        if p.get("active"):
+            return p.get("url", "")
+    return ""
+
+# 다중 작업 상태 관리
+_self_jobs_running = {}       # {job_id: {progress dict, stop_requested, thread}}
+_self_account_claims = {}     # {username: job_id} — 현재 사용 중인 계정
+_self_lock = _threading.Lock()
+_self_last_account_idx = 0    # 마지막 사용 계정 인덱스 (전역, 모든 작업 공유)
+
+def _get_last_account_idx() -> int:
+    """settings에서 마지막 사용 계정 인덱스 로드"""
+    global _self_last_account_idx
+    s = _load_self_settings()
+    _self_last_account_idx = s.get("last_account_idx", 0)
+    return _self_last_account_idx
+
+def _save_last_account_idx(idx: int):
+    """마지막 사용 계정 인덱스 저장"""
+    global _self_last_account_idx
+    _self_last_account_idx = idx
+    s = _load_self_settings()
+    s["last_account_idx"] = idx
+    _save_self_settings(s)
+
+# 서버 시작 시 고아 running 작업 정리
+def _cleanup_orphan_jobs():
+    jobs = _load_self_jobs()
+    changed = False
+    for j in jobs:
+        if j.get("status") == "running":
+            j["status"] = "stopped"
+            j["end_time"] = datetime.now(timezone.utc).isoformat()
+            j["error"] = "서버 재시작으로 중지됨"
+            changed = True
+    if changed:
+        _save_self_jobs(jobs)
+_cleanup_orphan_jobs()
+
+def _claim_account(job_id: str, accounts: list, start_from: int = 0) -> int:
+    """사용 가능한 계정 인덱스 반환. 없으면 -1."""
+    with _self_lock:
+        for i in range(len(accounts)):
+            idx = (start_from + i) % len(accounts)
+            uname = accounts[idx]["username"]
+            status = accounts[idx].get("status", "idle")
+            if uname not in _self_account_claims and status not in ("blocked", "login_failed"):
+                _self_account_claims[uname] = job_id
+                return idx
+    return -1
+
+def _release_account(username: str):
+    with _self_lock:
+        _self_account_claims.pop(username, None)
+
+def _get_running_jobs_summary():
+    """실행 중인 작업 요약 (SSE 없이 상태 확인용)"""
+    result = []
+    with _self_lock:
+        for jid, jstate in _self_jobs_running.items():
+            p = jstate.get("progress", {})
+            result.append({
+                "job_id": jid,
+                "hashtag": p.get("hashtag", ""),
+                "new": p.get("new", 0),
+                "dup": p.get("dup", 0),
+                "posts": p.get("posts", 0),
+                "pages": p.get("pages", 0),
+                "status": p.get("status", ""),
+                "current_account": p.get("current_account", ""),
+            })
+    return result
+
+@app.get("/self-collect", response_class=HTMLResponse)
+def self_collect_page(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return RedirectResponse("/login", 302)
+    try:
+        accounts = _load_self_accounts()
+        proxies = _load_self_proxies()
+        jobs_history = _load_self_jobs()[-50:]
+        running_jobs = _get_running_jobs_summary()
+        # 계정 상태 집계
+        acc_stats = {"total": len(accounts), "idle": 0, "active": 0, "blocked": 0, "failed": 0, "resting": 0}
+        for a in accounts:
+            st = a.get("status", "idle")
+            if st in ("idle", ""): acc_stats["idle"] += 1
+            elif st in ("active", "logging_in"): acc_stats["active"] += 1
+            elif st == "blocked": acc_stats["blocked"] += 1
+            elif st == "login_failed": acc_stats["failed"] += 1
+            elif st == "resting": acc_stats["resting"] += 1
+            else: acc_stats["idle"] += 1
+        claimed = dict(_self_account_claims)  # {username: job_id}
+        settings = _load_self_settings()
+        blacklist = _load_blacklist()
+        return templates.TemplateResponse("self_collect.html", {
+            "request": request, "user": user, "active": "self_collect",
+            "accounts": accounts, "proxies": proxies,
+            "jobs_history": jobs_history,
+            "running_jobs": running_jobs,
+            "acc_stats": acc_stats,
+            "claimed_accounts": claimed,
+            "settings": settings,
+            "blacklist": blacklist,
+        })
+    except Exception as e:
+        import traceback
+        err = traceback.format_exc()
+        log.error(f"self-collect 페이지 에러: {err}")
+        return HTMLResponse(f"<pre style='color:red;padding:20px'>{err}</pre>", status_code=500)
+
+@app.get("/api/self-collect/accounts")
+def self_collect_get_accounts(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    accounts = _load_self_accounts()
+    safe = []
+    for a in accounts:
+        uname = a["username"]
+        claimed_by = _self_account_claims.get(uname)
+        safe.append({
+            "username": uname,
+            "status": a.get("status", "idle"),
+            "error": a.get("error", ""),
+            "claimed_by": claimed_by,
+        })
+    return JSONResponse({"accounts": safe})
+
+@app.post("/api/self-collect/accounts/import")
+async def self_collect_import_accounts(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    body = await request.json()
+    text = body.get("text", "")
+    accounts = _load_self_accounts()
+    existing = {a["username"] for a in accounts}
+    added = 0
+    for line in text.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(":")
+        if len(parts) >= 3:
+            uname = parts[0].strip()
+            if uname not in existing:
+                accounts.append({
+                    "username": uname,
+                    "password": parts[1].strip(),
+                    "totp_secret": parts[2].strip(),
+                    "status": "idle",
+                    "error": "",
+                })
+                existing.add(uname)
+                added += 1
+    _save_self_accounts(accounts)
+    return JSONResponse({"message": f"{added}개 계정 추가 (총 {len(accounts)}개)", "total": len(accounts)})
+
+@app.delete("/api/self-collect/accounts/{username}")
+def self_collect_delete_account(username: str, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    if username in _self_account_claims:
+        return JSONResponse({"error": f"@{username}은 현재 사용 중 (작업: {_self_account_claims[username]})"}, 400)
+    accounts = _load_self_accounts()
+    accounts = [a for a in accounts if a["username"] != username]
+    _save_self_accounts(accounts)
+    return JSONResponse({"message": f"@{username} 삭제", "total": len(accounts)})
+
+def _translate_insta_err(raw: str) -> str:
+    el = raw.lower()
+    if "recaptcha" in el or "captcha" in el:
+        return "캡차 인증 필요 — 수동 해제 필요"
+    if "selfie" in el:
+        return "셀피 인증 필요 — 수동 해제 필요"
+    if "challengeresolve" in el or "challenge" in el:
+        return "보안 인증 필요 — 자동 해제 실패 시 수동 확인"
+    if "can't find an account" in el or "find an account" in el or "invalid_user" in el or "user_not_found" in el:
+        return "삭제/정지된 계정 — Instagram에 존재하지 않음"
+    if "we can send you an email" in el or "get back into your account" in el:
+        return "계정 복구 필요 — Instagram 이메일 인증 필요"
+    if "login_required" in el:
+        return "로그인 만료 — 재로그인 필요"
+    if "feedback_required" in el:
+        return "계정 활동 제한 — Instagram이 자동화 감지"
+    if "consent_required" in el:
+        return "약관 동의 필요 — Instagram 앱에서 직접 로그인 필요"
+    if "checkpoint" in el:
+        return "보안 체크포인트 — Instagram 앱에서 인증 필요"
+    if "bad_password" in el or "incorrect" in el:
+        return "비밀번호 오류"
+    if "two_factor" in el or "2fa" in el or "verification" in el:
+        return "2FA 인증 실패 — TOTP 코드 확인"
+    if "rate_limit" in el or "please wait" in el:
+        return "요청 제한 — 잠시 후 재시도"
+    if "connection" in el or "timeout" in el:
+        return "연결 오류 — 프록시/네트워크 확인"
+    return raw[:80]
+
+# 기존 계정 에러 메시지 한글화 (서버 시작 시)
+def _retranslate_account_errors():
+    accounts = _load_self_accounts()
+    changed = False
+    for a in accounts:
+        err = a.get("error", "")
+        if not err:
+            continue
+        # 코드 에러 메시지 정리
+        if "name '" in err and "not defined" in err:
+            a["error"] = "시스템 오류 — 재확인 필요"
+            a["status"] = "idle"
+            changed = True
+            continue
+        # 영어 에러 한글화
+        if any(c.isascii() and c.isalpha() for c in err[:20]):
+            translated = _translate_insta_err(err)
+            if translated != err:
+                a["error"] = translated
+                changed = True
+    if changed:
+        _save_self_accounts(accounts)
+_retranslate_account_errors()
+
+@app.post("/api/self-collect/accounts/{username}/check")
+def self_collect_check_account(username: str, use_proxy: int = Query(default=1), session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    accounts = _load_self_accounts()
+    acc = None
+    for a in accounts:
+        if a["username"] == username:
+            acc = a
+            break
+    if not acc:
+        return JSONResponse({"error": "계정을 찾을 수 없음"}, 404)
+
+    from instagrapi import Client
+    proxy = _get_active_proxy() if use_proxy else ""
+    try:
+        cl = Client()
+        cl.delay_range = [2, 5]
+        _login_with_session(cl, username, acc["password"], acc.get("totp_secret", ""), proxy)
+        # 성공 — 세션 저장 + 상태 업데이트
+        acc["status"] = "idle"
+        acc["error"] = ""
+        _save_self_accounts(accounts)
+        try:
+            cl.logout()
+        except Exception:
+            pass
+        return JSONResponse({"ok": True, "message": "로그인 성공"})
+    except Exception as e:
+        err_raw = str(e)[:200]
+        # 에러 번역
+        el = err_raw.lower()
+        err_kr = _translate_insta_err(err_raw)
+
+        acc["status"] = "login_failed"
+        acc["error"] = err_kr
+        _save_self_accounts(accounts)
+        return JSONResponse({"ok": False, "error": err_kr})
+
+@app.post("/api/self-collect/accounts/reactivate-all")
+def self_collect_reactivate_all(session_id: Optional[str] = Cookie(default=None)):
+    """차단/실패 계정 전체 재활성화"""
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    accounts = _load_self_accounts()
+    count = 0
+    for a in accounts:
+        if a.get("status") in ("blocked", "login_failed"):
+            a["status"] = "idle"
+            a["error"] = ""
+            a.pop("blocked_at", None)
+            count += 1
+            # 세션 파일 삭제 대신 쿠키만 초기화 (UUID/디바이스 지문 보존)
+            spath = _session_path(a["username"])
+            if os.path.exists(spath):
+                try:
+                    import json as _json
+                    with open(spath, "r") as f:
+                        sess = _json.load(f)
+                    saved_uuids = sess.get("uuids", {})
+                    cleaned = {"uuids": saved_uuids} if saved_uuids else {}
+                    with open(spath, "w") as f:
+                        _json.dump(cleaned, f)
+                except Exception:
+                    pass
+    if count:
+        _save_self_accounts(accounts)
+    log.info(f"[self-collect] 전체 재활성화: {count}개 계정")
+    return JSONResponse({"ok": True, "count": count, "message": f"{count}개 계정 재활성화"})
+
+@app.post("/api/self-collect/accounts/{username}/reactivate")
+def self_collect_reactivate_account(username: str, session_id: Optional[str] = Cookie(default=None)):
+    """차단/실패 계정을 재활성화 (상태 초기화)"""
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    accounts = _load_self_accounts()
+    for a in accounts:
+        if a["username"] == username:
+            a["status"] = "idle"
+            a["error"] = ""
+            a.pop("blocked_at", None)
+            _save_self_accounts(accounts)
+            # 세션 파일에서 쿠키만 초기화 (UUID/디바이스 지문 보존)
+            spath = _session_path(username)
+            if os.path.exists(spath):
+                try:
+                    import json as _json
+                    with open(spath, "r") as f:
+                        sess = _json.load(f)
+                    saved_uuids = sess.get("uuids", {})
+                    cleaned = {"uuids": saved_uuids} if saved_uuids else {}
+                    with open(spath, "w") as f:
+                        _json.dump(cleaned, f)
+                except Exception:
+                    pass
+            log.info(f"[self-collect] @{username} 재활성화")
+            return JSONResponse({"ok": True, "message": f"@{username} 재활성화 완료"})
+    return JSONResponse({"error": "계정을 찾을 수 없음"}, 404)
+
+@app.post("/api/self-collect/accounts/{username}/unblock")
+def self_collect_unblock_account(username: str, session_id: Optional[str] = Cookie(default=None)):
+    """크롬 시크릿 창에서 Instagram 로그인 → 사용자가 수동으로 인증 해제"""
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    accounts = _load_self_accounts()
+    acc = None
+    for a in accounts:
+        if a["username"] == username:
+            acc = a
+            break
+    if not acc:
+        return JSONResponse({"error": "계정을 찾을 수 없음"}, 404)
+
+    import threading as _thr
+
+    def _open_chrome():
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.chrome.service import Service
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from webdriver_manager.chrome import ChromeDriverManager
+
+            opts = Options()
+            opts.add_argument("--incognito")
+            opts.add_argument("--start-maximized")
+            opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+            opts.add_experimental_option("useAutomationExtension", False)
+            # 프록시 설정 — 해제도 프록시 IP로 해야 재챌린지 방지
+            _proxy_url = _get_active_proxy()
+            _proxy_ext_path = None
+            if _proxy_url:
+                from urllib.parse import urlparse
+                import zipfile, tempfile
+                pp = urlparse(_proxy_url)
+                if pp.username and pp.password:
+                    # 인증 프록시 → Chrome MV3 확장으로 자동 인증
+                    manifest = json.dumps({"name":"Proxy Auth","version":"1.0.0","manifest_version":3,"permissions":["proxy","webRequest","webRequestAuthProvider"],"host_permissions":["<all_urls>"],"background":{"service_worker":"bg.js"}})
+                    bg_js = f'''chrome.proxy.settings.set({{value:{{mode:"fixed_servers",rules:{{singleProxy:{{scheme:"{pp.scheme or "http"}",host:"{pp.hostname}",port:{pp.port}}},bypassList:["localhost"]}}}},scope:"regular"}});
+chrome.webRequest.onAuthRequired.addListener(function(d){{return{{authCredentials:{{username:"{pp.username}",password:"{pp.password}"}}}}}},{{urls:["<all_urls>"]}},["blocking"]);'''
+                    _proxy_ext_path = os.path.join(tempfile.gettempdir(), f"proxy_auth_{username}.zip")
+                    with zipfile.ZipFile(_proxy_ext_path, 'w') as zf:
+                        zf.writestr("manifest.json", manifest)
+                        zf.writestr("bg.js", bg_js)
+                    opts.add_extension(_proxy_ext_path)
+                    # 인증 프록시 확장 사용 시 incognito 불가 → 제거
+                    opts._arguments = [a for a in opts._arguments if a != "--incognito"]
+                    log.info(f"[unblock] 크롬 인증 프록시 확장 설정: {pp.hostname}:{pp.port}")
+                else:
+                    opts.add_argument(f"--proxy-server={pp.scheme}://{pp.hostname}:{pp.port}")
+                    log.info(f"[unblock] 크롬 프록시 설정: {pp.hostname}:{pp.port}")
+
+            svc = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=svc, options=opts)
+            import time as _t
+
+            driver.get("https://www.instagram.com/accounts/login/")
+            _t.sleep(3)
+
+            # 쿠키 동의 팝업 닫기 (있으면)
+            try:
+                cookie_btn = driver.find_element(By.XPATH, "//button[contains(text(),'Allow')]|//button[contains(text(),'Accept')]|//button[contains(text(),'허용')]|//button[contains(text(),'모두 허용')]")
+                cookie_btn.click()
+                _t.sleep(1)
+            except Exception:
+                pass
+
+            # 로그인 폼 대기
+            wait = WebDriverWait(driver, 20)
+            uname_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='username']")))
+            _t.sleep(1)
+
+            # 클릭 후 send_keys (한 글자씩)
+            from selenium.webdriver.common.keys import Keys
+            uname_input.click()
+            _t.sleep(0.3)
+            uname_input.send_keys(Keys.CONTROL + "a")
+            uname_input.send_keys(Keys.DELETE)
+            for ch in acc["username"]:
+                uname_input.send_keys(ch)
+                _t.sleep(0.05)
+            _t.sleep(0.5)
+
+            pwd_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='password']")))
+            pwd_input.click()
+            _t.sleep(0.3)
+            pwd_input.send_keys(Keys.CONTROL + "a")
+            pwd_input.send_keys(Keys.DELETE)
+            for ch in acc["password"]:
+                pwd_input.send_keys(ch)
+                _t.sleep(0.05)
+            _t.sleep(1)
+
+            # 로그인 버튼 클릭
+            login_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']")))
+            login_btn.click()
+            log.info(f"[unblock] @{username} 크롬 시크릿 창 열림 — 사용자 수동 인증 대기")
+            # 브라우저는 열어둔 채로 유지 (사용자가 직접 닫음)
+        except Exception as e:
+            log.error(f"[unblock] @{username} 크롬 열기 실패: {e}")
+
+    _thr.Thread(target=_open_chrome, daemon=True).start()
+    # 2FA 코드 생성
+    totp_code = ""
+    totp_secret = acc.get("totp_secret", "")
+    if totp_secret:
+        import pyotp
+        totp_code = pyotp.TOTP(totp_secret).now()
+    return JSONResponse({"ok": True, "message": f"@{username} 크롬 시크릿 창 열는 중...", "totp_code": totp_code})
+
+@app.get("/api/self-collect/accounts/{username}/totp")
+def self_collect_account_totp(username: str, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    accounts = _load_self_accounts()
+    for a in accounts:
+        if a["username"] == username:
+            secret = a.get("totp_secret", "")
+            if secret:
+                import pyotp
+                return JSONResponse({"code": pyotp.TOTP(secret).now()})
+            return JSONResponse({"code": ""})
+    return JSONResponse({"error": "계정 없음"}, 404)
+
+# ── 프록시 관리 API ──
+@app.get("/api/self-collect/proxies")
+def self_collect_get_proxies(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    return JSONResponse({"proxies": _load_self_proxies()})
+
+@app.post("/api/self-collect/proxies")
+async def self_collect_add_proxy(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    url = body.get("url", "").strip()
+    if not name or not url:
+        return JSONResponse({"error": "이름과 URL 필수"}, 400)
+    proxies = _load_self_proxies()
+    proxies.append({"name": name, "url": url, "active": len(proxies) == 0})
+    _save_self_proxies(proxies)
+    return JSONResponse({"message": f"{name} 추가", "proxies": proxies})
+
+@app.put("/api/self-collect/proxies/{idx}")
+async def self_collect_update_proxy(idx: int, request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    body = await request.json()
+    proxies = _load_self_proxies()
+    if idx < 0 or idx >= len(proxies):
+        return JSONResponse({"error": "잘못된 인덱스"}, 400)
+    if "name" in body:
+        proxies[idx]["name"] = body["name"].strip()
+    if "url" in body:
+        proxies[idx]["url"] = body["url"].strip()
+    if "active" in body:
+        # 하나만 활성
+        if body["active"]:
+            for i, p in enumerate(proxies):
+                p["active"] = (i == idx)
+        else:
+            proxies[idx]["active"] = False
+    _save_self_proxies(proxies)
+    return JSONResponse({"message": "수정 완료", "proxies": proxies})
+
+@app.delete("/api/self-collect/proxies/{idx}")
+def self_collect_delete_proxy(idx: int, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    proxies = _load_self_proxies()
+    if idx < 0 or idx >= len(proxies):
+        return JSONResponse({"error": "잘못된 인덱스"}, 400)
+    removed = proxies.pop(idx)
+    # 삭제된 게 활성이었으면 첫 번째를 활성으로
+    if removed.get("active") and proxies:
+        proxies[0]["active"] = True
+    _save_self_proxies(proxies)
+    return JSONResponse({"message": f"{removed['name']} 삭제", "proxies": proxies})
+
+@app.post("/api/self-collect/start")
+async def self_collect_start(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+
+    body = await request.json()
+    hashtag = body.get("hashtag", "").strip().lstrip("#")
+    search_type = body.get("search_type", "recent")
+    target_users = int(body.get("target_users", 1000))
+    location = body.get("location", "").strip()
+
+    if not hashtag and not location:
+        return JSONResponse({"error": "해시태그 또는 위치 필수"}, 400)
+
+    accounts = _load_self_accounts()
+    if not accounts:
+        return JSONResponse({"error": "등록된 계정 없음"}, 400)
+
+    # 사용 가능한 계정 확인
+    available = sum(1 for a in accounts if a["username"] not in _self_account_claims and a.get("status") not in ("blocked", "login_failed"))
+    if available == 0:
+        return JSONResponse({"error": "사용 가능한 계정 없음 (모두 사용 중이거나 차단)"}, 400)
+
+    proxy = _get_active_proxy()
+    job_id = f"j{int(time.time()*1000)%1000000:06d}"
+
+    # 작업 히스토리에 기록
+    job_record = {
+        "id": job_id,
+        "hashtag": hashtag,
+        "search_type": search_type,
+        "location": location,
+        "target_users": target_users,
+        "start_time": datetime.now(timezone.utc).isoformat(),
+        "end_time": None,
+        "status": "running",
+        "new_count": 0,
+        "dup_count": 0,
+        "total_posts": 0,
+        "total_pages": 0,
+        "error": None,
+        "users": [],
+    }
+    jobs = _load_self_jobs()
+    jobs.append(job_record)
+    _save_self_jobs(jobs)
+
+    # 실행 상태 등록
+    job_state = {
+        "stop_requested": False,
+        "progress": {
+            "job_id": job_id, "hashtag": hashtag,
+            "new": 0, "dup": 0, "posts": 0, "pages": 0,
+            "status": "시작 중...", "current_account": "",
+            "account_index": 0, "total_accounts": len(accounts),
+        },
+    }
+    with _self_lock:
+        _self_jobs_running[job_id] = job_state
+
+    t = _threading.Thread(
+        target=_self_collect_worker,
+        args=(job_id, hashtag, search_type, target_users, proxy, location),
+        daemon=True,
+    )
+    job_state["thread"] = t
+    t.start()
+    return JSONResponse({"message": "수집 시작", "job_id": job_id, "hashtag": hashtag})
+
+@app.post("/api/self-collect/stop")
+async def self_collect_stop(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    body = await request.json()
+    job_id = body.get("job_id", "")
+    if not job_id:
+        # 전체 중지
+        with _self_lock:
+            for jid in _self_jobs_running:
+                _self_jobs_running[jid]["stop_requested"] = True
+        return JSONResponse({"message": "전체 중지 요청"})
+    if job_id in _self_jobs_running:
+        _self_jobs_running[job_id]["stop_requested"] = True
+        return JSONResponse({"message": f"{job_id} 중지 요청"})
+    return JSONResponse({"error": "작업을 찾을 수 없음"}, 404)
+
+@app.get("/api/self-collect/stream")
+def self_collect_stream(job_id: str = "", session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+
+    def stream():
+        import copy
+        while True:
+            with _self_lock:
+                if job_id and job_id in _self_jobs_running:
+                    progress = copy.deepcopy(_self_jobs_running[job_id]["progress"])
+                    # users는 한 번 보내면 클리어 (중복 전송 방지)
+                    _self_jobs_running[job_id]["progress"].pop("users", None)
+                elif not job_id:
+                    # 전체 작업 요약
+                    all_progress = []
+                    for jid, js in _self_jobs_running.items():
+                        all_progress.append(copy.deepcopy(js["progress"]))
+                    progress = {"jobs": all_progress, "count": len(all_progress)}
+                else:
+                    yield f"data: {json.dumps({'done': True, 'status': '작업 종료'}, ensure_ascii=False)}\n\n"
+                    return
+            yield f"data: {json.dumps(progress, ensure_ascii=False)}\n\n"
+            if isinstance(progress, dict) and progress.get("done"):
+                break
+            # 모든 작업이 끝났는지 확인
+            if not job_id:
+                with _self_lock:
+                    if not _self_jobs_running:
+                        yield f"data: {json.dumps({'jobs': [], 'count': 0, 'all_done': True}, ensure_ascii=False)}\n\n"
+                        break
+            time.sleep(2)
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+@app.get("/api/self-collect/status")
+def self_collect_status(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    with _self_lock:
+        running = []
+        for jid, js in _self_jobs_running.items():
+            running.append({"job_id": jid, "progress": js["progress"]})
+        return JSONResponse({
+            "running_count": len(running),
+            "jobs": running,
+            "claimed_accounts": dict(_self_account_claims),
+        })
+
+@app.get("/api/self-collect/jobs")
+def self_collect_jobs_list(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    jobs = _load_self_jobs()
+    jobs.reverse()  # 최신순
+    return JSONResponse({"jobs": jobs[:100]})
+
+@app.get("/api/self-collect/settings")
+def self_collect_get_settings(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    return JSONResponse(_load_self_settings())
+
+@app.post("/api/self-collect/settings")
+async def self_collect_save_settings(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    body = await request.json()
+    settings = _load_self_settings()
+    for k in _DEFAULT_SETTINGS:
+        if k in body:
+            try:
+                settings[k] = int(body[k])
+            except (ValueError, TypeError):
+                pass
+    _save_self_settings(settings)
+    return JSONResponse({"ok": True, "settings": settings})
+
+# ─── 블랙리스트 API ──────────────────────────────────────────────
+@app.get("/api/self-collect/blacklist")
+def self_collect_get_blacklist(session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    return JSONResponse(_load_blacklist())
+
+@app.post("/api/self-collect/blacklist")
+async def self_collect_save_blacklist(request: Request, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    body = await request.json()
+    bl = _load_blacklist()
+    if "name_keywords" in body and isinstance(body["name_keywords"], list):
+        bl["name_keywords"] = [kw.strip() for kw in body["name_keywords"] if kw.strip()]
+    if "username_keywords" in body and isinstance(body["username_keywords"], list):
+        bl["username_keywords"] = [kw.strip() for kw in body["username_keywords"] if kw.strip()]
+    if "enabled" in body:
+        bl["enabled"] = bool(body["enabled"])
+    _save_blacklist(bl)
+    return JSONResponse({"ok": True, "blacklist": bl})
+
+# ─── 게시물 탐색 페이지 ──────────────────────────────────────────
+@app.get("/self-collect/posts", response_class=HTMLResponse)
+def self_collect_posts_page(request: Request, tag: str = "", page: int = 1, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return RedirectResponse("/login", 302)
+    tags_list = _load_self_posts_tags()
+    posts = []
+    total = 0
+    per_page = 60
+    if tag:
+        posts, total = _load_self_posts_by_tag(tag, offset=(page - 1) * per_page, limit=per_page)
+    total_pages = (total + per_page - 1) // per_page if total else 0
+    return templates.TemplateResponse("self_posts.html", {
+        "request": request, "user": user, "active": "self_posts",
+        "tags_list": tags_list, "current_tag": tag,
+        "posts": posts, "total": total,
+        "page": page, "total_pages": total_pages,
+    })
+
+@app.get("/api/self-collect/posts")
+def self_collect_posts_api(tag: str = "", page: int = 1, limit: int = 60, session_id: Optional[str] = Cookie(default=None)):
+    user = get_user(session_id)
+    if not user:
+        return JSONResponse({"error": "인증 필요"}, 403)
+    if not tag:
+        return JSONResponse({"posts": [], "total": 0, "tags": _load_self_posts_tags()})
+    posts, total = _load_self_posts_by_tag(tag, offset=(page - 1) * limit, limit=limit)
+    return JSONResponse({"posts": posts, "total": total, "page": page})
+
+def _self_collect_worker(job_id, hashtag, search_type, target_users, proxy, location=""):
+    """백그라운드 크롤링 워커 — 계정 풀 공유 + 선제 로테이션 + 작업 히스토리"""
+    import pyotp, random
+    from instagrapi import Client
+    from database import upsert_influencer, get_existing_pks, get_banned_pks, ban_influencer
+
+    job_state = _self_jobs_running.get(job_id)
+    if not job_state:
+        return
+    progress = job_state["progress"]
+
+    def _update(**kwargs):
+        with _self_lock:
+            progress.update(kwargs)
+        # 신규/중복/게시물/페이지 값이 있으면 히스토리 파일에도 실시간 저장
+        if any(k in kwargs for k in ("new", "dup", "posts", "pages")):
+            try:
+                jobs = _load_self_jobs()
+                for j in jobs:
+                    if j["id"] == job_id:
+                        if "new" in kwargs: j["new_count"] = kwargs["new"]
+                        if "dup" in kwargs: j["dup_count"] = kwargs["dup"]
+                        if "posts" in kwargs: j["total_posts"] = kwargs["posts"]
+                        if "pages" in kwargs: j["total_pages"] = kwargs["pages"]
+                        break
+                _save_self_jobs(jobs)
+            except Exception:
+                pass
+
+    def _update_account_status(uname, status, error=""):
+        accounts = _load_self_accounts()
+        for a in accounts:
+            if a["username"] == uname:
+                a["status"] = status
+                a["error"] = error
+                if status == "blocked":
+                    a["blocked_at"] = datetime.now(timezone.utc).isoformat()
+                break
+        _save_self_accounts(accounts)
+
+    def _finish_job(new_count, dup_count, total_posts, total_pages, error=None):
+        """작업 히스토리 업데이트"""
+        jobs = _load_self_jobs()
+        for j in jobs:
+            if j["id"] == job_id:
+                j["end_time"] = datetime.now(timezone.utc).isoformat()
+                j["status"] = "error" if error else ("stopped" if job_state["stop_requested"] else "done")
+                j["new_count"] = new_count
+                j["dup_count"] = dup_count
+                j["total_posts"] = total_posts
+                j["total_pages"] = total_pages
+                j["error"] = error
+                break
+        _save_self_jobs(jobs)
+
+    # DB 기존 유저
+    existing_pks = set()
+    try:
+        existing_pks = set(get_existing_pks())
+    except Exception:
+        pass
+    banned_pks = set()
+    try:
+        banned_pks = set(get_banned_pks())
+    except Exception:
+        pass
+
+    seen_user_pks = set()
+    new_count = 0
+    dup_count = 0
+    skip_count = 0  # 블랙리스트 필터링 카운트
+    total_posts = 0
+    total_pages = 0
+    cursor = None
+    account_pages = 0
+    last_account_idx = _get_last_account_idx()  # 마지막 사용 계정 인덱스 (파일에서 복원)
+    _settings = _load_self_settings()
+    _blacklist = _load_blacklist()
+    MAX_PAGES_PER_ACCOUNT = _settings["max_pages_per_account"]
+    COOLDOWN_SECONDS = 120
+    tag = hashtag
+    tab = "recent" if search_type == "recent" else "top"
+    is_location_search = (search_type == "location")
+    location_pk = None
+    current_account_username = None
+
+    def _translate_insta_error(err: str) -> str:
+        el = err.lower()
+        if "recaptcha" in el or "captcha" in el:
+            return "캡차 인증 필요 — 수동 해제 필요"
+        if "selfie" in el:
+            return "셀피 인증 필요 — 수동 해제 필요"
+        if "challengeresolve" in el or "challenge" in el:
+            return "보안 인증 — 자동 해제 실패 시 수동 확인"
+        if "login_required" in el:
+            return "로그인 만료 — 재로그인 필요"
+        if "feedback_required" in el:
+            return "계정 활동 제한 — Instagram이 자동화 감지"
+        if "consent_required" in el:
+            return "약관 동의 필요 — Instagram 앱에서 직접 로그인 필요"
+        if "checkpoint" in el:
+            return "보안 체크포인트 — Instagram 앱에서 인증 필요"
+        if "bad_password" in el or "incorrect" in el:
+            return "비밀번호 오류"
+        if "invalid_user" in el or "user_not_found" in el or "can't find an account" in el or "find an account" in el:
+            return "삭제/정지된 계정 — Instagram에 존재하지 않음"
+        if "rate_limit" in el or "please wait" in el:
+            return "요청 제한 — 잠시 후 재시도"
+        if "two_factor" in el or "2fa" in el or "verification" in el:
+            return "2FA 인증 실패 — TOTP 코드 확인 필요"
+        if "connection" in el or "timeout" in el:
+            return "연결 오류 — 프록시/네트워크 확인"
+        return err[:80]
+
+    def _login_next(start_from=None):
+        """계정 풀에서 사용 가능한 계정 할당 후 로그인. start_from=None이면 마지막 사용 인덱스+1부터"""
+        nonlocal current_account_username, last_account_idx
+        if start_from is None:
+            start_from = last_account_idx + 1
+        accounts = _load_self_accounts()
+        attempts = 0
+        idx = start_from
+        while attempts < len(accounts):
+            claimed_idx = _claim_account(job_id, accounts, idx)
+            if claimed_idx < 0:
+                # 모든 계정이 사용 중 — 1초 간격 중지 확인하며 대기
+                _update(status=f"[{job_id}] 사용 가능한 계정 대기 중...")
+                for _ in range(30):
+                    if job_state["stop_requested"]:
+                        break
+                    time.sleep(1)
+                accounts = _load_self_accounts()
+                attempts += 1
+                continue
+            acc = accounts[claimed_idx]
+            uname = acc["username"]
+            _update(status=f"@{uname} 로그인 중...", current_account=uname, account_index=claimed_idx)
+            _update_account_status(uname, "logging_in")
+            try:
+                cl = Client()
+                # delay_range: 모든 API 호출 사이에 랜덤 딜레이 (봇 탐지 방지)
+                cl.delay_range = [_settings["login_delay_min"], _settings["login_delay_max"]]
+                _login_with_session(cl, uname, acc["password"], acc.get("totp_secret", ""), proxy)
+                # 로그인 성공 후 크롤링용 딜레이로 변경 (1~3초 — API 호출마다 자동 적용)
+                cl.delay_range = [1, 3]
+                log.info(f"[self-collect:{job_id}] @{uname} 로그인 성공")
+                _update_account_status(uname, "active")
+                current_account_username = uname
+                last_account_idx = claimed_idx
+                _save_last_account_idx(claimed_idx)
+                return cl, uname
+            except Exception as e:
+                err_raw = str(e)[:150]
+                el = err_raw.lower()
+                is_challenge_err = any(k in el for k in ["challenge", "checkpoint"])
+                is_unsolvable = any(k in el for k in ["recaptcha", "captcha", "selfie"])
+                if is_challenge_err and not is_unsolvable:
+                    # _login_with_session이 세션삭제+TOTP 재로그인 시도했으나 실패
+                    log.warning(f"[self-collect:{job_id}] @{uname} TOTP 재로그인 실패: {err_raw}")
+                    err = "TOTP 재로그인 실패 — SMS/이메일 인증 또는 수동 확인 필요"
+                elif is_unsolvable:
+                    log.warning(f"[self-collect:{job_id}] @{uname} 자동 해제 불가: {err_raw}")
+                    err = _translate_insta_error(err_raw)
+                else:
+                    log.warning(f"[self-collect:{job_id}] @{uname} 로그인 실패: {err_raw}")
+                    err = _translate_insta_error(err_raw)
+                _update_account_status(uname, "login_failed", err)
+                _release_account(uname)
+                idx = claimed_idx + 1
+                attempts += 1
+                time.sleep(3)
+        return None, None
+
+    def _release_current():
+        nonlocal current_account_username
+        if current_account_username:
+            _release_account(current_account_username)
+            current_account_username = None
+
+    # 첫 계정 로그인
+    client, acc_uname = _login_next()  # 마지막 사용 계정 다음부터
+    if not client:
+        _update(done=True, status="사용 가능한 계정 없음", error="no_accounts")
+        _finish_job(0, 0, 0, 0, "no_accounts")
+        with _self_lock:
+            _self_jobs_running.pop(job_id, None)
+        return
+
+    # 위치 검색이면 location PK 찾기
+    if is_location_search and location:
+        _update(status=f"@{acc_uname}로 위치 '{location}' 검색 중...")
+        try:
+            loc_result = client.private_request("location_search/", params={"search_query": location, "latitude": 0, "longitude": 0})
+            venues = loc_result.get("venues", [])
+            if venues:
+                location_pk = venues[0].get("external_id") or venues[0].get("pk")
+                loc_name = venues[0].get("name", location)
+                _update(status=f"위치 '{loc_name}' (PK:{location_pk}) 발견 — 수집 시작")
+                log.info(f"[self-collect:{job_id}] 위치 '{loc_name}' PK={location_pk}")
+            else:
+                _update(done=True, status=f"위치 '{location}' 검색 결과 없음", error="위치를 찾을 수 없습니다")
+                _finish_job(0, 0, 0, 0, f"위치 '{location}' 검색 결과 없음")
+                _release_current()
+                with _self_lock:
+                    _self_jobs_running.pop(job_id, None)
+                return
+        except Exception as e:
+            _update(done=True, status=f"위치 검색 실패: {str(e)[:80]}", error=str(e)[:100])
+            _finish_job(0, 0, 0, 0, f"위치 검색 실패: {str(e)[:100]}")
+            _release_current()
+            with _self_lock:
+                _self_jobs_running.pop(job_id, None)
+            return
+    else:
+        _update(status=f"@{acc_uname}로 수집 시작 — #{tag}")
+
+    try:
+        while new_count < target_users and not job_state["stop_requested"]:
+            total_pages += 1
+
+            # 안전 딜레이 (설정값 사용) — 1초 간격으로 중지 확인
+            if total_pages > 1:
+                if total_pages % _settings["rest_interval"] == 0:
+                    rest = random.uniform(_settings["rest_delay_min"], _settings["rest_delay_max"])
+                    _update(status=f"p{total_pages} 쉬는 중... ({int(rest)}초)")
+                    for _ in range(int(rest)):
+                        if job_state["stop_requested"]:
+                            break
+                        time.sleep(1)
+                else:
+                    delay = random.uniform(_settings["page_delay_min"], _settings["page_delay_max"])
+                    for _ in range(int(delay)):
+                        if job_state["stop_requested"]:
+                            break
+                        time.sleep(1)
+
+            if job_state["stop_requested"]:
+                break
+
+            # 해시태그/위치 검색
+            try:
+                if is_location_search and location_pk:
+                    data = {"tab": "recent"}
+                    if cursor:
+                        data["page"] = str(total_pages - 1)
+                        data["max_id"] = cursor
+                    result = client.private_request(f"locations/{location_pk}/sections/", data=data)
+                else:
+                    data = {"tab": tab}
+                    if cursor:
+                        data["page"] = str(total_pages - 1)
+                        data["max_id"] = cursor
+                    result = client.private_request(f"tags/{tag}/sections/", data=data)
+            except Exception as e:
+                err_msg = str(e)[:200]
+                log.warning(f"[self-collect:{job_id}] p{total_pages} @{acc_uname} 에러: {err_msg}")
+
+                err_lower = err_msg.lower()
+                is_challenge = any(k in err_lower for k in ["challenge", "checkpoint"])
+                is_login_expired = "login_required" in err_lower
+                is_block = any(k in err_lower for k in ["login_required", "challenge", "feedback_required", "consent_required", "checkpoint"])
+                # 캡차/셀피 → 자동 해제 절대 불가
+                is_unsolvable = any(k in err_lower for k in ["recaptcha", "captcha", "selfie"])
+
+                # 챌린지/로그인만료 → 세션 삭제 후 TOTP 재로그인으로 자동 해제 시도
+                # (feedback_required, consent_required, captcha 등은 재로그인으로 해결 불가)
+                if (is_challenge or is_login_expired) and not is_unsolvable:
+                    accounts_now = _load_self_accounts()
+                    acc_data = next((a for a in accounts_now if a["username"] == acc_uname), None)
+                    totp_secret = acc_data.get("totp_secret", "") if acc_data else ""
+
+                    if totp_secret:
+                        _update(status=f"@{acc_uname} 챌린지 — UUID 보존 TOTP 재로그인 시도...")
+                        log.info(f"[self-collect:{job_id}] @{acc_uname} 챌린지 → UUID 보존 재로그인")
+                        try:
+                            # ★ 세션 삭제 금지! UUID 보존한 채 재로그인
+                            from instagrapi import Client as _Client
+                            new_cl = _Client()
+                            new_cl.delay_range = [_settings["login_delay_min"], _settings["login_delay_max"]]
+                            _login_with_session(new_cl, acc_uname, acc_data["password"], totp_secret, proxy)
+                            new_cl.delay_range = [1, 3]  # 크롤링용 딜레이
+                            # 재로그인 성공 → 기존 클라이언트 교체, 수집 계속
+                            client = new_cl
+                            _update_account_status(acc_uname, "active", "")
+                            _update(status=f"@{acc_uname} TOTP 재로그인 성공 — 수집 재개")
+                            log.info(f"[self-collect:{job_id}] @{acc_uname} TOTP 재로그인 성공!")
+                            time.sleep(5)
+                            continue
+                        except Exception as e2:
+                            resolve_err = str(e2)[:150]
+                            log.warning(f"[self-collect:{job_id}] @{acc_uname} TOTP 재로그인 실패: {resolve_err}")
+                            _update_account_status(acc_uname, "blocked",
+                                f"자동 해제 실패 — {_translate_insta_error(resolve_err)}")
+                    else:
+                        _update_account_status(acc_uname, "blocked",
+                            f"TOTP 없음 — {_translate_insta_error(err_msg[:100])}")
+
+                elif is_block:
+                    _update_account_status(acc_uname, "blocked", _translate_insta_error(err_msg[:100]))
+
+                if is_block:
+                    _update(status=f"@{acc_uname} 차단 — 다음 계정으로 전환")
+                    _release_current()
+                    account_pages = 0
+
+                    client, acc_uname = _login_next()
+                    if not client:
+                        _update(done=True, status=f"사용 가능한 계정 없음 — 신규 {new_count}명 / {total_posts}게시물",
+                                new=new_count, dup=dup_count, posts=total_posts, pages=total_pages)
+                        break
+                    continue
+                else:
+                    time.sleep(10)
+                    continue
+
+            next_max_id = result.get("next_max_id")
+            sections = result.get("sections", [])
+
+            # 연관 해시태그 추출 (첫 페이지에서)
+            if total_pages == 1 and not is_location_search:
+                related = []
+                for rt in result.get("related_tags", []):
+                    if isinstance(rt, str):
+                        related.append({"name": rt, "count": 0})
+                    elif isinstance(rt, dict):
+                        rname = rt.get("name", "")
+                        rcount = rt.get("media_count", 0) or rt.get("count", 0) or 0
+                        if rname and rname != tag:
+                            related.append({"name": rname, "count": rcount})
+                if related:
+                    _update(related_tags=related[:20])
+
+            # 게시물에서 유저 추출 + 게시물 저장
+            batch_users = []
+            batch_posts = []
+            page_new = 0
+            for s in sections:
+                for m in s.get("layout_content", {}).get("medias", []):
+                    total_posts += 1
+                    media = m.get("media", {})
+                    u = media.get("user", {})
+                    user_pk = str(u.get("pk", ""))
+                    username = u.get("username", "")
+
+                    # 게시물 데이터 저장용
+                    media_id = str(media.get("pk", "") or media.get("id", ""))
+                    caption_obj = media.get("caption") or {}
+                    caption_text = caption_obj.get("text", "") if isinstance(caption_obj, dict) else ""
+                    image_versions = media.get("image_versions2", {}).get("candidates", [])
+                    thumbnail_url = image_versions[0].get("url", "") if image_versions else ""
+                    carousel = media.get("carousel_media", [])
+                    if not thumbnail_url and carousel:
+                        first_img = carousel[0].get("image_versions2", {}).get("candidates", [])
+                        thumbnail_url = first_img[0].get("url", "") if first_img else ""
+
+                    if media_id:
+                        batch_posts.append({
+                            "media_id": media_id,
+                            "username": username,
+                            "full_name": u.get("full_name", "") or "",
+                            "profile_pic_url": u.get("profile_pic_url", "") or "",
+                            "thumbnail_url": thumbnail_url,
+                            "caption": caption_text[:500],
+                            "like_count": media.get("like_count", 0) or 0,
+                            "comment_count": media.get("comment_count", 0) or 0,
+                            "taken_at": media.get("taken_at", 0) or 0,
+                            "media_type": media.get("media_type", 1),
+                            "carousel_count": len(carousel) if carousel else 0,
+                            "job_id": job_id,
+                            "hashtag": tag,
+                        })
+
+                    if not user_pk or not username or user_pk in seen_user_pks:
+                        continue
+                    seen_user_pks.add(user_pk)
+
+                    if user_pk in banned_pks:
+                        continue
+
+                    full_name = u.get("full_name", "") or ""
+
+                    # 블랙리스트 필터 → 밴 테이블에 등록 (영구 제외)
+                    bl_reason = _is_blacklisted(username, full_name, _blacklist)
+                    if bl_reason:
+                        skip_count += 1
+                        try:
+                            # DB에 밴 등록 (먼저 upsert로 레코드 생성 후 밴)
+                            upsert_influencer({
+                                "pk": user_pk,
+                                "username": username,
+                                "full_name": full_name,
+                                "profile_pic_url": u.get("profile_pic_url", "") or "",
+                                "source_hashtag": tag,
+                            })
+                            ban_influencer(user_pk, f"블랙리스트: {bl_reason}")
+                            banned_pks.add(user_pk)
+                        except Exception:
+                            pass
+                        continue
+
+                    is_new = user_pk not in existing_pks
+
+                    if is_new:
+                        new_count += 1
+                        page_new += 1
+                        try:
+                            upsert_influencer({
+                                "pk": user_pk,
+                                "username": username,
+                                "full_name": full_name,
+                                "profile_pic_url": u.get("profile_pic_url", "") or "",
+                                "source_hashtag": tag,
+                            })
+                            existing_pks.add(user_pk)
+                        except Exception as db_err:
+                            log.warning(f"[self-collect:{job_id}] DB upsert 실패: {db_err}")
+                    else:
+                        dup_count += 1
+
+                    batch_users.append({"username": username, "full_name": full_name, "is_new": is_new})
+
+            # 게시물 파일 저장
+            if batch_posts:
+                try:
+                    _save_self_posts(job_id, tag, batch_posts)
+                except Exception:
+                    pass
+
+            cursor = next_max_id
+            account_pages += 1
+
+            # 수집된 유저를 히스토리에 저장
+            if batch_users:
+                try:
+                    _jobs = _load_self_jobs()
+                    for _j in _jobs:
+                        if _j["id"] == job_id:
+                            if "users" not in _j:
+                                _j["users"] = []
+                            _j["users"].extend(batch_users)
+                            break
+                    _save_self_jobs(_jobs)
+                except Exception:
+                    pass
+
+            _update(
+                new=new_count, dup=dup_count, posts=total_posts, pages=total_pages,
+                status=f"p{total_pages} @{acc_uname} ({account_pages}/{MAX_PAGES_PER_ACCOUNT}) — 신규 {new_count}명 / 중복 {dup_count}명 / 제외 {skip_count}명 / {total_posts}게시물 (+{page_new})",
+                current_account=acc_uname,
+                users=batch_users,
+            )
+
+            # 선제적 계정 교체
+            if account_pages >= MAX_PAGES_PER_ACCOUNT and cursor:
+                log.info(f"[self-collect:{job_id}] @{acc_uname} {account_pages}페이지 도달 — 선제 교체")
+                _update_account_status(acc_uname, "resting")
+                try:
+                    client.logout()
+                except Exception:
+                    pass
+                _release_current()
+                account_pages = 0
+
+                # 쿨다운: 1초 간격으로 중지 확인
+                _update(status=f"계정 교체 중... {_settings['account_switch_delay']}초 대기")
+                for _ in range(int(_settings["account_switch_delay"])):
+                    if job_state["stop_requested"]:
+                        break
+                    time.sleep(1)
+
+                client, acc_uname = _login_next()
+                if not client:
+                    _update(done=True, status=f"사용 가능한 계정 없음 — 신규 {new_count}명",
+                            new=new_count, dup=dup_count, posts=total_posts, pages=total_pages)
+                    break
+                _update(status=f"@{acc_uname}로 교체 — 커서 이어받기")
+
+            if new_count >= target_users:
+                _update(done=True, status=f"목표 달성! 신규 {new_count}명 / 제외 {skip_count}명 / {total_posts}게시물 / {total_pages}페이지",
+                        new=new_count, dup=dup_count, posts=total_posts, pages=total_pages)
+                break
+
+            if not cursor:
+                _update(done=True, status=f"마지막 페이지 도달 — 신규 {new_count}명 / 제외 {skip_count}명 / {total_posts}게시물",
+                        new=new_count, dup=dup_count, posts=total_posts, pages=total_pages)
+                break
+
+    except Exception as e:
+        log.error(f"[self-collect:{job_id}] worker 에러: {e}")
+        _update(done=True, status=f"에러: {str(e)[:150]}", error=str(e)[:150])
+
+    if job_state["stop_requested"] and not progress.get("done"):
+        _update(done=True, stopped=True, status=f"사용자 중지 — 신규 {new_count}명 / 제외 {skip_count}명 / {total_posts}게시물 / {total_pages}페이지",
+                new=new_count, dup=dup_count, posts=total_posts, pages=total_pages)
+
+    # 정리
+    _release_current()
+    _finish_job(new_count, dup_count, total_posts, total_pages,
+                progress.get("error"))
+    try:
+        if client:
+            client.logout()
+    except Exception:
+        pass
+
+    # 잠시 후 running dict에서 제거 (SSE가 done 읽을 시간)
+    time.sleep(5)
+    with _self_lock:
+        _self_jobs_running.pop(job_id, None)
 
 
 # ═══════════════════════════════════════════════════════
