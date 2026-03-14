@@ -587,18 +587,24 @@ async function doBanSelected(reason, el) {
   const pks = Array.from(checked).map(cb => cb.value);
   const btn = document.getElementById('banSelBtn');
   btn.disabled = true;
-  btn.textContent = `밴 처리 중...`;
+  let done = 0;
+  const total = pks.length;
+  btn.textContent = `밴 처리 중... (0/${total})`;
   try {
-    // 개별 밴 API를 병렬로 호출 (기존 /influencers/{pk}/ban 사용)
-    const results = await Promise.allSettled(pks.map(pk => {
-      const fd = new FormData();
-      fd.append('reason', reason);
-      return fetch(`/influencers/${pk}/ban`, {method:'POST', body: fd});
-    }));
-    const done = results.filter(r => r.status === 'fulfilled' && r.value.ok).length;
+    // 5개씩 배치로 순차 처리 (rate limit 방지)
+    for (let i = 0; i < pks.length; i += 5) {
+      const batch = pks.slice(i, i + 5);
+      const results = await Promise.allSettled(batch.map(pk => {
+        const fd = new FormData();
+        fd.append('reason', reason);
+        return fetch(`/influencers/${pk}/ban`, {method:'POST', body: fd});
+      }));
+      done += results.filter(r => r.status === 'fulfilled' && r.value.ok).length;
+      btn.textContent = `밴 처리 중... (${done}/${total})`;
+    }
     await stAlert(`${done}명 밴 완료`);
   } catch(e) {
-    await stAlert('밴 처리 중 오류: ' + e.message);
+    await stAlert(`밴 처리 중 오류 (${done}/${total} 완료): ` + e.message);
   }
   location.reload();
 }
