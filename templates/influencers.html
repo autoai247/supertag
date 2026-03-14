@@ -384,8 +384,14 @@ document.getElementById('ppSel').addEventListener('change', function(){
   u.searchParams.set('page', 1);
   window.location.href = u.toString();
 });
-document.getElementById('selectAll').addEventListener('change', function(){
-  document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+document.getElementById('selectAll').addEventListener('change', async function(){
+  if (this.checked && !scrollDone) {
+    // 아직 로드 안 된 항목이 있으면 전체 로드 후 선택
+    await loadAllAndSelect();
+  } else {
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+    updateSelBtnVisibility();
+  }
 });
 
 // ═══ 무한 스크롤 ═══
