@@ -580,21 +580,17 @@ async function doBanSelected(reason, el) {
   const pks = Array.from(checked).map(cb => cb.value);
   const btn = document.getElementById('banSelBtn');
   btn.disabled = true;
-  btn.textContent = `밴 처리 중... (0/${pks.length})`;
-  let done = 0;
-  for (const pk of pks) {
-    try {
-      const fd = new FormData();
-      fd.append('reason', reason);
-      await fetch(`/influencers/${pk}/ban`, {method:'POST', body: fd});
-      done++;
-      btn.textContent = `밴 처리 중... (${done}/${pks.length})`;
-      const row = document.querySelector(`.row-check[value="${pk}"]`)?.closest('tr') || document.querySelector(`.row-check[value="${pk}"]`)?.closest('.flex');
-      if (row) row.style.opacity = '0.3';
-    } catch(e) {}
+  btn.textContent = `밴 처리 중...`;
+  try {
+    const fd = new FormData();
+    fd.append('pks', pks.join(','));
+    fd.append('reason', reason);
+    const r = await fetch('/influencers/ban-bulk', {method:'POST', body: fd});
+    const d = await r.json();
+    alert(`${d.count}명 밴 완료`);
+  } catch(e) {
+    alert('밴 처리 중 오류 발생');
   }
-  btn.disabled = false;
-  btn.textContent = '선택 밴';
   location.reload();
 }
 

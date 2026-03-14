@@ -1134,6 +1134,24 @@ def ban_one(pk: str, reason: str = Form(default="스팸/광고 계정"),
     return JSONResponse({"ok": True})
 
 
+@app.post("/influencers/ban-bulk")
+def ban_bulk(session_id: Optional[str] = Cookie(default=None),
+             pks: str = Form(default=""), reason: str = Form(default="수동 밴")):
+    """여러 인플루언서를 한 번에 밴"""
+    user = get_user(session_id)
+    if not user: return JSONResponse({"error": "인증 필요"}, 403)
+    from database import ban_influencer
+    pk_list = [p.strip() for p in pks.split(",") if p.strip()]
+    done = 0
+    for pk in pk_list:
+        try:
+            ban_influencer(pk, reason)
+            done += 1
+        except Exception:
+            pass
+    return JSONResponse({"ok": True, "count": done, "total": len(pk_list)})
+
+
 @app.post("/influencers/{pk}/delete")
 def delete_influencer_route(pk: str, session_id: Optional[str] = Cookie(default=None)):
     user = get_user(session_id)
