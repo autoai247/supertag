@@ -378,6 +378,12 @@
 {% endif %}
 
 <script>
+// 페이지 로드 시 체크박스 초기화 (브라우저 폼 상태 복원 방지)
+document.getElementById('selectAll').checked = false;
+document.querySelectorAll('.row-check').forEach(cb => cb.checked = false);
+document.getElementById('banSelBtn').style.display = 'none';
+document.getElementById('refreshSelBtn').style.display = 'none';
+
 document.getElementById('ppSel').addEventListener('change', function(){
   const u = new URL(window.location);
   u.searchParams.set('per_page', this.value);
