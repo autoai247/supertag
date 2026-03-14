@@ -3759,65 +3759,98 @@ def self_collect_check_account(username: str, use_proxy: int = Query(default=1),
 
 @app.post("/api/self-collect/accounts/reactivate-all")
 def self_collect_reactivate_all(session_id: Optional[str] = Cookie(default=None)):
-    """차단/실패 계정 전체 재활성화"""
+    """차단/실패 계정 전체 TOTP 재로그인 시도"""
     user = get_user(session_id)
     if not user:
         return JSONResponse({"error": "인증 필요"}, 403)
     accounts = _load_self_accounts()
-    count = 0
+    proxy = _get_active_proxy()
+    from instagrapi import Client
+    success = 0
+    failed = 0
+    skipped = 0
     for a in accounts:
-        if a.get("status") in ("blocked", "login_failed"):
+        if a.get("status") not in ("blocked", "login_failed"):
+            continue
+        totp_secret = a.get("totp_secret", "")
+        uname = a["username"]
+        if not totp_secret:
+            skipped += 1
+            a["error"] = "TOTP 없음 — 수동 인증 필요"
+            continue
+        try:
+            cl = Client()
+            cl.delay_range = [2, 4]
+            _login_with_session(cl, uname, a["password"], totp_secret, proxy)
+            cl.delay_range = [1, 3]
+            cl.account_info()
+            cl.dump_settings(_session_path(uname))
             a["status"] = "idle"
             a["error"] = ""
             a.pop("blocked_at", None)
-            count += 1
-            # 세션 파일 삭제 대신 쿠키만 초기화 (UUID/디바이스 지문 보존)
-            spath = _session_path(a["username"])
-            if os.path.exists(spath):
-                try:
-                    import json as _json
-                    with open(spath, "r") as f:
-                        sess = _json.load(f)
-                    saved_uuids = sess.get("uuids", {})
-                    cleaned = {"uuids": saved_uuids} if saved_uuids else {}
-                    with open(spath, "w") as f:
-                        _json.dump(cleaned, f)
-                except Exception:
-                    pass
-    if count:
-        _save_self_accounts(accounts)
-    log.info(f"[self-collect] 전체 재활성화: {count}개 계정")
-    return JSONResponse({"ok": True, "count": count, "message": f"{count}개 계정 재활성화"})
+            success += 1
+            log.info(f"[self-collect] @{uname} TOTP 재로그인 성공")
+            import time as _time
+            _time.sleep(3)  # 계정 간 딜레이
+        except Exception as e:
+            err_msg = str(e)[:150]
+            failed += 1
+            a["error"] = f"재로그인 실패: {_translate_insta_error(err_msg)}"
+            log.warning(f"[self-collect] @{uname} 재로그인 실패: {err_msg}")
+            import time as _time
+            _time.sleep(5)  # 실패 시 더 긴 딜레이
+    _save_self_accounts(accounts)
+    msg = f"성공 {success}개 / 실패 {failed}개"
+    if skipped:
+        msg += f" / TOTP 없음 {skipped}개"
+    log.info(f"[self-collect] 전체 재활성화: {msg}")
+    return JSONResponse({"ok": True, "success": success, "failed": failed, "skipped": skipped, "message": msg})
 
 @app.post("/api/self-collect/accounts/{username}/reactivate")
 def self_collect_reactivate_account(username: str, session_id: Optional[str] = Cookie(default=None)):
-    """차단/실패 계정을 재활성화 (상태 초기화)"""
+    """차단/실패 계정을 TOTP 2FA로 재로그인 시도하여 차단 해제"""
     user = get_user(session_id)
     if not user:
         return JSONResponse({"error": "인증 필요"}, 403)
     accounts = _load_self_accounts()
+    acc = None
     for a in accounts:
         if a["username"] == username:
-            a["status"] = "idle"
-            a["error"] = ""
-            a.pop("blocked_at", None)
-            _save_self_accounts(accounts)
-            # 세션 파일에서 쿠키만 초기화 (UUID/디바이스 지문 보존)
-            spath = _session_path(username)
-            if os.path.exists(spath):
-                try:
-                    import json as _json
-                    with open(spath, "r") as f:
-                        sess = _json.load(f)
-                    saved_uuids = sess.get("uuids", {})
-                    cleaned = {"uuids": saved_uuids} if saved_uuids else {}
-                    with open(spath, "w") as f:
-                        _json.dump(cleaned, f)
-                except Exception:
-                    pass
-            log.info(f"[self-collect] @{username} 재활성화")
-            return JSONResponse({"ok": True, "message": f"@{username} 재활성화 완료"})
-    return JSONResponse({"error": "계정을 찾을 수 없음"}, 404)
+            acc = a
+            break
+    if not acc:
+        return JSONResponse({"error": "계정을 찾을 수 없음"}, 404)
+
+    totp_secret = acc.get("totp_secret", "")
+    if not totp_secret:
+        return JSONResponse({"error": f"@{username}에 TOTP 시크릿이 없어 자동 인증 불가", "need_manual": True}, 400)
+
+    # 프록시 설정
+    proxy = _get_active_proxy()
+
+    # TOTP 2FA 재로그인 시도
+    try:
+        from instagrapi import Client
+        cl = Client()
+        cl.delay_range = [2, 4]
+        _login_with_session(cl, username, acc["password"], totp_secret, proxy)
+        cl.delay_range = [1, 3]
+        # 로그인 성공 확인
+        cl.account_info()
+        cl.dump_settings(_session_path(username))
+
+        acc["status"] = "idle"
+        acc["error"] = ""
+        acc.pop("blocked_at", None)
+        _save_self_accounts(accounts)
+        log.info(f"[self-collect] @{username} TOTP 재로그인 성공 — 재활성화 완료")
+        return JSONResponse({"ok": True, "message": f"@{username} 재로그인 성공 — 재활성화 완료"})
+    except Exception as e:
+        err_msg = str(e)[:150]
+        log.warning(f"[self-collect] @{username} 재로그인 실패: {err_msg}")
+        acc["error"] = f"재로그인 실패: {_translate_insta_error(err_msg)}"
+        _save_self_accounts(accounts)
+        return JSONResponse({"error": f"@{username} 재로그인 실패: {_translate_insta_error(err_msg)}", "need_manual": True}, 400)
 
 @app.post("/api/self-collect/accounts/{username}/unblock")
 def self_collect_unblock_account(username: str, session_id: Optional[str] = Cookie(default=None)):

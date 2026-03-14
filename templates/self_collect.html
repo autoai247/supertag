@@ -714,25 +714,54 @@ async function unblockAccount(username) {
 }
 
 async function reactivateAll() {
-  if (!confirm('차단/실패 상태 계정을 전체 재활성화하시겠습니까?')) return;
-  const r = await fetch('/api/self-collect/accounts/reactivate-all', {method:'POST'});
-  const d = await r.json();
-  if (d.error) { alert(d.error); return; }
-  alert(d.message);
+  if (!confirm('차단/실패 계정을 전체 TOTP 재로그인 시도합니다. 시간이 걸릴 수 있습니다. 계속하시겠습니까?')) return;
+  const btn = event.currentTarget;
+  btn.disabled = true;
+  btn.textContent = '재로그인 시도 중...';
+  try {
+    const r = await fetch('/api/self-collect/accounts/reactivate-all', {method:'POST'});
+    const d = await r.json();
+    if (d.error) { alert(d.error); return; }
+    alert(d.message);
+  } catch(e) {
+    alert('오류: ' + e.message);
+  }
   location.reload();
 }
 
 async function reactivateAccount(username) {
-  const r = await fetch(`/api/self-collect/accounts/${username}/reactivate`, {method:'POST'});
-  const d = await r.json();
-  if (d.error) { alert(d.error); return; }
-  // UI 즉시 업데이트
-  const row = document.querySelector(`tr[data-username="${username}"]`);
-  if (row) {
-    const statusTd = row.querySelector('.acc-status');
-    if (statusTd) statusTd.innerHTML = '<span class="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs">로그인완료</span>';
-    const errorTd = row.querySelector('.acc-error');
-    if (errorTd) errorTd.innerHTML = '<span class="text-gray-300">-</span>';
+  const btn = event.currentTarget;
+  btn.disabled = true;
+  btn.textContent = '로그인 중...';
+  try {
+    const r = await fetch(`/api/self-collect/accounts/${username}/reactivate`, {method:'POST'});
+    const d = await r.json();
+    if (d.error) {
+      alert(`@${username}: ${d.error}`);
+      btn.disabled = false;
+      btn.textContent = '재활성';
+      // 에러 메시지 UI 업데이트
+      const row = document.querySelector(`tr[data-username="${username}"]`);
+      if (row) {
+        const errorTd = row.querySelector('.acc-error');
+        if (errorTd) errorTd.innerHTML = `<span class="text-red-500 text-xs">${d.error}</span>`;
+      }
+      return;
+    }
+    alert(d.message);
+    // 성공 시 UI 업데이트
+    const row = document.querySelector(`tr[data-username="${username}"]`);
+    if (row) {
+      const statusTd = row.querySelector('.acc-status');
+      if (statusTd) statusTd.innerHTML = '<span class="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs">로그인완료</span>';
+      const errorTd = row.querySelector('.acc-error');
+      if (errorTd) errorTd.innerHTML = '<span class="text-gray-300">-</span>';
+    }
+    btn.textContent = '완료';
+  } catch(e) {
+    alert('오류: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '재활성';
   }
 }
 
