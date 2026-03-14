@@ -589,7 +589,7 @@ async function doBanSelected(reason, el) {
   btn.disabled = true;
   btn.textContent = `밴 처리 중...`;
   try {
-    const url = '/influencers-action/ban-bulk';
+    const url = '/admin/ban-bulk';
     console.log('ban-bulk request:', url, 'pks:', pks.length, 'reason:', reason);
     const fd = new FormData();
     fd.append('pks', pks.join(','));
