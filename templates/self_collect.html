@@ -128,7 +128,7 @@
       <div class="grid grid-cols-5 gap-2 mb-3">
         <div class="text-center py-2 rounded-lg" style="background:#eef2ff;"><div class="text-lg font-bold text-indigo-600 j-new">{{rj.new}}</div><div class="text-xs text-gray-400">신규</div></div>
         <div class="text-center py-2 rounded-lg" style="background:#fef3c7;"><div class="text-lg font-bold text-amber-600 j-dup">{{rj.dup}}</div><div class="text-xs text-gray-400">중복</div></div>
-        <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;"><div class="text-lg font-bold text-emerald-600 j-target">0</div><div class="text-xs text-gray-400">목표</div></div>
+        <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;"><div class="text-lg font-bold text-green-600 j-target">0</div><div class="text-xs text-gray-400">목표</div></div>
         <div class="text-center py-2 rounded-lg" style="background:#fff7ed;"><div class="text-lg font-bold text-orange-600 j-posts">{{rj.posts}}</div><div class="text-xs text-gray-400">게시물</div></div>
         <div class="text-center py-2 rounded-lg" style="background:#f0f9ff;"><div class="text-lg font-bold text-sky-600 j-pages">{{rj.pages}}</div><div class="text-xs text-gray-400">페이지</div></div>
       </div>
@@ -201,7 +201,7 @@
               <div class="grid grid-cols-5 gap-2 mb-3">
                 <div class="text-center py-2 rounded-lg" style="background:#eef2ff;"><div class="text-lg font-bold text-indigo-600">{{j.new_count|default(0)}}</div><div class="text-xs text-gray-400">신규</div></div>
                 <div class="text-center py-2 rounded-lg" style="background:#fef3c7;"><div class="text-lg font-bold text-amber-600">{{j.dup_count|default(0)}}</div><div class="text-xs text-gray-400">중복</div></div>
-                <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;"><div class="text-lg font-bold text-emerald-600">{{j.target_users|default(0)}}</div><div class="text-xs text-gray-400">목표</div></div>
+                <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;"><div class="text-lg font-bold text-green-600">{{j.target_users|default(0)}}</div><div class="text-xs text-gray-400">목표</div></div>
                 <div class="text-center py-2 rounded-lg" style="background:#fff7ed;"><div class="text-lg font-bold text-orange-600">{{j.total_posts|default(0)}}</div><div class="text-xs text-gray-400">게시물</div></div>
                 <div class="text-center py-2 rounded-lg" style="background:#f0f9ff;"><div class="text-lg font-bold text-sky-600">{{j.total_pages|default(0)}}</div><div class="text-xs text-gray-400">페이지</div></div>
               </div>
@@ -246,7 +246,7 @@
     <div class="flex items-center justify-between mb-3">
       <div class="flex items-center gap-2">
         <h2 class="text-sm font-semibold text-gray-700">수집용 Instagram 계정</h2>
-        <button onclick="reactivateAll()" class="px-3 py-1.5 bg-emerald-500 text-white text-xs font-semibold rounded-lg hover:bg-emerald-600 shadow-sm">전체 재활성화</button>
+        <button onclick="reactivateAll()" style="background:#10b981;color:#fff;padding:6px 14px;font-size:12px;font-weight:600;border-radius:8px;border:none;cursor:pointer;">전체 재활성화</button>
       </div>
       <div id="accStats" class="flex items-center gap-3 text-xs">
         <span class="px-2 py-1 bg-gray-100 rounded font-medium">총 <strong>{{acc_stats.total}}</strong>개</span>
@@ -291,7 +291,7 @@
                 <button onclick="checkAccount('{{acc.username}}', 0)" class="px-2 py-1 bg-indigo-50 text-indigo-600 text-xs font-medium rounded hover:bg-indigo-100 border border-indigo-200">확인</button>
                 <button onclick="checkAccount('{{acc.username}}', 1)" class="px-2 py-1 bg-gray-50 text-gray-500 text-xs font-medium rounded hover:bg-gray-100 border border-gray-200" title="프록시 경유">P확인</button>
                 <button onclick="unblockAccount('{{acc.username}}')" class="px-2 py-1 bg-amber-50 text-amber-600 text-xs font-medium rounded hover:bg-amber-100 border border-amber-200">크롬</button>
-                <button onclick="reactivateAccount('{{acc.username}}')" class="px-2 py-1 bg-emerald-50 text-emerald-600 text-xs font-medium rounded hover:bg-emerald-100 border border-emerald-200">재활성</button>
+                <button onclick="reactivateAccount('{{acc.username}}')" style="background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;padding:4px 8px;font-size:12px;font-weight:500;border-radius:6px;cursor:pointer;">재활성</button>
                 <button onclick="deleteAccount('{{acc.username}}')" class="px-2 py-1 bg-red-50 text-red-500 text-xs font-medium rounded hover:bg-red-100 border border-red-200">삭제</button>
               </div>
             </td>
@@ -485,7 +485,7 @@ function addJobCard(jobId, hashtag, target) {
     <div class="grid grid-cols-5 gap-2 mb-3">
       <div class="text-center py-2 rounded-lg" style="background:#eef2ff;"><div class="text-lg font-bold text-indigo-600 j-new">0</div><div class="text-xs text-gray-400">신규</div></div>
       <div class="text-center py-2 rounded-lg" style="background:#fef3c7;"><div class="text-lg font-bold text-amber-600 j-dup">0</div><div class="text-xs text-gray-400">중복</div></div>
-      <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;"><div class="text-lg font-bold text-emerald-600 j-target">${parseInt(target).toLocaleString()}</div><div class="text-xs text-gray-400">목표</div></div>
+      <div class="text-center py-2 rounded-lg" style="background:#f0fdf4;"><div class="text-lg font-bold text-green-600 j-target">${parseInt(target).toLocaleString()}</div><div class="text-xs text-gray-400">목표</div></div>
       <div class="text-center py-2 rounded-lg" style="background:#fff7ed;"><div class="text-lg font-bold text-orange-600 j-posts">0</div><div class="text-xs text-gray-400">게시물</div></div>
       <div class="text-center py-2 rounded-lg" style="background:#f0f9ff;"><div class="text-lg font-bold text-sky-600 j-pages">0</div><div class="text-xs text-gray-400">페이지</div></div>
     </div>
