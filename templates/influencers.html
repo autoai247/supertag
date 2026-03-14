@@ -592,7 +592,7 @@ async function doBanSelected(reason, el) {
     const fd = new FormData();
     fd.append('pks', pks.join(','));
     fd.append('reason', reason);
-    const r = await fetch('/api/influencers/ban-bulk', {method:'POST', body: fd});
+    const r = await fetch('/influencers-action/ban-bulk', {method:'POST', body: fd});
     if (!r.ok) {
       const txt = await r.text();
       console.error('ban-bulk error:', r.status, txt);
