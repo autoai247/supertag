@@ -593,9 +593,13 @@ async function doBanSelected(reason, el) {
     fd.append('reason', reason);
     const r = await fetch('/influencers/ban-bulk', {method:'POST', body: fd});
     const d = await r.json();
-    alert(`${d.count}명 밴 완료`);
+    if (d.ok) {
+      await stAlert(`${d.count}명 밴 완료`);
+    } else {
+      await stAlert('밴 처리 실패: ' + (d.error || ''));
+    }
   } catch(e) {
-    alert('밴 처리 중 오류 발생');
+    await stAlert('밴 처리 중 오류 발생: ' + e.message);
   }
   location.reload();
 }
