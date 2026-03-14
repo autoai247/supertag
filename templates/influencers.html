@@ -552,11 +552,31 @@ document.addEventListener('change', e => {
   if (e.target.classList.contains('row-check') || e.target.id === 'selectAll') updateSelBtnVisibility();
 });
 
-async function banSelected() {
+function banSelected() {
   const checked = document.querySelectorAll('.row-check:checked');
   if (checked.length === 0) { alert('밴할 항목을 선택하세요.'); return; }
-  const reason = prompt(`${checked.length}명을 밴합니다. 사유를 입력하세요:`, '스팸/무관 계정');
-  if (reason === null) return;
+  // 기존 드롭다운 닫기
+  document.querySelectorAll('.ban-dropdown').forEach(d => d.remove());
+  const btn = document.getElementById('banSelBtn');
+  const rect = btn.getBoundingClientRect();
+  const dd = document.createElement('div');
+  dd.className = 'ban-dropdown';
+  dd.style.cssText = `position:fixed;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px;min-width:150px;`;
+  dd.style.top = (rect.bottom + 4) + 'px';
+  dd.style.left = rect.left + 'px';
+  const reasons = ['스팸(팔로워)','스팸(광고)','비활성 계정','부적절한 콘텐츠','기타'];
+  dd.innerHTML = `<div class="px-3 py-1.5 text-[11px] text-gray-400 font-medium">${checked.length}명 선택 — 사유 선택</div>` +
+    reasons.map(r => `<div class="px-3 py-2 text-xs rounded-lg cursor-pointer hover:bg-red-50 text-gray-700 hover:text-red-600" onclick="doBanSelected('${r}',this)">${r}</div>`).join('');
+  document.body.appendChild(dd);
+  setTimeout(() => {
+    const close = (e) => { if (!dd.contains(e.target) && e.target !== btn) { dd.remove(); document.removeEventListener('click', close); } };
+    document.addEventListener('click', close);
+  }, 10);
+}
+
+async function doBanSelected(reason, el) {
+  el.closest('.ban-dropdown').remove();
+  const checked = document.querySelectorAll('.row-check:checked');
   const pks = Array.from(checked).map(cb => cb.value);
   const btn = document.getElementById('banSelBtn');
   btn.disabled = true;
@@ -565,18 +585,16 @@ async function banSelected() {
   for (const pk of pks) {
     try {
       const fd = new FormData();
-      fd.append('reason', reason || '수동 밴');
+      fd.append('reason', reason);
       await fetch(`/influencers/${pk}/ban`, {method:'POST', body: fd});
       done++;
       btn.textContent = `밴 처리 중... (${done}/${pks.length})`;
-      // 해당 행 시각적 표시
       const row = document.querySelector(`.row-check[value="${pk}"]`)?.closest('tr') || document.querySelector(`.row-check[value="${pk}"]`)?.closest('.flex');
       if (row) row.style.opacity = '0.3';
     } catch(e) {}
   }
   btn.disabled = false;
   btn.textContent = '선택 밴';
-  alert(`${done}명 밴 완료`);
   location.reload();
 }
 
